@@ -1,0 +1,16 @@
+{
+  "phone": "13313095883",
+  "first_name": "Вася",
+  "last_name": "Пупкин",
+  "birth_date": "05.05.2005",
+  "prev_msg_id": 2226,
+  "country": "🇷🇺 Россия",
+  "city": "Москва - ЮАО",
+  "role": "Игрок",
+  "player_level": "2.5",
+  "sport": "Настольный теннис",
+  "gender": "Мужской",
+  "photo": "uploaded",
+  "photo_path": "data/user_photos/7963495412_1755856850.jpg",
+  "show_in_search": true
+}

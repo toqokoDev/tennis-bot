@@ -1,0 +1,92 @@
+from aiogram.fsm.state import State, StatesGroup
+
+class RegistrationStates(StatesGroup):
+    PHONE = State()
+    FIRST_NAME = State()
+    LAST_NAME = State()
+    BIRTH_DATE = State()
+    COUNTRY = State()
+    CITY = State()
+    ROLE = State()
+    TRAINER_PRICE = State()
+    SPORT = State()
+    GENDER = State()
+    PLAYER_LEVEL = State()
+    PHOTO = State()
+    SHOW_IN_SEARCH = State()
+    VACATION_TENNIS = State()
+    VACATION_START = State()
+    VACATION_END = State()
+    VACATION_COMMENT = State()
+    COUNTRY_INPUT = State()
+    CITY_INPUT = State()
+    PROFILE_COMMENT = State()
+    DEFAULT_PAYMENT = State()
+
+class GameOfferStates(StatesGroup):
+    GAME_CITY = State()
+    GAME_DATE = State()
+    GAME_DATE_MANUAL = State()
+    GAME_TIME = State()
+    GAME_TYPE = State()
+    PAYMENT_TYPE = State()
+    GAME_COMPETITIVE = State()
+    GAME_REPEAT = State()
+    GAME_COMMENT = State()
+
+class SearchStates(StatesGroup):
+    SEARCH_TYPE = State()
+    SEARCH_COUNTRY = State()
+    SEARCH_CITY = State()
+    SEARCH_RESULTS = State()
+    SEARCH_PROFILE = State()
+    SEARCH_COUNTRY_INPUT = State()
+    SEARCH_CITY_INPUT = State()
+    SEARCH_NO_RESULTS = State()
+    SEARCH_PRICE_RANGE = State()
+    SEARCH_SPORT = State()
+
+class EditProfileStates(StatesGroup):
+    COMMENT = State()
+    PAYMENT = State()
+    PHOTO_UPLOAD = State()
+    CITY = State()
+    CITY_INPUT = State()
+    COUNTRY = State()
+    COUNTRY_INPUT = State()
+
+class PaymentStates(StatesGroup):
+    ENTER_EMAIL = State()
+    CONFIRM_PAYMENT = State()
+
+class AddScoreState(StatesGroup):
+    selecting_game_type = State()
+    selecting_partner = State()
+    searching_partner = State()
+    selecting_opponent = State()
+    searching_opponent = State()
+    selecting_set_score = State()
+    adding_another_set = State()
+    adding_media = State()
+    confirming_score = State()
+    searching_opponent1 = State()
+    searching_opponent2 = State()
+    selecting_opponent1 = State()
+    electing_opponent2 = State()
+    
+class SearchPartnerStates(StatesGroup):
+    SEARCH_TYPE = State()
+    SEARCH_COUNTRY = State()
+    SEARCH_COUNTRY_INPUT = State()
+    SEARCH_CITY = State()
+    SEARCH_CITY_INPUT = State()
+    SEARCH_SPORT = State()
+    SEARCH_GENDER = State()
+    SEARCH_LEVEL = State()
+    SEARCH_PRICE_RANGE = State()
+    SEARCH_RESULTS = State()
+    SEARCH_NO_RESULTS = State()
+
+class BrowseOffersStates(StatesGroup):
+    SELECT_COUNTRY = State()
+    SELECT_CITY = State()

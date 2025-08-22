@@ -1,0 +1,110 @@
+from datetime import datetime
+from typing import List
+
+from utils.json_data import load_users
+
+def count_users_by_location(search_type=None, country=None, city=None):
+    """Подсчет пользователей по локации"""
+    users = load_users()
+    count = 0
+    
+    for user_id, profile in users.items():
+        if not profile.get('show_in_search', True):
+            continue
+            
+        # Фильтр по типу поиска
+        if search_type == "coaches" and profile.get('role') != "Тренер":
+            continue
+        elif search_type == "players" and profile.get('role') != "Игрок":
+            continue
+            
+        # Фильтр по стране
+        if country and profile.get('country') != country:
+            continue
+            
+        # Фильтр по городу
+        if city and profile.get('city') != city:
+            continue
+            
+        count += 1
+    
+    return count
+
+def calculate_age(birth_date_str: str) -> int:
+    try:
+        birth_date = datetime.strptime(birth_date_str, "%d.%m.%Y")
+        today = datetime.now()
+        age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+        return age
+    except:
+        return 0
+
+def level_to_points(level: str) -> int:
+    level_points = {
+        "0.0": 0, "0.5": 300, "1.0": 500, "1.5": 700,
+        "2.0": 900, "2.5": 1100, "3.0": 1200, "3.5": 1400,
+        "4.0": 1600, "4.5": 1800, "5.0": 2000, "5.5": 2200,
+        "6.0": 2400, "6.5": 2600, "7.0": 2800
+    }
+    return level_points.get(level, 0)
+
+def calculate_new_ratings(winner_points: int, loser_points: int, game_difference: int) -> tuple:
+    points_change = game_difference * 0.004
+    winner_new = winner_points + (loser_points * points_change)
+    loser_new = loser_points - (winner_points * points_change)
+    return round(winner_new), round(loser_new)
+
+def search_users(query: str, exclude_ids: List[str] = None) -> List[tuple]:
+    users = load_users()
+    results = []
+    query = query.lower().strip()
+    
+    if exclude_ids is None:
+        exclude_ids = []
+    
+    for user_id, user_data in users.items():
+        if user_id in exclude_ids:
+            continue
+            
+        first_name = user_data.get('first_name', '').lower()
+        last_name = user_data.get('last_name', '').lower()
+        username = user_data.get('username', '')
+        
+        if (query in first_name or query in last_name or 
+            query in username or query in f"{first_name} {last_name}"):
+            results.append((user_id, user_data))
+    
+    return results
+
+def count_users_by_filters(search_type, country=None, city=None, sport=None, gender=None, level=None):
+    """
+    Подсчет пользователей по заданным фильтрам
+    """
+    users = load_users()
+    count = 0
+    
+    for user_id, profile in users.items():
+        if not profile.get('show_in_search', True):
+            continue
+            
+        if search_type == "partner" and profile.get('role') != "Игрок":
+            continue
+            
+        if country and profile.get('country') != country:
+            continue
+            
+        if city and profile.get('city') != city:
+            continue
+            
+        if sport and profile.get('sport') != sport:
+            continue
+            
+        if gender and profile.get('gender') != gender:
+            continue
+            
+        if level and profile.get('player_level') != level:
+            continue
+            
+        count += 1
+    
+    return count

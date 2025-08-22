@@ -1,0 +1,1487 @@
+from aiogram import F, Router, types
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+import copy
+import os
+import glob
+from typing import List, Optional, Union
+from datetime import datetime
+
+from config.config import BOT_USERNAME, SUBSCRIPTION_PRICE
+from models.states import AddScoreState
+from utils.json_data import load_games, load_users, save_games, save_users
+from utils.media import save_media_file
+from utils.utils import calculate_new_ratings, search_users
+
+router = Router()
+
+# ID последнего сообщения для редактирования
+last_message_ids = {}
+
+# Создание inline клавиатуры для выбора пользователей
+def create_users_inline_keyboard(users_list: List[tuple], action: str, page: int = 0, has_more: bool = False) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    users_per_page = 8
+    
+    start_idx = page * users_per_page
+    end_idx = min(start_idx + users_per_page, len(users_list))
+    
+    for user_id, user_data in users_list[start_idx:end_idx]:
+        name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}"
+        rating = user_data.get('rating_points', 0)
+        btn_text = f"{name} ({rating})"
+        builder.button(text=btn_text, callback_data=f"{action}:{user_id}")
+    
+    builder.adjust(1)
+    
+    # Кнопки навигации
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"nav:{action}:{page-1}"))
+    if has_more and end_idx < len(users_list):
+        nav_buttons.append(InlineKeyboardButton(text="➡️ Вперед", callback_data=f"nav:{action}:{page+1}"))
+    
+    if nav_buttons:
+        builder.row(*nav_buttons)
+    
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
+    
+    return builder.as_markup()
+
+# Создание inline клавиатуры для выбора типа игры
+def create_game_type_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🎯 Одиночная игра", callback_data="game_type:single")
+    builder.button(text="👥 Парная игра", callback_data="game_type:double")
+    builder.button(text="🔙 Назад", callback_data="back")
+    builder.adjust(1)
+    return builder.as_markup()
+
+# Создание inline клавиатуры для выбора счета сета
+def create_set_score_keyboard(set_number: int = 1) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    
+    # Левая колонка: победа первого игрока
+    left_scores = ["6:0", "6:1", "6:2", "6:3", "6:4", "7:5", "7:6"]
+    
+    # Правая колонка: победа второго игрока
+    right_scores = ["0:6", "1:6", "2:6", "3:6", "4:6", "5:7", "6:7"]
+    
+    # Добавляем кнопки в две колонки
+    for left_score, right_score in zip(left_scores, right_scores):
+        builder.row(
+            InlineKeyboardButton(text=left_score, callback_data=f"set_score:{set_number}_{left_score}"),
+            InlineKeyboardButton(text=right_score, callback_data=f"set_score:{set_number}_{right_score}")
+        )
+    
+    # Кнопки навигации
+    if set_number > 1:
+        builder.row(
+            InlineKeyboardButton(text="⬅️ Предыдущий сет", callback_data=f"prev_set:{set_number-1}"),
+            InlineKeyboardButton(text="➡️ Следующий сет", callback_data=f"next_set:{set_number+1}")
+        )
+    else:
+        builder.row(InlineKeyboardButton(text="➡️ Следующий сет", callback_data=f"next_set:{set_number+1}"))
+    
+    builder.row(InlineKeyboardButton(text="✅ Завершить ввод счета", callback_data="finish_score"))
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
+    
+    return builder.as_markup()
+
+# Создание inline клавиатуры для добавления еще одного сета
+def create_add_another_set_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Да, добавить еще сет", callback_data="add_another_set:yes")
+    builder.button(text="❌ Нет, завершить ввод", callback_data="add_another_set:no")
+    builder.button(text="🔙 Назад", callback_data="back")
+    builder.adjust(1)
+    return builder.as_markup()
+
+# Создание inline клавиатуры для медиа
+def create_media_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📷 Прикрепить фото", callback_data="media:photo")
+    builder.button(text="🎥 Прикрепить видео", callback_data="media:video")
+    builder.button(text="➡️ Пропустить", callback_data="media:skip")
+    builder.button(text="🔙 Назад", callback_data="back")
+    builder.adjust(1)
+    return builder.as_markup()
+
+# Создание inline клавиатуры для подтверждения
+def create_confirmation_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Подтвердить", callback_data="confirm:yes")
+    builder.button(text="✏️ Редактировать счет", callback_data="confirm:edit_score")
+    builder.button(text="❌ Отменить", callback_data="confirm:no")
+    builder.adjust(1)
+    return builder.as_markup()
+
+# Сохранение ID сообщения для редактирования
+def save_message_id(user_id: int, message_id: int):
+    last_message_ids[user_id] = message_id
+
+# Получение сохраненного ID сообщения
+def get_message_id(user_id: int) -> Optional[int]:
+    return last_message_ids.get(user_id)
+
+# Удаление предыдущего сообщения и отправка нового
+async def delete_and_send_new_message(message: types.Message, text: str, keyboard: InlineKeyboardMarkup = None, parse_mode: str = None):
+    try:
+        await message.delete()
+    except:
+        pass
+    
+    new_msg = await message.answer(text, reply_markup=keyboard, parse_mode=parse_mode)
+    save_message_id(message.chat.id, new_msg.message_id)
+    return new_msg
+
+# Редактирование сообщения с медиа
+async def edit_media_message(callback: types.CallbackQuery, text: str, keyboard: InlineKeyboardMarkup, media_data: dict = None):
+    try:
+        if media_data:
+            # Если есть медиа, удаляем старое сообщение и отправляем новое
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            
+            if 'photo_id' in media_data:
+                new_msg = await callback.message.answer_photo(
+                    media_data['photo_id'],
+                    caption=text,
+                    reply_markup=keyboard
+                )
+            elif 'video_id' in media_data:
+                new_msg = await callback.message.answer_video(
+                    media_data['video_id'],
+                    caption=text,
+                    reply_markup=keyboard
+                )
+            else:
+                new_msg = await callback.message.answer(text, reply_markup=keyboard)
+        else:
+            # Если нет медиа, редактируем текст
+            await callback.message.edit_text(text, reply_markup=keyboard)
+            new_msg = callback.message
+    except Exception as e:
+        # Если не удалось отредактировать, отправляем новое сообщение
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        new_msg = await callback.message.answer(text, reply_markup=keyboard)
+    
+    save_message_id(callback.from_user.id, new_msg.message_id)
+    return new_msg
+
+# Функция для создания ссылки на профиль пользователя
+def create_user_profile_link(user_data: dict, user_id: str) -> str:
+    first_name = user_data.get('first_name', '')
+    last_name = user_data.get('last_name', '')
+    rating = user_data.get('rating_points', 0)
+    return f"[{first_name} {last_name} ({rating})](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
+
+@router.message(F.text == "📝 Внести счет")
+async def handle_add_score(message: types.Message, state: FSMContext):
+    # Проверяем наличие активной подписки
+    user_id = message.chat.id
+    users = load_users()
+    
+    if not users[str(user_id)].get('subscription', {}).get('active', False):
+        # Показываем сообщение о необходимости подписки
+        text = (
+            "🔒 <b>Доступ закрыт</b>\n\n"
+            "Функция внесения счета доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
+            f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
+            "Перейдите в раздел '💳 Платежи' для оформления подписки."
+        )
+        
+        await message.answer(
+            text,
+            parse_mode="HTML"
+        )
+        return
+    
+    # Если подписка активна, продолжаем процесс
+    await state.set_state(AddScoreState.selecting_game_type)
+    
+    keyboard = create_game_type_keyboard()
+    msg = await message.answer("Выберите тип игры:", reply_markup=keyboard)
+    save_message_id(message.chat.id, msg.message_id)
+
+@router.callback_query(F.data.startswith("game_type:"))
+async def handle_game_type_selection(callback: types.CallbackQuery, state: FSMContext):
+    game_type = callback.data.split(":")[1]
+    
+    await state.update_data(game_type=game_type)
+    
+    if game_type == "single":
+        await state.set_state(AddScoreState.searching_opponent)
+        await callback.message.edit_text(
+            "Поиск соперника\nНапишите имя или фамилию соперника:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+        
+    else:  # double
+        await state.set_state(AddScoreState.selecting_partner)
+        await callback.message.edit_text(
+            "Ваш партнер по паре\nНапишите имя или фамилию партнера:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+    
+    await callback.answer()
+
+@router.message(AddScoreState.searching_opponent)
+async def handle_opponent_search(message: types.Message, state: FSMContext):
+    search_query = message.text
+    current_user_id = str(message.chat.id)
+    
+    matching_users = search_users(search_query, exclude_ids=[current_user_id])
+    
+    if not matching_users:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+        )
+        msg = await message.answer(
+            "Пользователи не найдены. Попробуйте еще раз:",
+            reply_markup=keyboard
+        )
+        save_message_id(message.chat.id, msg.message_id)
+        return
+    
+    await state.update_data(opponent_search=search_query)
+    await state.set_state(AddScoreState.selecting_opponent)
+    
+    keyboard = create_users_inline_keyboard(matching_users, "select_opponent")
+    msg = await message.answer("Выберите соперника из списка:", reply_markup=keyboard)
+    save_message_id(message.chat.id, msg.message_id)
+
+@router.message(AddScoreState.selecting_partner)
+async def handle_partner_search(message: types.Message, state: FSMContext):
+    search_query = message.text
+    current_user_id = str(message.chat.id)
+    
+    matching_users = search_users(search_query, exclude_ids=[current_user_id])
+    
+    if not matching_users:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+        )
+        msg = await message.answer(
+            "Пользователи не найдены. Попробуйте еще раз:",
+            reply_markup=keyboard
+        )
+        save_message_id(message.chat.id, msg.message_id)
+        return
+    
+    await state.update_data(partner_search=search_query)
+    await state.set_state(AddScoreState.searching_partner)
+    
+    keyboard = create_users_inline_keyboard(matching_users, "select_partner")
+    msg = await message.answer("Выберите партнера из списка:", reply_markup=keyboard)
+    save_message_id(message.chat.id, msg.message_id)
+
+@router.callback_query(F.data.startswith("select_partner:"))
+async def handle_partner_selection(callback: types.CallbackQuery, state: FSMContext):
+    partner_id = callback.data.split(":")[1]
+    users = load_users()
+    
+    if partner_id not in users:
+        await callback.answer("Пользователь не найден")
+        return
+    
+    selected_partner = users[partner_id]
+    selected_partner['telegram_id'] = partner_id
+    
+    await state.update_data(partner=selected_partner)
+    await state.set_state(AddScoreState.searching_opponent1)
+    
+    await callback.message.edit_text(
+        "Поиск первого соперника\nНапишите имя или фамилию первого соперника:",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+        )
+    )
+    await callback.answer()
+
+@router.message(AddScoreState.searching_opponent1)
+async def handle_opponent1_search(message: types.Message, state: FSMContext):
+    search_query = message.text
+    current_user_id = str(message.chat.id)
+    data = await state.get_data()
+    partner_id = data.get('partner', {}).get('telegram_id')
+    
+    matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id])
+    
+    if not matching_users:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+        )
+        msg = await message.answer(
+            "Пользователи не найдены. Попробуйте еще раз:",
+            reply_markup=keyboard
+        )
+        save_message_id(message.chat.id, msg.message_id)
+        return
+    
+    await state.update_data(opponent1_search=search_query)
+    await state.set_state(AddScoreState.selecting_opponent1)
+    
+    keyboard = create_users_inline_keyboard(matching_users, "select_opponent1")
+    msg = await message.answer("Выберите первого соперника из списка:", reply_markup=keyboard)
+    save_message_id(message.chat.id, msg.message_id)
+
+@router.callback_query(F.data.startswith("select_opponent1:"))
+async def handle_opponent1_selection(callback: types.CallbackQuery, state: FSMContext):
+    opponent_id = callback.data.split(":")[1]
+    users = load_users()
+    
+    if opponent_id not in users:
+        await callback.answer("Соперник не найден")
+        return
+    
+    selected_opponent = users[opponent_id]
+    selected_opponent['telegram_id'] = opponent_id
+    
+    await state.update_data(opponent1=selected_opponent)
+    await state.set_state(AddScoreState.searching_opponent2)
+    
+    await callback.message.edit_text(
+        "Поиск второго соперника\nНапишите имя или фамилию второго соперника:",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+        )
+    )
+    await callback.answer()
+
+@router.message(AddScoreState.searching_opponent2)
+async def handle_opponent2_search(message: types.Message, state: FSMContext):
+    search_query = message.text
+    current_user_id = str(message.chat.id)
+    data = await state.get_data()
+    partner_id = data.get('partner', {}).get('telegram_id')
+    opponent1_id = data.get('opponent1', {}).get('telegram_id')
+    
+    matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
+    
+    if not matching_users:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+        )
+        msg = await message.answer(
+            "Пользователи не найдены. Попробуйте еще раз:",
+            reply_markup=keyboard
+        )
+        save_message_id(message.chat.id, msg.message_id)
+        return
+    
+    await state.update_data(opponent2_search=search_query)
+    await state.set_state(AddScoreState.selecting_opponent2)
+    
+    keyboard = create_users_inline_keyboard(matching_users, "select_opponent2")
+    msg = await message.answer("Выберите второго соперника из списка:", reply_markup=keyboard)
+    save_message_id(message.chat.id, msg.message_id)
+
+@router.callback_query(F.data.startswith("select_opponent2:"))
+async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMContext):
+    opponent_id = callback.data.split(":")[1]
+    users = load_users()
+    
+    if opponent_id not in users:
+        await callback.answer("Соперник не найден")
+        return
+    
+    selected_opponent = users[opponent_id]
+    selected_opponent['telegram_id'] = opponent_id
+    
+    await state.update_data(opponent2=selected_opponent)
+    await state.set_state(AddScoreState.selecting_set_score)
+    
+    data = await state.get_data()
+    partner = data.get('partner')
+    opponent1 = data.get('opponent1')
+    opponent2 = selected_opponent
+    current_user = users.get(str(callback.from_user.id))
+    
+    team1_avg = (current_user.get('rating_points', 0) + partner.get('rating_points', 0)) / 2
+    team2_avg = (opponent1.get('rating_points', 0) + opponent2.get('rating_points', 0)) / 2
+    
+    keyboard = create_set_score_keyboard(1)
+    
+    await callback.message.edit_text(
+        f"Команды сформированы:\n\n"
+        f"Команда 1 (ваша):\n"
+        f"• {current_user.get('first_name', '')} {current_user.get('last_name', '')} ({current_user.get('rating_points', 0)})\n"
+        f"• {partner.get('first_name', '')} {partner.get('last_name', '')} ({partner.get('rating_points', 0)})\n"
+        f"Средний рейтинг: {team1_avg:.0f}\n\n"
+        f"Команда 2:\n"
+        f"• {opponent1.get('first_name', '')} {opponent1.get('last_name', '')} ({opponent1.get('rating_points', 0)})\n"
+        f"• {opponent2.get('first_name', '')} {opponent2.get('last_name', '')} ({opponent2.get('rating_points', 0)})\n"
+        f"Средний рейтинг: {team2_avg:.0f}\n\n"
+        f"Выберите счет 1-го сета:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("select_opponent:"))
+async def handle_single_opponent_selection(callback: types.CallbackQuery, state: FSMContext):
+    opponent_id = callback.data.split(":")[1]
+    users = load_users()
+    
+    if opponent_id not in users:
+        await callback.answer("Соперник не найден")
+        return
+    
+    selected_opponent = users[opponent_id]
+    selected_opponent['telegram_id'] = opponent_id
+    
+    await state.update_data(opponent1=selected_opponent)
+    await state.set_state(AddScoreState.selecting_set_score)
+    
+    opponent = selected_opponent
+    current_user = users.get(str(callback.from_user.id))
+    
+    keyboard = create_set_score_keyboard(1)
+    
+    await callback.message.edit_text(
+        f"Вы выбрали соперника:\n"
+        f"👤 {opponent.get('first_name', '')} {opponent.get('last_name', '')}\n"
+        f"Рейтинг: {opponent.get('rating_points', 0)}\n\n"
+        f"Ваш рейтинг: {current_user.get('rating_points', 0)}\n\n"
+        f"Выберите счет 1-го сета:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("set_score:"))
+async def handle_set_score_selection(callback: types.CallbackQuery, state: FSMContext):
+    set_number_str, score = callback.data.replace("set_score:", "").split("_")
+    set_number = int(set_number_str)
+    data = await state.get_data()
+    sets = data.get('sets', [])
+    
+    # Обновляем или добавляем счет сета
+    if len(sets) >= set_number:
+        sets[set_number - 1] = score
+    else:
+        sets.append(score)
+    
+    await state.update_data(sets=sets)
+    
+    # Проверяем, завершена ли игра
+    team1_wins = sum(1 for s in sets if int(s.split(':')[0]) > int(s.split(':')[1]))
+    team2_wins = sum(1 for s in sets if int(s.split(':')[0]) < int(s.split(':')[1]))
+    
+    if team1_wins >= 2 or team2_wins >= 2:
+        # Игра завершена
+        await process_completed_game(callback, state)
+    else:
+        # Предлагаем добавить еще сет
+        await state.set_state(AddScoreState.adding_another_set)
+        keyboard = create_add_another_set_keyboard()
+        
+        sets_text = "\n".join([f"Сет {i+1}: {s}" for i, s in enumerate(sets)])
+        
+        await callback.message.edit_text(
+            f"Текущий счет:\n{sets_text}\n\n"
+            f"Добавить еще один сет?",
+            reply_markup=keyboard
+        )
+    
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("add_another_set:"))
+async def handle_add_another_set(callback: types.CallbackQuery, state: FSMContext):
+    action = callback.data.split(":")[1]
+    
+    if action == "yes":
+        data = await state.get_data()
+        sets = data.get('sets', [])
+        next_set_number = len(sets) + 1
+        
+        await state.set_state(AddScoreState.selecting_set_score)
+        keyboard = create_set_score_keyboard(next_set_number)
+        
+        await callback.message.edit_text(
+            f"Выберите счет {next_set_number}-го сета:",
+            reply_markup=keyboard
+        )
+    else:
+        await process_completed_game(callback, state)
+    
+    await callback.answer()
+
+@router.callback_query(F.data.startswith(("prev_set:", "next_set:")))
+async def handle_navigate_sets(callback: types.CallbackQuery, state: FSMContext):
+    action, set_number_str = callback.data.split(":")
+    set_number = int(set_number_str)
+    
+    await state.set_state(AddScoreState.selecting_set_score)
+    keyboard = create_set_score_keyboard(set_number)
+    
+    await callback.message.edit_text(
+        f"Выберите счет {set_number}-го сета:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "finish_score")
+async def handle_finish_score(callback: types.CallbackQuery, state: FSMContext):
+    await process_completed_game(callback, state)
+    await callback.answer()
+
+async def process_completed_game(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    sets = data.get('sets', [])
+    
+    if not sets:
+        await callback.answer("Счет не введен")
+        return
+    
+    # Рассчитываем общую разницу геймов
+    total_game_diff = 0
+    for set_score in sets:
+        games1, games2 = map(int, set_score.split(':'))
+        total_game_diff += abs(games1 - games2)
+    
+    # Определяем победителя
+    team1_wins = sum(1 for s in sets if int(s.split(':')[0]) > int(s.split(':')[1]))
+    team2_wins = sum(1 for s in sets if int(s.split(':')[0]) < int(s.split(':')[1]))
+    
+    if team1_wins > team2_wins:
+        winner_side = "team1"
+    else:
+        winner_side = "team2"
+    
+    score_text = ", ".join(sets)
+    
+    await state.update_data(
+        score=score_text,
+        sets=sets,
+        game_difference=total_game_diff,
+        winner_side=winner_side
+    )
+    
+    await state.set_state(AddScoreState.adding_media)
+    
+    keyboard = create_media_keyboard()
+    await callback.message.edit_text(
+        "Хотите прикрепить фото или видео к результату?",
+        reply_markup=keyboard
+    )
+
+@router.callback_query(F.data.startswith("media:"))
+async def handle_media_selection(callback: types.CallbackQuery, state: FSMContext):
+    media_type = callback.data.split(":")[1]
+    
+    if media_type == "skip":
+        await confirm_score(callback, state)
+    elif media_type == "photo":
+        await callback.message.edit_text(
+            "Пожалуйста, отправьте фото:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+    elif media_type == "video":
+        await callback.message.edit_text(
+            "Пожалуйста, отправьте видео:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+    
+    await callback.answer()
+
+# Обработка фото
+@router.message(AddScoreState.adding_media, F.photo)
+async def handle_photo(message: types.Message, state: FSMContext):
+    photo_id = message.photo[-1].file_id
+    await state.update_data(photo_id=photo_id, media_type='photo')
+    
+    # Удаляем сообщение с просьбой отправить фото
+    try:
+        await message.delete()
+    except:
+        pass
+    
+    await confirm_score(message, state)
+
+# Обработка видео
+@router.message(AddScoreState.adding_media, F.video)
+async def handle_video(message: types.Message, state: FSMContext):
+    video_id = message.video.file_id
+    await state.update_data(video_id=video_id, media_type='video')
+    
+    # Удаляем сообщение с просьбой отправить видео
+    try:
+        await message.delete()
+    except:
+        pass
+    
+    await confirm_score(message, state)
+
+async def confirm_score(message_or_callback: Union[types.Message, types.CallbackQuery], state: FSMContext):
+    if isinstance(message_or_callback, types.CallbackQuery):
+        message = message_or_callback.message
+        callback = message_or_callback
+        bot = callback.bot
+    else:
+        message = message_or_callback
+        callback = None
+        bot = message.bot
+    
+    data = await state.get_data()
+    game_type = data.get('game_type')
+    score = data.get('score')
+    sets = data.get('sets')
+    game_diff = data.get('game_difference')
+    winner_side = data.get('winner_side')
+    
+    users = load_users()
+    current_user = copy.deepcopy(users.get(str(message.chat.id), {}))
+    
+    if not current_user:
+        if callback:
+            await callback.message.edit_text("Ошибка: ваш профиль не найден")
+        else:
+            await message.answer("Ошибка: ваш профиль не найден")
+        await state.clear()
+        return
+    
+    # Генерируем уникальный ID для игры
+    game_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Сохраняем медиафайлы, если есть
+    media_filename = None
+    if 'photo_id' in data and bot:
+        try:
+            media_filename = await save_media_file(bot, data['photo_id'], 'photo', game_id)
+        except Exception as e:
+            print(f"Ошибка при сохранении фото: {e}")
+    elif 'video_id' in data and bot:
+        try:
+            media_filename = await save_media_file(bot, data['video_id'], 'video', game_id)
+        except Exception as e:
+            print(f"Ошибка при сохранении видео: {e}")
+    
+    # Расчет рейтинга и формирование результата
+    if game_type == 'single':
+        opponent = data.get('opponent1')
+        
+        # Сохраняем старые рейтинги для возможного отката
+        await state.update_data(
+            old_rating=current_user.get('rating_points', 0),
+            opponent_old_rating=opponent.get('rating_points', 0)
+        )
+        
+        if winner_side == "team1":
+            winner_points = current_user.get('rating_points', 0)
+            loser_points = opponent.get('rating_points', 0)
+            winner_user = current_user
+            loser_user = opponent
+        else:
+            winner_points = opponent.get('rating_points', 0)
+            loser_points = current_user.get('rating_points', 0)
+            winner_user = opponent
+            loser_user = current_user
+        
+        new_winner_points, new_loser_points = calculate_new_ratings(
+            winner_points, loser_points, game_diff
+        )
+        
+        # Сохраняем изменения рейтинга для отображения
+        await state.update_data(
+            rating_change=new_winner_points - winner_points if winner_side == "team1" else new_loser_points - loser_points,
+            opponent_rating_change=new_loser_points - loser_points if winner_side == "team1" else new_winner_points - winner_points
+        )
+        
+        # Обновляем рейтинги в словаре users
+        if winner_side == "team1":
+            current_user['rating_points'] = new_winner_points
+            if opponent['telegram_id'] in users:
+                users[opponent['telegram_id']]['rating_points'] = new_loser_points
+        else:
+            current_user['rating_points'] = new_loser_points
+            if opponent['telegram_id'] in users:
+                users[opponent['telegram_id']]['rating_points'] = new_winner_points
+        
+        # Формируем сообщение
+        result_text = (
+            f"🎯 Одиночная игра\n\n"
+            f"👤 {winner_user.get('first_name', '')} {winner_user.get('last_name', '')}\n"
+            f"({winner_points} 📈 {new_winner_points})\n"
+            f"🆚\n"
+            f"👤 {loser_user.get('first_name', '')} {loser_user.get('last_name', '')}\n"
+            f"({loser_points} 📉 {new_loser_points})\n\n"
+            f"📊 {score}\n"
+            f"⭐ Новый рейтинг сохранен!"
+        )
+        
+    else:  # Парная игра
+        partner = data.get('partner')
+        opponent1 = data.get('opponent1')
+        opponent2 = data.get('opponent2')
+        
+        # Расчет среднего рейтинга для команд
+        team1_avg = (current_user.get('rating_points', 0) + partner.get('rating_points', 0)) / 2
+        team2_avg = (opponent1.get('rating_points', 0) + opponent2.get('rating_points', 0)) / 2
+        
+        if winner_side == "team1":
+            winner_points = team1_avg
+            loser_points = team2_avg
+            winner_team = [current_user, partner]
+            loser_team = [opponent1, opponent2]
+        else:
+            winner_points = team2_avg
+            loser_points = team1_avg
+            winner_team = [opponent1, opponent2]
+            loser_team = [current_user, partner]
+        
+        new_winner_points, new_loser_points = calculate_new_ratings(
+            winner_points, loser_points, game_diff
+        )
+        
+        # Распределяем изменение рейтинга пропорционально
+        points_change_winner = new_winner_points - winner_points
+        points_change_loser = new_loser_points - loser_points
+        
+        # Сохраняем старые рейтинги для возможного отката
+        old_ratings = {
+            str(message.chat.id): current_user.get('rating_points', 0),
+            partner['telegram_id']: partner.get('rating_points', 0),
+            opponent1['telegram_id']: opponent1.get('rating_points', 0),
+            opponent2['telegram_id']: opponent2.get('rating_points', 0)
+        }
+        
+        await state.update_data(old_ratings=old_ratings)
+        
+        # Обновляем рейтинги
+        for player in winner_team:
+            if str(player['telegram_id']) in users:
+                users[str(player['telegram_id'])]['rating_points'] += points_change_winner
+        
+        for player in loser_team:
+            if str(player['telegram_id']) in users:
+                users[str(player['telegram_id'])]['rating_points'] += points_change_loser
+        
+        # Формируем сообщение
+        result_text = (
+            f"👥 Парная игра\n\n"
+            f"• {winner_team[0].get('first_name', '')} {winner_team[0].get('last_name', '')}\n"
+            f"({winner_team[0].get('rating_points', 0) - points_change_winner:.0f} 📈 {winner_team[0].get('rating_points', 0):.0f})\n"
+            f"• {winner_team[1].get('first_name', '')} {winner_team[1].get('last_name', '')}\n"
+            f"({winner_team[1].get('rating_points', 0) - points_change_winner:.0f} 📈 {winner_team[1].get('rating_points', 0):.0f})\n\n"
+            f"• {loser_team[0].get('first_name', '')} {loser_team[0].get('last_name', '')}\n"
+            f"({loser_team[0].get('rating_points', 0) - points_change_loser:.0f} 📉 {loser_team[0].get('rating_points', 0):.0f})\n"
+            f"• {loser_team[1].get('first_name', '')} {loser_team[1].get('last_name', '')}\n"
+            f"({loser_team[1].get('rating_points', 0) - points_change_loser:.0f} 📉 {loser_team[1].get('rating_points', 0):.0f})\n\n"
+            f"📊 {score}\n"
+            f"⭐ Рейтинги обновлены!"
+        )
+    
+    # Сохраняем игру в истории
+    games = load_games()
+    game_data = {
+        'id': game_id,
+        'date': datetime.now().isoformat(),
+        'type': game_type,
+        'score': score,
+        'sets': sets,
+        'media_filename': media_filename,
+        'players': {
+            'team1': [str(message.chat.id)] + ([data.get('partner', {}).get('telegram_id')] if game_type == 'double' else []),
+            'team2': [data.get('opponent1', {}).get('telegram_id')] + ([data.get('opponent2', {}).get('telegram_id')] if game_type == 'double' else [])
+        },
+        'rating_changes': {
+            str(message.chat.id): (users[str(message.chat.id)]['rating_points'] - current_user.get('rating_points', 0)) * -1
+        }
+    } 
+    
+    if game_type == 'double':
+        game_data['rating_changes'][data.get('partner', {}).get('telegram_id')] = (
+            users[data.get('partner', {}).get('telegram_id')]['rating_points'] - partner.get('rating_points', 0)
+        )
+    
+    opponent1_data = data.get('opponent1', {})
+    if opponent1_data:
+        game_data['rating_changes'][opponent1_data.get('telegram_id')] = (
+            users[opponent1_data.get('telegram_id')]['rating_points'] - opponent1_data.get('rating_points', 0)
+        )
+    
+    if game_type == 'double':
+        opponent2_data = data.get('opponent2', {})
+        if opponent2_data:
+            game_data['rating_changes'][opponent2_data.get('telegram_id')] = (
+                users[opponent2_data.get('telegram_id')]['rating_points'] - opponent2_data.get('rating_points', 0)
+            )
+    
+    users[str(message.chat.id)] = current_user
+    games.append(game_data)
+    save_games(games)
+    save_users(users)
+    
+    await state.update_data(result_text=result_text, game_id=game_id)
+    await state.set_state(AddScoreState.confirming_score)
+    
+    keyboard = create_confirmation_keyboard()
+    
+    # Подготавливаем данные медиа для отправки
+    media_data = {}
+    if 'photo_id' in data:
+        media_data['photo_id'] = data['photo_id']
+    elif 'video_id' in data:
+        media_data['video_id'] = data['video_id']
+    
+    if callback:
+        # Если это callback, используем специальную функцию для редактирования
+        await edit_media_message(callback, result_text, keyboard, media_data)
+    else:
+        # Если это сообщение, отправляем новое
+        if 'photo_id' in data:
+            await message.answer_photo(
+                data['photo_id'],
+                caption=result_text,
+                reply_markup=keyboard
+            )
+        elif 'video_id' in data:
+            await message.answer_video(
+                data['video_id'],
+                caption=result_text,
+                reply_markup=keyboard
+            )
+        else:
+            await message.answer(result_text, reply_markup=keyboard)
+
+@router.callback_query(F.data.startswith("confirm:"))
+async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMContext):
+    action = callback.data.split(":")[1]
+    
+    if action == "yes":
+        data = await state.get_data()
+        result_text = data.get('result_text', '')
+        
+        # Загружаем пользователей для обновления статистики
+        users = load_users()
+        game_type = data.get('game_type')
+        winner_side = data.get('winner_side')
+        
+        # Обновляем статистику для всех игроков
+        current_user_id = str(callback.from_user.id)
+        
+        # Для одиночной игры
+        if game_type == 'single':
+            opponent_id = data.get('opponent1', {}).get('telegram_id')
+            
+            # Обновляем games_played для обоих игроков
+            users[current_user_id]['games_played'] = users[current_user_id].get('games_played', 0) + 1
+            if opponent_id in users:
+                users[opponent_id]['games_played'] = users[opponent_id].get('games_played', 0) + 1
+            
+            # Обновляем games_wins для победителя
+            if winner_side == "team1":  # Победил текущий пользователь
+                users[current_user_id]['games_wins'] = users[current_user_id].get('games_wins', 0) + 1
+            else:  # Победил соперник
+                if opponent_id in users:
+                    users[opponent_id]['games_wins'] = users[opponent_id].get('games_wins', 0) + 1
+        
+        # Для парной игры
+        else:
+            players = [
+                current_user_id,
+                data.get('partner', {}).get('telegram_id'),
+                data.get('opponent1', {}).get('telegram_id'),
+                data.get('opponent2', {}).get('telegram_id')
+            ]
+            
+            # Обновляем games_played для всех игроков
+            for player_id in players:
+                if player_id in users:
+                    users[player_id]['games_played'] = users[player_id].get('games_played', 0) + 1
+            
+            # Обновляем games_wins для победившей команды
+            if winner_side == "team1":  # Победила команда текущего пользователя
+                team1_players = [current_user_id, data.get('partner', {}).get('telegram_id')]
+                for player_id in team1_players:
+                    if player_id in users:
+                        users[player_id]['games_wins'] = users[player_id].get('games_wins', 0) + 1
+            else:  # Победила команда соперников
+                team2_players = [
+                    data.get('opponent1', {}).get('telegram_id'),
+                    data.get('opponent2', {}).get('telegram_id')
+                ]
+                for player_id in team2_players:
+                    if player_id in users:
+                        users[player_id]['games_wins'] = users[player_id].get('games_wins', 0) + 1
+        
+        # Сохраняем обновленную статистику
+        save_users(users)
+        
+        # Отправляем уведомления другим игрокам с ссылками на профили
+        if game_type == 'single':
+            opponent_id = data.get('opponent1', {}).get('telegram_id')
+            if opponent_id in users:
+                try:
+                    opponent_user = users[opponent_id]
+                    current_user = users[current_user_id]
+                    
+                    opponent_link = create_user_profile_link(current_user, current_user_id)
+                    result_msg = (
+                        f"📢 Вам засчитано поражение в игре против {opponent_link}\n"
+                        f"Счет: {data.get('score')}\n"
+                        f"Ваш новый рейтинг: {users[opponent_id]['rating_points']}"
+                    )
+                    
+                    await callback.bot.send_message(
+                        opponent_id,
+                        result_msg,
+                        parse_mode='Markdown'
+                    )
+                except Exception as e:
+                    print(f"Ошибка при отправке уведомления сопернику: {e}")
+        
+        else:  # Парная игра
+            players_to_notify = [
+                (data.get('partner', {}).get('telegram_id'), "партнер"),
+                (data.get('opponent1', {}).get('telegram_id'), "соперник"),
+                (data.get('opponent2', {}).get('telegram_id'), "соперник")
+            ]
+            
+            current_user = users[current_user_id]
+            current_user_link = create_user_profile_link(current_user, current_user_id)
+            
+            for player_id, role in players_to_notify:
+                if player_id in users:
+                    try:
+                        player_user = users[player_id]
+                        player_link = create_user_profile_link(player_user, player_id)
+                        
+                        # Формируем список всех игроков со ссылками
+                        all_players = []
+                        for p_id in [current_user_id, 
+                                    data.get('partner', {}).get('telegram_id'),
+                                    data.get('opponent1', {}).get('telegram_id'),
+                                    data.get('opponent2', {}).get('telegram_id')]:
+                            if p_id in users:
+                                p_user = users[p_id]
+                                all_players.append(create_user_profile_link(p_user, p_id))
+                        
+                        players_list = "\n".join(all_players)
+                        
+                        result_msg = (
+                            f"📢 Результат парной игры записан\n\n"
+                            f"Участники:\n{players_list}\n\n"
+                            f"Счет: {data.get('score')}\n"
+                            f"Ваш новый рейтинг: {users[player_id]['rating_points']}"
+                        )
+                        
+                        await callback.bot.send_message(
+                            player_id,
+                            result_msg,
+                            parse_mode='Markdown'
+                        )
+                    except Exception as e:
+                        print(f"Ошибка при отправке уведомления игроку {player_id}: {e}")
+        
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        await callback.message.answer(
+            "✅ Счет успешно сохранен и опубликован!",
+            reply_markup=None
+        )
+        await state.clear()
+        
+    elif action == "edit_score":
+        await state.set_state(AddScoreState.selecting_set_score)
+        keyboard = create_set_score_keyboard(1)
+        
+        # Удаляем текущее сообщение и отправляем новое
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        
+        new_msg = await callback.message.answer(
+            "Выберите счет 1-го сета:",
+            reply_markup=keyboard
+        )
+        save_message_id(callback.from_user.id, new_msg.message_id)
+        
+    elif action == "no":
+        # Откатываем изменения рейтинга и статистики
+        users = load_users()
+        data = await state.get_data()
+        game_type = data.get('game_type')
+        winner_side = data.get('winner_side')
+        
+        if game_type == 'single':
+            current_user_id = str(callback.from_user.id)
+            opponent_id = data.get('opponent1', {}).get('telegram_id')
+            
+            # Откатываем рейтинг
+            users[current_user_id]['rating_points'] = data.get('old_rating', 0)
+            if opponent_id in users:
+                users[opponent_id]['rating_points'] = data.get('opponent_old_rating', 0)
+            
+            # Откатываем статистику игр
+            users[current_user_id]['games_played'] = max(0, users[current_user_id].get('games_played', 0) - 1)
+            if opponent_id in users:
+                users[opponent_id]['games_played'] = max(0, users[opponent_id].get('games_played', 0) - 1)
+            
+            # Откатываем победы
+            if winner_side == "team1":  # Отменяем победу текущего пользователя
+                users[current_user_id]['games_wins'] = max(0, users[current_user_id].get('games_wins', 0) - 1)
+            else:  # Отменяем победу соперника
+                if opponent_id in users:
+                    users[opponent_id]['games_wins'] = max(0, users[opponent_id].get('games_wins', 0) - 1)
+        
+        else:  # double
+            # Откатываем рейтинги
+            old_ratings = data.get('old_ratings', {})
+            for user_id, old_rating in old_ratings.items():
+                if user_id in users:
+                    users[user_id]['rating_points'] = old_rating
+            
+            # Откатываем статистику игр для всех участников
+            players = [
+                str(callback.from_user.id),
+                data.get('partner', {}).get('telegram_id'),
+                data.get('opponent1', {}).get('telegram_id'),
+                data.get('opponent2', {}).get('telegram_id')
+            ]
+            
+            for player_id in players:
+                if player_id in users:
+                    users[player_id]['games_played'] = max(0, users[player_id].get('games_played', 0) - 1)
+            
+            # Откатываем победы для победившей команды
+            if winner_side == "team1":  # Отменяем победу команды 1
+                team1_players = [
+                    str(callback.from_user.id),
+                    data.get('partner', {}).get('telegram_id')
+                ]
+                for player_id in team1_players:
+                    if player_id in users:
+                        users[player_id]['games_wins'] = max(0, users[player_id].get('games_wins', 0) - 1)
+            else:  # Отменяем победу команды 2
+                team2_players = [
+                    data.get('opponent1', {}).get('telegram_id'),
+                    data.get('opponent2', {}).get('telegram_id')
+                ]
+                for player_id in team2_players:
+                    if player_id in users:
+                        users[player_id]['games_wins'] = max(0, users[player_id].get('games_wins', 0) - 1)
+        
+        save_users(users)
+        
+        # Удаляем сохраненный медиафайл, если есть
+        game_id = data.get('game_id')
+        if game_id:
+            try:
+                photo_path = f"data/games_photo/{game_id}_photo.*"
+                video_path = f"data/games_photo/{game_id}_video.*"
+                
+                for file_path in [photo_path, video_path]:
+                    for f in glob.glob(file_path):
+                        os.remove(f)
+            except:
+                pass
+        
+        try:
+            await callback.message.delete()
+        except:
+            pass
+
+        await callback.message.answer(
+            "❌ Внесение счета отменено. Все изменения отменены.",
+            reply_markup=None
+        )
+        await state.clear()
+    
+    await callback.answer()
+
+@router.callback_query(F.data == "back")
+async def handle_back(callback: types.CallbackQuery, state: FSMContext):
+    current_state = await state.get_state()
+    
+    if current_state == AddScoreState.selecting_game_type.state:
+        await callback.message.edit_text("Действие отменено.")
+        await state.clear()
+        
+    elif current_state == AddScoreState.searching_opponent.state:
+        await state.set_state(AddScoreState.selecting_game_type)
+        keyboard = create_game_type_keyboard()
+        await callback.message.edit_text("Выберите тип игры:", reply_markup=keyboard)
+        
+    elif current_state == AddScoreState.selecting_opponent.state:
+        await state.set_state(AddScoreState.searching_opponent)
+        await callback.message.edit_text(
+            "Поиск соперника\nНапишите имя или фамилию соперника:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+        
+    elif current_state == AddScoreState.selecting_partner.state:
+        await state.set_state(AddScoreState.selecting_game_type)
+        keyboard = create_game_type_keyboard()
+        await callback.message.edit_text("Выберите тип игры:", reply_markup=keyboard)
+        
+    elif current_state == AddScoreState.searching_partner.state:
+        await state.set_state(AddScoreState.selecting_partner)
+        await callback.message.edit_text(
+            "Ваш партнер по паре\nНапишите имя или фамилию партнера:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+        
+    elif current_state == AddScoreState.searching_opponent1.state:
+        await state.set_state(AddScoreState.searching_partner)
+        data = await state.get_data()
+        search_query = data.get('partner_search', '')
+        current_user_id = str(callback.from_user.id)
+        
+        matching_users = search_users(search_query, exclude_ids=[current_user_id])
+        
+        if matching_users:
+            keyboard = create_users_inline_keyboard(matching_users, "select_partner")
+            await callback.message.edit_text("Выберите партнера из списка:", reply_markup=keyboard)
+        else:
+            await callback.message.edit_text(
+                "Ваш партнер по паре\nНапишите имя или фамилию партнера:",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                )
+            )
+        
+    elif current_state == AddScoreState.selecting_opponent1.state:
+        await state.set_state(AddScoreState.searching_opponent1)
+        await callback.message.edit_text(
+            "Поиск первого соперника\nНапишите имя или фамилию первого соперника:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+        
+    elif current_state == AddScoreState.searching_opponent2.state:
+        await state.set_state(AddScoreState.selecting_opponent1)
+        data = await state.get_data()
+        search_query = data.get('opponent1_search', '')
+        current_user_id = str(callback.from_user.id)
+        partner_id = data.get('partner', {}).get('telegram_id')
+        
+        matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id])
+        
+        if matching_users:
+            keyboard = create_users_inline_keyboard(matching_users, "select_opponent1")
+            await callback.message.edit_text("Выберите первого соперника из списка:", reply_markup=keyboard)
+        else:
+            await callback.message.edit_text(
+                "Поиск первого соперника\nНапишите имя или фамилию первого соперника:",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                )
+            )
+        
+    elif current_state == AddScoreState.selecting_opponent2.state:
+        await state.set_state(AddScoreState.searching_opponent2)
+        await callback.message.edit_text(
+            "Поиск второго соперника\nНапишите имя или фамилию второго соперника:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+        
+    elif current_state == AddScoreState.selecting_set_score.state:
+        data = await state.get_data()
+        game_type = data.get('game_type')
+        
+        if game_type == 'single':
+            await state.set_state(AddScoreState.selecting_opponent)
+            data = await state.get_data()
+            search_query = data.get('opponent_search', '')
+            current_user_id = str(callback.from_user.id)
+            
+            matching_users = search_users(search_query, exclude_ids=[current_user_id])
+            
+            if matching_users:
+                keyboard = create_users_inline_keyboard(matching_users, "select_opponent")
+                await callback.message.edit_text("Выберите соперника из списка:", reply_markup=keyboard)
+            else:
+                await callback.message.edit_text(
+                    "Поиск соперника\nНапишите имя или фамилию соперника:",
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                    )
+                )
+                
+        else:
+            data = await state.get_data()
+            
+            if 'opponent2' in data:
+                await state.update_data(opponent2=None)
+                await state.set_state(AddScoreState.selecting_opponent2)
+                data = await state.get_data()
+                search_query = data.get('opponent2_search', '')
+                current_user_id = str(callback.from_user.id)
+                partner_id = data.get('partner', {}).get('telegram_id')
+                opponent1_id = data.get('opponent1', {}).get('telegram_id')
+                
+                matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
+                
+                if matching_users:
+                    keyboard = create_users_inline_keyboard(matching_users, "select_opponent2")
+                    await callback.message.edit_text("Выберите второго соперника из списка:", reply_markup=keyboard)
+                else:
+                    await callback.message.edit_text(
+                        "Поиск второго соперника\nНапишите имя или фамилию второго соперника:",
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                        )
+                    )
+                
+            else:
+                await state.update_data(opponent1=None)
+                await state.set_state(AddScoreState.selecting_opponent1)
+                data = await state.get_data()
+                search_query = data.get('opponent1_search', '')
+                current_user_id = str(callback.from_user.id)
+                partner_id = data.get('partner', {}).get('telegram_id')
+                
+                matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id])
+                
+                if matching_users:
+                    keyboard = create_users_inline_keyboard(matching_users, "select_opponent1")
+                    await callback.message.edit_text("Выберите первого соперника из списка:", reply_markup=keyboard)
+                else:
+                    await callback.message.edit_text(
+                        "Поиск первого соперника\nНапишите имя или фамилию первого соперника:",
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                        )
+                    )
+        
+    elif current_state == AddScoreState.adding_another_set.state:
+        await state.set_state(AddScoreState.selecting_set_score)
+        data = await state.get_data()
+        sets = data.get('sets', [])
+        current_set = len(sets)
+        keyboard = create_set_score_keyboard(current_set)
+        await callback.message.edit_text(f"Выберите счет {current_set}-го сета:", reply_markup=keyboard)
+    
+    elif current_state == AddScoreState.adding_media.state:
+        await state.set_state(AddScoreState.selecting_set_score)
+        data = await state.get_data()
+        sets = data.get('sets', [])
+        current_set = len(sets)
+        keyboard = create_set_score_keyboard(current_set)
+        await callback.message.edit_text(f"Выберите счет {current_set}-го сета:", reply_markup=keyboard)
+    
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("nav:"))
+async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
+    _, action, page_str = callback.data.split(":")
+    page = int(page_str)
+    
+    users = load_users()
+    current_user_id = str(callback.from_user.id)
+    
+    if action == "select_opponent":
+        data = await state.get_data()
+        search_query = data.get('opponent_search', '')
+        matching_users = search_users(search_query, exclude_ids=[current_user_id])
+        
+        has_more = len(matching_users) > (page + 1) * 8
+        keyboard = create_users_inline_keyboard(matching_users, action, page, has_more)
+        await callback.message.edit_reply_markup(reply_markup=keyboard)
+    
+    elif action == "select_partner":
+        data = await state.get_data()
+        search_query = data.get('partner_search', '')
+        matching_users = search_users(search_query, exclude_ids=[current_user_id])
+        
+        has_more = len(matching_users) > (page + 1) * 8
+        keyboard = create_users_inline_keyboard(matching_users, action, page, has_more)
+        await callback.message.edit_reply_markup(reply_markup=keyboard)
+    
+    elif action == "select_opponent1":
+        data = await state.get_data()
+        search_query = data.get('opponent1_search', '')
+        partner_id = data.get('partner', {}).get('telegram_id')
+        matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id])
+        
+        has_more = len(matching_users) > (page + 1) * 8
+        keyboard = create_users_inline_keyboard(matching_users, action, page, has_more)
+        await callback.message.edit_reply_markup(reply_markup=keyboard)
+    
+    elif action == "select_opponent2":
+        data = await state.get_data()
+        search_query = data.get('opponent2_search', '')
+        partner_id = data.get('partner', {}).get('telegram_id')
+        opponent1_id = data.get('opponent1', {}).get('telegram_id')
+        matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
+        
+        has_more = len(matching_users) > (page + 1) * 8
+        keyboard = create_users_inline_keyboard(matching_users, action, page, has_more)
+        await callback.message.edit_reply_markup(reply_markup=keyboard)
+    
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("game_history:"))
+async def handle_history_request(callback: types.CallbackQuery):
+    users = load_users()
+
+    """Обработчик запроса истории игр"""
+    try:
+        # Извлекаем ID пользователя, чью историю запрашиваем
+        target_user_id = callback.data.split(":")[1]
+        current_user_id = str(callback.from_user.id)
+        
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        
+        if current_user_id != target_user_id:
+            if not users[str(current_user_id)].get('subscription', {}).get('active', False):
+                text = (
+                    "🔒 <b>Доступ закрыт</b>\n\n"
+                    "Функция просмотра истории игр игроков доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
+                    f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
+                    "Перейдите в раздел '💳 Платежи' для оформления подписки."
+                )
+                
+                await callback.message.answer(
+                    text,
+                    parse_mode="HTML"
+                )
+
+                return
+
+        # Проверяем права доступа
+        if target_user_id != current_user_id:
+            # Здесь можно добавить проверку прав администратора или других условий
+            # для просмотра чужой истории
+            pass
+        
+        # Загружаем игры и пользователей
+        games = load_games()
+        users = load_users()
+        
+        # Получаем информацию о целевом пользователе
+        target_user = users.get(target_user_id)
+        if not target_user:
+            await callback.answer("Пользователь не найден")
+            return
+        
+        # Фильтруем игры, в которых участвовал пользователь
+        user_games = []
+        for game in games:
+            # Проверяем участие пользователя в командах
+            players_team1 = game['players']['team1']
+            players_team2 = game['players']['team2']
+            
+            if target_user_id in players_team1 or target_user_id in players_team2:
+                user_games.append(game)
+        
+        # Сортируем игры по дате (новые сначала)
+        user_games.sort(key=lambda x: x['date'], reverse=True)
+        
+        if not user_games:
+            await callback.message.answer(
+                f"📊 История игр пользователя {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n"
+                "Пока нет сыгранных игр.",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{current_user_id}")]]
+                )
+            )
+            await callback.answer()
+            return
+        
+        # Формируем текст истории
+        history_text = f"📊 История игр пользователя {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n"
+        
+        for i, game in enumerate(user_games[:10]):  # Показываем последние 10 игр
+            # Форматируем дату
+            game_date = datetime.fromisoformat(game['date'])
+            formatted_date = game_date.strftime("%d.%m.%Y %H:%M")
+            
+            # Определяем результат для пользователя
+            user_in_team1 = target_user_id in game['players']['team1']
+            team1_wins = sum(1 for set_score in game['sets'] 
+                           if int(set_score.split(':')[0]) > int(set_score.split(':')[1]))
+            team2_wins = sum(1 for set_score in game['sets'] 
+                           if int(set_score.split(':')[0]) < int(set_score.split(':')[1]))
+            
+            if (user_in_team1 and team1_wins > team2_wins) or (not user_in_team1 and team2_wins > team1_wins):
+                result = "✅ Победа"
+            else:
+                result = "❌ Поражение"
+            
+            # Получаем изменение рейтинга
+            rating_change = game['rating_changes'].get(target_user_id, 0)
+            rating_change_str = f"+{rating_change:.1f}" if rating_change > 0 else f"{rating_change:.1f}"
+            
+            # Формируем информацию о соперниках
+            if game['type'] == 'single':
+                # Для одиночной игры
+                opponent_id = game['players']['team2'][0] if user_in_team1 else game['players']['team1'][0]
+                opponent = users.get(opponent_id, {})
+                opponent_name = f"{opponent.get('first_name', '')} {opponent.get('last_name', '')}"
+                game_type_emoji = "🎯"
+            else:
+                # Для парной игры
+                if user_in_team1:
+                    teammate_id = next(pid for pid in game['players']['team1'] if pid != target_user_id)
+                    opponents = game['players']['team2']
+                else:
+                    teammate_id = next(pid for pid in game['players']['team2'] if pid != target_user_id)
+                    opponents = game['players']['team1']
+                
+                teammate = users.get(teammate_id, {})
+                opponent1 = users.get(opponents[0], {})
+                opponent2 = users.get(opponents[1], {})
+                
+                teammate_name = f"{teammate.get('first_name', '')} {teammate.get('last_name', '')}"
+                opponents_name = f"{opponent1.get('first_name', '')} {opponent1.get('last_name', '')} & {opponent2.get('first_name', '')} {opponent2.get('last_name', '')}"
+                game_type_emoji = "👥"
+            
+            # Добавляем информацию об игре
+            history_text += f"{i+1}. {game_type_emoji} {formatted_date} - {result}\n"
+            history_text += f"   Счет: {game['score']}\n"
+            
+            if game['type'] == 'single':
+                history_text += f"   Соперник: {opponent_name}\n"
+            else:
+                history_text += f"   Партнер: {teammate_name}\n"
+                history_text += f"   Соперники: {opponents_name}\n"
+            
+            history_text += f"   Изменение рейтинга: {rating_change_str}\n\n"
+        
+        if len(user_games) > 10:
+            history_text += f"Показаны последние 10 из {len(user_games)} игр\n"
+        
+        # Создаем клавиатуру
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 Обновить", callback_data=f"history:{target_user_id}")],
+                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{current_user_id}")]
+            ]
+        )
+        
+        await callback.message.answer(history_text, reply_markup=keyboard)
+        await callback.answer()
+        
+    except Exception as e:
+        print(f"Ошибка при выводе истории: {e}")
+        await callback.answer("Произошла ошибка при загрузке истории")
