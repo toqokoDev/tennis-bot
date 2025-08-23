@@ -604,7 +604,7 @@ async def process_default_payment(callback: types.CallbackQuery, state: FSMConte
 
 async def finish_registration(message: types.Message, state: FSMContext):
     user_id = message.chat.id
-    username = message.from_user.username
+    username = message.chat.username
 
     user_state = await state.get_data()
 
