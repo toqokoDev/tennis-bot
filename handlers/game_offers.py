@@ -185,7 +185,7 @@ async def process_game_date(callback: types.CallbackQuery, state: FSMContext):
     if callback.data == "gamedate_manual":
         await show_current_data(
             callback.message, state,
-            "📅 Введите дату игры в формате ДД.ММ.ГГГГ (например, 25.12.2024):"
+            "📅 Введите дату игры в формате ДД.ММ.ГГГГ (например, 25.12.2025):"
         )
         await state.set_state(GameOfferStates.GAME_DATE_MANUAL)
         await callback.answer()
@@ -219,7 +219,7 @@ async def process_game_date_manual(message: types.Message, state: FSMContext):
     
     # Валидация даты
     if not validate_date(date_text):
-        await message.answer("❌ Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ (например, 25.12.2024):")
+        await message.answer("❌ Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ (например, 25.12.2025):")
         return
     
     # Проверка, что дата не в прошлом
@@ -228,10 +228,10 @@ async def process_game_date_manual(message: types.Message, state: FSMContext):
         today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         
         if input_date < today:
-            await message.answer("❌ Дата не может быть в прошлом. Введите корректную дату:")
+            await message.answer("❌ Неверный формат даты. Введите корректную дату:")
             return
     except ValueError:
-        await message.answer("❌ Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ (например, 25.12.2024):")
+        await message.answer("❌ Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ (например, 25.12.2025):")
         return
     
     await state.update_data(game_date=date_text)

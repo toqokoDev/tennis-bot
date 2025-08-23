@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import List
 
+from config.config import BOT_USERNAME
 from utils.json_data import load_users
 
 def count_users_by_location(search_type=None, country=None, city=None):
@@ -68,10 +69,9 @@ def search_users(query: str, exclude_ids: List[str] = None) -> List[tuple]:
             
         first_name = user_data.get('first_name', '').lower()
         last_name = user_data.get('last_name', '').lower()
-        username = user_data.get('username', '')
         
         if (query in first_name or query in last_name or 
-            query in username or query in f"{first_name} {last_name}"):
+            query in f"{first_name} {last_name}"):
             results.append((user_id, user_data))
     
     return results
@@ -108,3 +108,38 @@ def count_users_by_filters(search_type, country=None, city=None, sport=None, gen
         count += 1
     
     return count
+
+def get_weekday_short(date_str: str) -> str:
+    """
+    Возвращает день недели (сокращенно: Пн, Вт, Ср, Чт, Пт, Сб, Вс)
+    по дате в формате YYYY-MM-DD.
+    """
+    days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    try:
+        dt = datetime.strptime(date_str, "%d.%m.%Y")
+        return days[dt.weekday()]  # weekday(): Пн=0 ... Вс=6
+    except ValueError:
+        return "?"
+
+def create_user_profile_link(user_data: dict, user_id: str) -> str:
+    first_name = user_data.get('first_name', '')
+    last_name = user_data.get('last_name', '')
+    rating = user_data.get('rating_points', 0)
+    return f"[{first_name} {last_name} ({rating})](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
+
+def format_tour_date(date_str):
+            if not date_str or date_str == '-':
+                return '-'
+            try:
+                # Пробуем разные форматы дат
+                for fmt in ["%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y"]:
+                    try:
+                        dt = datetime.strptime(date_str, fmt)
+                        return dt.strftime("%d.%m.%y")  # 25.08.25
+                    except ValueError:
+                        continue
+                # Если ни один формат не подошел, возвращаем как есть
+                return date_str
+            except:
+                return date_str
+            

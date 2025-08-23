@@ -1,3 +1,4 @@
+from datetime import datetime
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -6,8 +7,10 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE
-from utils.json_data import load_users, load_json
-from models.states import BrowseOffersStates
+from utils.json_data import load_users, load_json, save_users
+from models.states import BrowseOffersStates, RespondToOfferStates
+from utils.utils import create_user_profile_link, get_weekday_short
+import json
 
 router = Router()
 
@@ -111,13 +114,15 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
             user_data.get('city') == city and 
             user_data.get('games')):
             
-            user_name = f"{user_data.get('first_name', 'Неизвестно')} {user_data.get('last_name', '')}".strip()
+            user_name = f"{user_data.get('first_name', 'Неизвестно')[:1]}. {user_data.get('last_name', '')}".strip()
             
             for game in user_data['games']:
                 if game.get('active', True):
                     offer = {
                         'user_id': user_id,
                         'user_name': user_name,
+                        'player_level': user_data.get('player_level'),
+                        'gender': user_data.get('gender'),
                         'game_id': game.get('id'),
                         'city': game.get('city'),
                         'date': game.get('date'),
@@ -142,7 +147,7 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 async def show_offers_page(message: types.Message, state: FSMContext):
-    """Показать страницу с предложениями"""
+    """Показать страницу с предложениями (только кнопки, без текста)"""
     state_data = await state.get_data()
     all_offers = state_data.get('all_offers', [])
     current_page = state_data.get('current_page', 0)
@@ -156,24 +161,44 @@ async def show_offers_page(message: types.Message, state: FSMContext):
     end_idx = start_idx + ITEMS_PER_PAGE
     page_offers = all_offers[start_idx:end_idx]
     
-    # Создаем сообщение
-    text = f"🎾 Предложения игр в {state_data.get('selected_city')}:\n\n"
-    
-    for i, offer in enumerate(page_offers, start=1):
-        text += f"{start_idx + i}. {offer['user_name']}\n"
-        text += f"   📅 {offer.get('date', '—')} ⏰ {offer.get('time', '—')}\n"
-        text += f"   🎾 {offer.get('game_type', '—')}\n"
-        text += "─" * 30 + "\n"
-    
-    text += f"\nСтраница {current_page + 1}/{(len(all_offers) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE}"
+    # Заголовок
+    text = f"🎾 Предложения игр в {state_data.get('selected_city')}\n"
     
     # Создаем клавиатуру
     builder = InlineKeyboardBuilder()
     
     # Кнопки для каждого предложения на странице
-    for i, offer in enumerate(page_offers):
+    for i, offer in enumerate(page_offers, start=1):
+        # Определяем стикер пола
+        gender_icon = "👨" if offer.get('gender', 'male') == 'Мужской' else "👩"
+        
+        # Уровень
+        level = offer.get('player_level', '-')
+        
+        # Имя + уровень
+        user_info = f"{offer['user_name']} ({level} lvl)"
+        
+        # Дата → только число
+        raw_date = offer.get('date')
+        day_str = "—"
+        if raw_date:
+            try:
+                dt = datetime.strptime(raw_date, "%Y-%m-%d")  # ожидаемый формат 2025-08-25
+                day_str = f"{dt.day}-ое"
+            except ValueError:
+                # если дата в другом формате — берём первые 2 цифры
+                day_str = raw_date[:2] + "-ое"
+        
+        # Время
+        time = offer.get('time', '-')
+
+        week_day = get_weekday_short(raw_date)
+        
+        # Итоговая строка
+        short_info = f"{gender_icon} {user_info} | {day_str} ({week_day}) {time}"
+        
         builder.row(InlineKeyboardButton(
-            text=f"🎾 {start_idx + i + 1}. {offer['user_name']}",
+            text=short_info,
             callback_data=f"viewoffer_{offer['user_id']}_{offer['game_id']}"
         ))
     
@@ -190,6 +215,7 @@ async def show_offers_page(message: types.Message, state: FSMContext):
     # Кнопка для предложения новой игры
     builder.row(InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer"))
     
+    # Отправляем сообщение
     if message.content_type == 'text':
         await message.edit_text(text, reply_markup=builder.as_markup())
     else:
@@ -213,7 +239,7 @@ async def handle_offer_page_navigation(callback: types.CallbackQuery, state: FSM
     await callback.answer()
 
 @router.callback_query(F.data.startswith("viewoffer_"))
-async def view_offer_details(callback: types.CallbackQuery):
+async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     """Просмотр деталей конкретного предложения"""
     parts = callback.data.split("_")
     user_id = parts[1]
@@ -237,17 +263,31 @@ async def view_offer_details(callback: types.CallbackQuery):
         await callback.answer("❌ Предложение не найдено")
         return
     
-    # Формируем детальную информацию
-    user_name = f"{user_data.get('first_name', 'Неизвестно')} {user_data.get('last_name', '')}".strip()
+    # Сохраняем информацию о выбранном предложении для возможного отклика
+    await state.update_data(
+        selected_offer_user_id=user_id,
+        selected_offer_game_id=game_id
+    )
     
-    text = f"🎾 Детали предложения от {user_name}\n\n"
-    text += f"🏙 Город: {game.get('city', '—')}\n"
-    text += f"📅 Дата: {game.get('date', '—')}\n"
-    text += f"⏰ Время: {game.get('time', '—')}\n"
-    text += f"🔍 Тип игры: {game.get('type', '—')}\n"
-    text += f"💳 Оплата: {game.get('payment_type', '—')}\n"
-    text += f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
-    text += f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
+    # Формируем детальную информацию
+    username = user_data.get("username")
+    username_str = f"@{username}" if username else "👤 (без username)"
+
+    # Имя + уровень
+    user_name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
+    player_level = user_data.get("player_level", "—")
+    
+    text = (
+        f"⚠️ {user_name} {username_str}\n"
+        f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
+        f"🏙 {game.get('city', '—')}\n"
+        f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
+        f"📅 {game.get('date', '—')}, {game.get('time', '—')}\n"
+        f"🕹 {game.get('type', '—')}\n"
+        f"💰 Оплата: {game.get('payment_type', '—')}\n"
+        f"🏆 На счёт: {'Да' if game.get('competitive') else 'Нет'}\n"
+        f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
+    )
     
     if game.get('comment'):
         text += f"💬 Комментарий: {game['comment']}\n"
@@ -255,7 +295,12 @@ async def view_offer_details(callback: types.CallbackQuery):
     # Кнопка для возврата к списку
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад к списку", callback_data="back_to_offers_list")]
+            [InlineKeyboardButton(
+                text="✅ Откликнуться на предложение", callback_data="respond_to_offer"
+            )],
+            [InlineKeyboardButton(
+                text="🔙 Назад к списку", callback_data="back_to_offers_list"
+            )]
         ]
     )
     
@@ -267,3 +312,114 @@ async def back_to_offers_list(callback: types.CallbackQuery, state: FSMContext):
     """Возврат к списку предложений"""
     await show_offers_page(callback.message, state)
     await callback.answer()
+
+@router.callback_query(F.data == "respond_to_offer")
+async def start_respond_to_offer(callback: types.CallbackQuery, state: FSMContext):
+    """Начало процесса отклика на предложение"""
+    await callback.message.edit_text(
+        "💬 Напишите комментарий к вашему отклику (необязательно):\n\n"
+        "Или нажмите /skip чтобы пропустить этот шаг."
+    )
+    await state.set_state(RespondToOfferStates.ENTER_COMMENT)
+    await callback.answer()
+
+@router.message(RespondToOfferStates.ENTER_COMMENT, F.text == "/skip")
+@router.message(RespondToOfferStates.ENTER_COMMENT, F.text)
+async def process_respond_comment(message: types.Message, state: FSMContext):
+    """Обработка комментария для отклика и отправка уведомления"""
+    comment = message.text if message.text != "/skip" else "Без комментария"
+    
+    state_data = await state.get_data()
+    target_user_id = state_data.get('selected_offer_user_id')
+    game_id = state_data.get('selected_offer_game_id')
+    
+    if not target_user_id or not game_id:
+        await message.answer("❌ Ошибка: информация о предложении не найдена")
+        await state.clear()
+        return
+    
+    # Загружаем данные пользователей
+    users = load_users()
+    
+    # Получаем информацию о текущем пользователе
+    current_user = users.get(str(message.from_user.id))
+    if not current_user:
+        await message.answer("❌ Ошибка: ваш профиль не найден")
+        await state.clear()
+        return
+    
+    # Получаем информацию о целевом пользователе
+    target_user = users.get(target_user_id)
+    if not target_user:
+        await message.answer("❌ Ошибка: пользователь предложения не найдена")
+        await state.clear()
+        return
+    
+    # Находим игру
+    game = None
+    for g in target_user.get('games', []):
+        if str(g.get('id')) == game_id:
+            game = g
+            break
+    
+    if not game:
+        await message.answer("❌ Ошибка: предложение игры не найдено")
+        await state.clear()
+        return
+    
+    # Формируем имя пользователя со ссылкой на профиль
+    respondent_name = f"{current_user.get('first_name', '')} {current_user.get('last_name', '')}".strip()
+    respondent_username = current_user.get('username')
+    
+    profile_link = create_user_profile_link(target_user, target_user_id)
+    
+    # Создаем объект отклика
+    response_data = {
+        'respondent_id': str(message.from_user.id),
+        'respondent_name': respondent_name,
+        'respondent_username': respondent_username,
+        'respondent_level': current_user.get('player_level', '—'),
+        'game_id': game_id,
+        'game_date': game.get('date'),
+        'game_time': game.get('time'),
+        'comment': comment,
+        'response_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'status': 'pending'  # pending, accepted, rejected
+    }
+    
+    # Добавляем отклик в данные целевого пользователя
+    if 'offer_responses' not in target_user:
+        target_user['offer_responses'] = []
+    
+    target_user['offer_responses'].append(response_data)
+    
+    # Сохраняем обновленные данные
+    users[target_user_id] = target_user
+    save_users(users)
+    
+    # Формируем сообщение для целевого пользователя
+    target_message = (
+        f"🎾 Новый отклик на ваше предложение игры!\n\n"
+        f"👤 От: {profile_link}\n"
+        f"📅 Дата игры: {game.get('date', '—')} {game.get('time', '—')}\n"
+        f"💬 Комментарий: {comment}\n"
+    )
+    
+    # Отправляем уведомление целевому пользователю
+    try:
+        await message.bot.send_message(
+            chat_id=target_user_id, 
+            text=target_message,
+            parse_mode='Markdown',
+            disable_web_page_preview=True
+        )
+        await message.answer(
+            "✅ Ваш отклик успешно отправлен! Пользователь получил уведомление.\n"
+        )
+    except Exception as e:
+        await message.answer(
+            "✅ Ваш отклик сохранен, но не удалось отправить уведомление пользователю. "
+            "Возможно, он заблокировал бота."
+        )
+    
+    await state.clear()
