@@ -21,10 +21,15 @@ cities_data = load_json("cities.json")
 async def browse_offers_start(message: types.Message, state: FSMContext):
     """Начало просмотра предложенных игр - выбор страны"""
     users = load_users()
+    current_user_id = str(message.from_user.id)
     
-    # Собираем статистику по странам
+    # Собираем статистику по странам (исключая текущего пользователя)
     country_stats = {}
     for user_id, user_data in users.items():
+        # Пропускаем текущего пользователя
+        if user_id == current_user_id:
+            continue
+            
         if user_data.get('games'):
             country = user_data.get('country', '')
             if country:
@@ -33,7 +38,9 @@ async def browse_offers_start(message: types.Message, state: FSMContext):
                     country_stats[country] = country_stats.get(country, 0) + len(active_games)
     
     if not country_stats:
-        await message.answer("❌ На данный момент нет активных предложений игр.")
+        await message.answer("❌ На данный момент нет активных предложений игр от других пользователей.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer")]
+        ]))
         return
     
     # Создаем клавиатуру с кнопками стран

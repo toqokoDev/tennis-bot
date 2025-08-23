@@ -258,13 +258,11 @@ async def save_location(callback: types.CallbackQuery, city: str, state: FSMCont
     
     await state.clear()
 
-async def save_location_message(message: types.Message, city: str):
+async def save_location_message(message: types.Message, city: str, state: FSMContext):
     users = load_users()
     user_key = str(message.from_user.id)
     
     if user_key in users:
-        # Для сообщений нам нужно получить country из state
-        state = FSMContext(message.bot, storage=message.bot.storage, chat_id=message.chat.id, user_id=message.from_user.id)
         data = await state.get_data()
         country = data.get('country', '')
         

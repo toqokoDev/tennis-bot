@@ -1,1 +1,45 @@
-{}
+{
+  "1829352344": {
+    "telegram_id": 1829352344,
+    "username": "toqoko",
+    "first_name": "Даниил",
+    "last_name": "Щербаков",
+    "phone": "375259997565",
+    "birth_date": "09.09.2006",
+    "country": "🇷🇺 Россия",
+    "city": "Москва - ЦАО",
+    "district": "",
+    "role": "Игрок",
+    "sport": "Настольный теннис",
+    "gender": "Мужской",
+    "player_level": "2.0",
+    "rating_points": 900,
+    "price": null,
+    "photo_path": "data/user_photos/1829352344_1755984074.jpg",
+    "games_played": 0,
+    "games_wins": 0,
+    "default_payment": "Пополам",
+    "show_in_search": true,
+    "profile_comment": null,
+    "games": [
+      {
+        "city": "Минск",
+        "date": "25.08.2025",
+        "time": "18:00",
+        "type": "Одиночная",
+        "payment_type": "Пополам",
+        "competitive": true,
+        "repeat": false,
+        "comment": null,
+        "id": 1,
+        "created_at": "2025-08-24T00:16:20",
+        "active": false
+      }
+    ],
+    "created_at": "2025-08-24T00:12:10",
+    "vacation_tennis": true,
+    "vacation_start": "25.08.2025",
+    "vacation_end": "30.08.2025",
+    "free_offers_used": 1
+  }
+}

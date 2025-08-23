@@ -23,7 +23,7 @@ cities_data = load_json("cities.json")
 # ---------- Обработчики предложений игры ----------
 @router.callback_query(F.data == "my_offers")
 async def my_offers_handler(callback: types.CallbackQuery, state: FSMContext):
-    user_id = callback.from_user.id
+    user_id = callback.message.chat.id
     profile = get_user_profile_from_storage(user_id)
     
     if not profile:
@@ -44,6 +44,7 @@ async def my_offers_handler(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 async def show_single_offer(callback: types.CallbackQuery, state: FSMContext):
+    user_id = callback.message.chat.id
     user_data = await state.get_data()
     active_games = user_data.get('active_games', [])
     current_index = user_data.get('current_offer_index', 0)
@@ -86,7 +87,7 @@ async def show_single_offer(callback: types.CallbackQuery, state: FSMContext):
     # Кнопки действий
     action_buttons = [
         InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_offer_{game['id']}"),
-        InlineKeyboardButton(text="🔙 Назад к списку", callback_data="back_to_offers_list")
+        InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{user_id}")
     ]
     keyboard_buttons.append(action_buttons)
     
@@ -129,52 +130,6 @@ async def offer_next_handler(callback: types.CallbackQuery, state: FSMContext):
     
     await callback.answer()
 
-@router.callback_query(F.data == "back_to_offers_list")
-async def back_to_offers_list_handler(callback: types.CallbackQuery, state: FSMContext):
-    # Очищаем данные навигации
-    await state.update_data(active_games=None, current_offer_index=None)
-    
-    # Возвращаемся к обычному списку предложений
-    user_id = callback.from_user.id
-    profile = get_user_profile_from_storage(user_id)
-    
-    if not profile:
-        await callback.answer("❌ Профиль не найден")
-        return
-    
-    active_games = [game for game in profile.get('games', []) if game.get('active', True)]
-    
-    if not active_games:
-        await callback.answer("❌ У вас нет активных предложений")
-        return
-    
-    # Создаем сообщение со списком предложений
-    response = ["📋 Ваши активные предложения игры:\n"]
-    
-    for game in active_games:
-        response.append(f"🎾 Предложение #{game['id']}")
-        response.append(f"🏙 Город: {game.get('city', '—')}")
-        response.append(f"📅 Дата: {game.get('date', '—')}")
-        response.append(f"⏰ Время: {game.get('time', '—')}")
-        response.append("─" * 20)
-    
-    # Клавиатура для управления предложениями
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📄 Просмотреть по одному", callback_data="my_offers")],
-            [InlineKeyboardButton(text="❌ Удалить предложение", callback_data="delete_offer")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{user_id}")]
-        ]
-    )
-    
-    try:
-        await callback.message.delete()
-    except:
-        pass
-    
-    await callback.message.answer("\n".join(response), reply_markup=keyboard)
-    await callback.answer()
-
 @router.callback_query(F.data.startswith("delete_offer_"))
 async def delete_offer_single_handler(callback: types.CallbackQuery, state: FSMContext):
     game_id = callback.data.split("_", maxsplit=2)[2]
@@ -209,7 +164,7 @@ async def delete_no_single_handler(callback: types.CallbackQuery, state: FSMCont
 @router.callback_query(F.data.startswith("delete_yes_"))
 async def delete_yes_handler(callback: types.CallbackQuery, state: FSMContext):
     game_id = callback.data.split("_", maxsplit=2)[2]
-    user_id = callback.from_user.id
+    user_id = callback.message.chat.id
     
     # Загружаем пользователей
     users = load_users()
@@ -327,7 +282,7 @@ async def new_offer_handler(callback: types.CallbackQuery, state: FSMContext):
     
 @router.message(F.text == "🎾 Предложить игру")
 async def offer_game_command(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
+    user_id = message.chat.id
     users = load_users()
     user_data = users.get(str(user_id), {})
     
@@ -402,7 +357,7 @@ async def process_game_city(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(GameOfferStates.GAME_DATE)
     await callback.answer()
-    save_session(callback.from_user.id, await state.get_data())
+    save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(GameOfferStates.GAME_DATE, F.data.startswith("gamedate_"))
 async def process_game_date(callback: types.CallbackQuery, state: FSMContext):
@@ -435,7 +390,7 @@ async def process_game_date(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(GameOfferStates.GAME_TIME)
     await callback.answer()
-    save_session(callback.from_user.id, await state.get_data())
+    save_session(callback.message.chat.id, await state.get_data())
 
 @router.message(GameOfferStates.GAME_DATE_MANUAL, F.text)
 async def process_game_date_manual(message: types.Message, state: FSMContext):
@@ -476,7 +431,7 @@ async def process_game_date_manual(message: types.Message, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(GameOfferStates.GAME_TIME)
-    save_session(message.from_user.id, await state.get_data())
+    save_session(message.chat.id, await state.get_data())
 
 @router.callback_query(GameOfferStates.GAME_TIME, F.data.startswith("gametime_"))
 async def process_game_time(callback: types.CallbackQuery, state: FSMContext):
@@ -495,7 +450,7 @@ async def process_game_time(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(GameOfferStates.GAME_TYPE)
     await callback.answer()
-    save_session(callback.from_user.id, await state.get_data())
+    save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(GameOfferStates.GAME_TYPE, F.data.startswith("gametype_"))
 async def process_game_type(callback: types.CallbackQuery, state: FSMContext):
@@ -510,7 +465,7 @@ async def process_game_type(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(GameOfferStates.PAYMENT_TYPE)
     await callback.answer()
-    save_session(callback.from_user.id, await state.get_data())
+    save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(GameOfferStates.PAYMENT_TYPE, F.data.startswith("paytype_"))
 async def process_payment_type(callback: types.CallbackQuery, state: FSMContext):
@@ -528,7 +483,7 @@ async def process_payment_type(callback: types.CallbackQuery, state: FSMContext)
     )
     await state.set_state(GameOfferStates.GAME_COMPETITIVE)
     await callback.answer()
-    save_session(callback.from_user.id, await state.get_data())
+    save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(GameOfferStates.GAME_COMPETITIVE, F.data.startswith("gamecomp_"))
 async def process_game_competitive(callback: types.CallbackQuery, state: FSMContext):
@@ -546,7 +501,7 @@ async def process_game_competitive(callback: types.CallbackQuery, state: FSMCont
     )
     await state.set_state(GameOfferStates.GAME_REPEAT)
     await callback.answer()
-    save_session(callback.from_user.id, await state.get_data())
+    save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(GameOfferStates.GAME_REPEAT, F.data.startswith("gamerepeat_"))
 async def process_game_repeat(callback: types.CallbackQuery, state: FSMContext):
@@ -559,7 +514,7 @@ async def process_game_repeat(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(GameOfferStates.GAME_COMMENT)
     await callback.answer()
-    save_session(callback.from_user.id, await state.get_data())
+    save_session(callback.message.chat.id, await state.get_data())
 
 @router.message(GameOfferStates.GAME_COMMENT, F.text)
 async def process_game_comment(message: types.Message, state: FSMContext):
@@ -580,11 +535,11 @@ async def process_game_comment(message: types.Message, state: FSMContext):
     }
     
     # Сохраняем игру
-    game_id = save_user_game(message.from_user.id, game_data)
+    game_id = save_user_game(message.chat.id, game_data)
     
     # Обновляем счетчик бесплатных предложений, если нет подписки
     users = load_users()
-    user_id_str = str(message.from_user.id)
+    user_id_str = str(message.chat.id)
     
     if user_id_str in users:
         if not users[user_id_str].get('subscription', {}).get('active', False):
@@ -593,7 +548,7 @@ async def process_game_comment(message: types.Message, state: FSMContext):
             write_users(users)
     
     await state.clear()
-    delete_session(message.from_user.id)
+    delete_session(message.chat.id)
     
     # Формируем информационное сообщение о созданной игре
     response = [
@@ -613,7 +568,7 @@ async def process_game_comment(message: types.Message, state: FSMContext):
     
     # Добавляем информацию о статусе подписки
     users = load_users()
-    user_data = users.get(str(message.from_user.id), {})
+    user_data = users.get(str(message.chat.id), {})
     subscription_active = user_data.get('subscription', {}).get('active', False)
     
     if not subscription_active:
@@ -626,7 +581,7 @@ async def process_game_comment(message: types.Message, state: FSMContext):
 
 @router.message(F.text == "📋 Мои предложения")
 async def list_my_games(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
+    user_id = message.chat.id
     games = get_user_games(user_id)
     
     if not games:
@@ -676,7 +631,7 @@ async def list_my_games(message: types.Message, state: FSMContext):
     # Кнопки действий
     action_buttons = [
         InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_offer_{game['id']}"),
-        InlineKeyboardButton(text="🔙 Назад к списку", callback_data="back_to_offers_list")
+        InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{user_id}")
     ]
     keyboard_buttons.append(action_buttons)
     
@@ -686,7 +641,7 @@ async def list_my_games(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "delete_offer")
 async def delete_offer_handler(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
+    user_id = callback.message.chat.id
     profile = get_user_profile_from_storage(user_id)
     
     if not profile:
@@ -728,7 +683,7 @@ async def delete_offer_handler(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("confirm_delete_"))
 async def confirm_delete_handler(callback: types.CallbackQuery):
     game_id = callback.data.split("_", maxsplit=2)[2]
-    user_id = callback.from_user.id
+    user_id = callback.message.chat.id
     
     # Загружаем пользователей
     users = load_users()
