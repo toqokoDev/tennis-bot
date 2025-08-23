@@ -13,7 +13,7 @@ from config.config import BOT_USERNAME, SUBSCRIPTION_PRICE
 from models.states import AddScoreState
 from utils.json_data import load_games, load_users, save_games, save_users
 from utils.media import save_media_file
-from utils.utils import calculate_new_ratings, search_users
+from utils.utils import calculate_new_ratings, create_user_profile_link, search_users
 
 router = Router()
 
@@ -118,6 +118,25 @@ def create_confirmation_keyboard() -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
+# Создание inline клавиатуры для навигации по истории игр
+def create_history_navigation_keyboard(game_index: int, total_games: int, target_user_id: str, current_user_id: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    
+    # Кнопки навигации
+    if game_index > 0:
+        builder.button(text="⬅️ Предыдущая", callback_data=f"history_nav:{target_user_id}:{game_index-1}")
+    
+    if game_index < total_games - 1:
+        builder.button(text="Следующая ➡️", callback_data=f"history_nav:{target_user_id}:{game_index+1}")
+    
+    builder.adjust(2)
+    
+    builder.row(
+        InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{current_user_id}")
+    )
+    
+    return builder.as_markup()
+
 # Сохранение ID сообщения для редактирования
 def save_message_id(user_id: int, message_id: int):
     last_message_ids[user_id] = message_id
@@ -151,19 +170,21 @@ async def edit_media_message(callback: types.CallbackQuery, text: str, keyboard:
                 new_msg = await callback.message.answer_photo(
                     media_data['photo_id'],
                     caption=text,
-                    reply_markup=keyboard
+                    reply_markup=keyboard, 
+                    parse_mode="Markdown"
                 )
             elif 'video_id' in media_data:
                 new_msg = await callback.message.answer_video(
                     media_data['video_id'],
                     caption=text,
-                    reply_markup=keyboard
+                    reply_markup=keyboard, 
+                    parse_mode="Markdown"
                 )
             else:
-                new_msg = await callback.message.answer(text, reply_markup=keyboard)
+                new_msg = await callback.message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
         else:
             # Если нет медиа, редактируем текст
-            await callback.message.edit_text(text, reply_markup=keyboard)
+            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
             new_msg = callback.message
     except Exception as e:
         # Если не удалось отредактировать, отправляем новое сообщение
@@ -171,17 +192,10 @@ async def edit_media_message(callback: types.CallbackQuery, text: str, keyboard:
             await callback.message.delete()
         except:
             pass
-        new_msg = await callback.message.answer(text, reply_markup=keyboard)
+        new_msg = await callback.message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
     
     save_message_id(callback.from_user.id, new_msg.message_id)
     return new_msg
-
-# Функция для создания ссылки на профиль пользователя
-def create_user_profile_link(user_data: dict, user_id: str) -> str:
-    first_name = user_data.get('first_name', '')
-    last_name = user_data.get('last_name', '')
-    rating = user_data.get('rating_points', 0)
-    return f"[{first_name} {last_name} ({rating})](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
 
 @router.message(F.text == "📝 Внести счет")
 async def handle_add_score(message: types.Message, state: FSMContext):
@@ -193,7 +207,7 @@ async def handle_add_score(message: types.Message, state: FSMContext):
         # Показываем сообщение о необходимости подписки
         text = (
             "🔒 <b>Доступ закрыт</b>\n\n"
-            "Функция внесения счета доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
+            "Функция внесения счета доступна только для пользователей с активной подписки Tennis-Play PRO.\n\n"
             f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
             "Перейдите в раздел '💳 Платежи' для оформления подписки."
         )
@@ -451,11 +465,11 @@ async def handle_single_opponent_selection(callback: types.CallbackQuery, state:
     
     await callback.message.edit_text(
         f"Вы выбрали соперника:\n"
-        f"👤 {opponent.get('first_name', '')} {opponent.get('last_name', '')}\n"
-        f"Рейтинг: {opponent.get('rating_points', 0)}\n\n"
+        f"👤 {create_user_profile_link(opponent, opponent.get('telegram_id', ''))}\n\n"
         f"Ваш рейтинг: {current_user.get('rating_points', 0)}\n\n"
         f"Выберите счет 1-го сета:",
-        reply_markup=keyboard
+        reply_markup=keyboard, 
+        parse_mode="Markdown"
     )
     await callback.answer()
 
@@ -712,16 +726,18 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             if opponent['telegram_id'] in users:
                 users[opponent['telegram_id']]['rating_points'] = new_winner_points
         
-        # Формируем сообщение
+        # Формируем сообщение (ИЗМЕНЕНА ЛОГИКА ВЫВОДА)
         result_text = (
             f"🎯 Одиночная игра\n\n"
-            f"👤 {winner_user.get('first_name', '')} {winner_user.get('last_name', '')}\n"
-            f"({winner_points} 📈 {new_winner_points})\n"
+            f"👤 {create_user_profile_link(winner_user, winner_user.get('telegram_id', ''))}\n"
             f"🆚\n"
-            f"👤 {loser_user.get('first_name', '')} {loser_user.get('last_name', '')}\n"
-            f"({loser_points} 📉 {new_loser_points})\n\n"
-            f"📊 {score}\n"
-            f"⭐ Новый рейтинг сохранен!"
+            f"👤 {create_user_profile_link(loser_user, loser_user.get('telegram_id', ''))}\n\n"
+            f"📊 Счет: {score}\n\n"
+            f"📈 Изменение рейтинга:\n"
+            f"• {winner_user.get('first_name', '')}: {winner_points} → {new_winner_points} "
+            f"({'+' if new_winner_points > winner_points else ''}{new_winner_points - winner_points:.1f})\n"
+            f"• {loser_user.get('first_name', '')}: {loser_points} → {new_loser_points} "
+            f"({'+' if new_loser_points > loser_points else ''}{new_loser_points - loser_points:.1f})"
         )
         
     else:  # Парная игра
@@ -771,20 +787,26 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             if str(player['telegram_id']) in users:
                 users[str(player['telegram_id'])]['rating_points'] += points_change_loser
         
-        # Формируем сообщение
+        # Формируем сообщение (ИЗМЕНЕНА ЛОГИКА ВЫВОДА)
         result_text = (
             f"👥 Парная игра\n\n"
-            f"• {winner_team[0].get('first_name', '')} {winner_team[0].get('last_name', '')}\n"
-            f"({winner_team[0].get('rating_points', 0) - points_change_winner:.0f} 📈 {winner_team[0].get('rating_points', 0):.0f})\n"
-            f"• {winner_team[1].get('first_name', '')} {winner_team[1].get('last_name', '')}\n"
-            f"({winner_team[1].get('rating_points', 0) - points_change_winner:.0f} 📈 {winner_team[1].get('rating_points', 0):.0f})\n\n"
-            f"• {loser_team[0].get('first_name', '')} {loser_team[0].get('last_name', '')}\n"
-            f"({loser_team[0].get('rating_points', 0) - points_change_loser:.0f} 📉 {loser_team[0].get('rating_points', 0):.0f})\n"
-            f"• {loser_team[1].get('first_name', '')} {loser_team[1].get('last_name', '')}\n"
-            f"({loser_team[1].get('rating_points', 0) - points_change_loser:.0f} 📉 {loser_team[1].get('rating_points', 0):.0f})\n\n"
-            f"📊 {score}\n"
-            f"⭐ Рейтинги обновлены!"
+            f"Команда 1:\n"
+            f"• {create_user_profile_link(current_user, current_user.get('telegram_id', ''))}\n"
+            f"• {create_user_profile_link(partner, partner.get('telegram_id', ''))}\n\n"
+            f"Команда 2:\n"
+            f"• {create_user_profile_link(opponent1, opponent1.get('telegram_id', ''))}\n"
+            f"• {create_user_profile_link(opponent2, opponent2.get('telegram_id', ''))}\n\n"
+            f"📊 Счет: {score}\n\n"
+            f"📈 Изменение рейтинга:\n"
         )
+        
+        # Добавляем изменения рейтинга для всех игроков
+        for player in winner_team + loser_team:
+            old_rating = old_ratings.get(str(player['telegram_id']), player.get('rating_points', 0) - points_change_winner)
+            new_rating = users[str(player['telegram_id'])]['rating_points']
+            change = new_rating - old_rating
+            
+            result_text += f"• {player.get('first_name', '')}: {old_rating:.0f} → {new_rating:.0f} ({'+' if change > 0 else ''}{change:.1f})\n"
     
     # Сохраняем игру в истории
     games = load_games()
@@ -848,16 +870,18 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             await message.answer_photo(
                 data['photo_id'],
                 caption=result_text,
-                reply_markup=keyboard
+                reply_markup=keyboard,
+                parse_mode="Markdown"
             )
         elif 'video_id' in data:
             await message.answer_video(
                 data['video_id'],
                 caption=result_text,
-                reply_markup=keyboard
+                reply_markup=keyboard,
+                parse_mode="Markdown"
             )
         else:
-            await message.answer(result_text, reply_markup=keyboard)
+            await message.answer(result_text, reply_markup=keyboard, parse_mode="Markdown")
 
 @router.callback_query(F.data.startswith("confirm:"))
 async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMContext):
@@ -993,8 +1017,10 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
             await callback.message.delete()
         except:
             pass
+        
+        # Вместо сообщения об успешном сохранении отправляем информацию об игре
         await callback.message.answer(
-            "✅ Счет успешно сохранен и опубликован!",
+            result_text,
             reply_markup=None
         )
         await state.clear()
@@ -1339,21 +1365,16 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("game_history:"))
 async def handle_history_request(callback: types.CallbackQuery):
-    users = load_users()
-
     """Обработчик запроса истории игр"""
     try:
         # Извлекаем ID пользователя, чью историю запрашиваем
         target_user_id = callback.data.split(":")[1]
         current_user_id = str(callback.from_user.id)
         
-        try:
-            await callback.message.delete()
-        except:
-            pass
-        
+        # Проверяем права доступа для просмотра чужой истории
         if current_user_id != target_user_id:
-            if not users[str(current_user_id)].get('subscription', {}).get('active', False):
+            users = load_users()
+            if not users.get(current_user_id, {}).get('subscription', {}).get('active', False):
                 text = (
                     "🔒 <b>Доступ закрыт</b>\n\n"
                     "Функция просмотра истории игр игроков доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
@@ -1365,123 +1386,183 @@ async def handle_history_request(callback: types.CallbackQuery):
                     text,
                     parse_mode="HTML"
                 )
-
                 return
 
-        # Проверяем права доступа
-        if target_user_id != current_user_id:
-            # Здесь можно добавить проверку прав администратора или других условий
-            # для просмотра чужой истории
-            pass
-        
-        # Загружаем игры и пользователей
-        games = load_games()
-        users = load_users()
-        
-        # Получаем информацию о целевом пользователе
-        target_user = users.get(target_user_id)
-        if not target_user:
-            await callback.answer("Пользователь не найден")
-            return
-        
-        # Фильтруем игры, в которых участвовал пользователь
-        user_games = []
-        for game in games:
-            # Проверяем участие пользователя в командах
-            players_team1 = game['players']['team1']
-            players_team2 = game['players']['team2']
-            
-            if target_user_id in players_team1 or target_user_id in players_team2:
-                user_games.append(game)
-        
-        # Сортируем игры по дате (новые сначала)
-        user_games.sort(key=lambda x: x['date'], reverse=True)
-        
-        if not user_games:
-            await callback.message.answer(
-                f"📊 История игр пользователя {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n"
-                "Пока нет сыгранных игр.",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{current_user_id}")]]
-                )
-            )
-            await callback.answer()
-            return
-        
-        # Формируем текст истории
-        history_text = f"📊 История игр пользователя {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n"
-        
-        for i, game in enumerate(user_games[:10]):  # Показываем последние 10 игр
-            # Форматируем дату
-            game_date = datetime.fromisoformat(game['date'])
-            formatted_date = game_date.strftime("%d.%m.%Y %H:%M")
-            
-            # Определяем результат для пользователя
-            user_in_team1 = target_user_id in game['players']['team1']
-            team1_wins = sum(1 for set_score in game['sets'] 
-                           if int(set_score.split(':')[0]) > int(set_score.split(':')[1]))
-            team2_wins = sum(1 for set_score in game['sets'] 
-                           if int(set_score.split(':')[0]) < int(set_score.split(':')[1]))
-            
-            if (user_in_team1 and team1_wins > team2_wins) or (not user_in_team1 and team2_wins > team1_wins):
-                result = "✅ Победа"
-            else:
-                result = "❌ Поражение"
-            
-            # Получаем изменение рейтинга
-            rating_change = game['rating_changes'].get(target_user_id, 0)
-            rating_change_str = f"+{rating_change:.1f}" if rating_change > 0 else f"{rating_change:.1f}"
-            
-            # Формируем информацию о соперниках
-            if game['type'] == 'single':
-                # Для одиночной игры
-                opponent_id = game['players']['team2'][0] if user_in_team1 else game['players']['team1'][0]
-                opponent = users.get(opponent_id, {})
-                opponent_name = f"{opponent.get('first_name', '')} {opponent.get('last_name', '')}"
-                game_type_emoji = "🎯"
-            else:
-                # Для парной игры
-                if user_in_team1:
-                    teammate_id = next(pid for pid in game['players']['team1'] if pid != target_user_id)
-                    opponents = game['players']['team2']
-                else:
-                    teammate_id = next(pid for pid in game['players']['team2'] if pid != target_user_id)
-                    opponents = game['players']['team1']
-                
-                teammate = users.get(teammate_id, {})
-                opponent1 = users.get(opponents[0], {})
-                opponent2 = users.get(opponents[1], {})
-                
-                teammate_name = f"{teammate.get('first_name', '')} {teammate.get('last_name', '')}"
-                opponents_name = f"{opponent1.get('first_name', '')} {opponent1.get('last_name', '')} & {opponent2.get('first_name', '')} {opponent2.get('last_name', '')}"
-                game_type_emoji = "👥"
-            
-            # Добавляем информацию об игре
-            history_text += f"{i+1}. {game_type_emoji} {formatted_date} - {result}\n"
-            history_text += f"   Счет: {game['score']}\n"
-            
-            if game['type'] == 'single':
-                history_text += f"   Соперник: {opponent_name}\n"
-            else:
-                history_text += f"   Партнер: {teammate_name}\n"
-                history_text += f"   Соперники: {opponents_name}\n"
-            
-            history_text += f"   Изменение рейтинга: {rating_change_str}\n\n"
-        
-        if len(user_games) > 10:
-            history_text += f"Показаны последние 10 из {len(user_games)} игр\n"
-        
-        # Создаем клавиатуру
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🔄 Обновить", callback_data=f"history:{target_user_id}")],
-                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{current_user_id}")]
-            ]
-        )
-        
-        await callback.message.answer(history_text, reply_markup=keyboard)
-        await callback.answer()
+        # Показываем первую игру из истории
+        await show_single_game_history(callback, target_user_id, 0)
         
     except Exception as e:
         print(f"Ошибка при выводе истории: {e}")
         await callback.answer("Произошла ошибка при загрузке истории")
+
+@router.callback_query(F.data.startswith("history_nav:"))
+async def handle_history_navigation(callback: types.CallbackQuery):
+    """Обработчик навигации по истории игр"""
+    try:
+        _, target_user_id, game_index_str = callback.data.split(":")
+        game_index = int(game_index_str)
+        
+        await show_single_game_history(callback, target_user_id, game_index)
+        
+    except Exception as e:
+        print(f"Ошибка при навигации по истории: {e}")
+        await callback.answer("Произошла ошибка при навигации")
+
+async def show_single_game_history(callback: types.CallbackQuery, target_user_id: str, game_index: int):
+    """Показывает одну игру из истории с навигацией"""
+    # Загружаем игры и пользователей
+    games = load_games()
+    users = load_users()
+    
+    # Получаем информацию о целевом пользователе
+    target_user = users.get(target_user_id)
+    if not target_user:
+        await callback.answer("Пользователь не найден")
+        return
+    
+    # Фильтруем игры, в которых участвовал пользователь
+    user_games = []
+    for game in games:
+        # Проверяем участие пользователя в командах
+        players_team1 = game['players']['team1']
+        players_team2 = game['players']['team2']
+        
+        if target_user_id in players_team1 or target_user_id in players_team2:
+            user_games.append(game)
+    
+    # Сортируем игры по дате (новые сначала)
+    user_games.sort(key=lambda x: x['date'], reverse=True)
+    
+    if not user_games:
+        await callback.message.answer(
+            f"📊 История игр пользователя {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n"
+            "Пока нет сыгранных игр.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{callback.from_user.id}")]]
+            )
+        )
+        await callback.answer()
+        return
+    
+    # Проверяем корректность индекса
+    if game_index < 0:
+        game_index = 0
+    elif game_index >= len(user_games):
+        game_index = len(user_games) - 1
+    
+    # Получаем текущую игру
+    game = user_games[game_index]
+    
+    # Форматируем дату
+    game_date = datetime.fromisoformat(game['date'])
+    formatted_date = game_date.strftime("%d.%m.%Y %H:%M")
+    
+    # Определяем результат для пользователя
+    user_in_team1 = target_user_id in game['players']['team1']
+    team1_wins = sum(1 for set_score in game['sets'] 
+                   if int(set_score.split(':')[0]) > int(set_score.split(':')[1]))
+    team2_wins = sum(1 for set_score in game['sets'] 
+                   if int(set_score.split(':')[0]) < int(set_score.split(':')[1]))
+    
+    if (user_in_team1 and team1_wins > team2_wins) or (not user_in_team1 and team2_wins > team1_wins):
+        result = "✅ Победа"
+    else:
+        result = "❌ Поражение"
+    
+    # Получаем изменение рейтинга
+    rating_change = game['rating_changes'].get(target_user_id, 0)
+    rating_change_str = f"+{rating_change:.1f}" if rating_change > 0 else f"{rating_change:.1f}"
+    
+    # Формируем информацию об игре
+    history_text = f"📊 Игра #{game_index + 1} из {len(user_games)}\n\n"
+    history_text += f"📅 {formatted_date}\n"
+    history_text += f"🎯 {result}\n\n"
+    
+    # Формируем информацию о командах
+    if game['type'] == 'single':
+        # Для одиночной игры
+        opponent_id = game['players']['team2'][0] if user_in_team1 else game['players']['team1'][0]
+        opponent = users.get(opponent_id, {})
+        opponent_name = f"{opponent.get('first_name', '')} {opponent.get('last_name', '')}"
+        
+        history_text += f"👤 Игрок:\n"
+        history_text += f"• {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n"
+        history_text += f"👤 Соперник:\n"
+        history_text += f"• {opponent_name}\n\n"
+        
+    else:
+        # Для парной игры
+        if user_in_team1:
+            teammate_id = next(pid for pid in game['players']['team1'] if pid != target_user_id)
+            opponents = game['players']['team2']
+        else:
+            teammate_id = next(pid for pid in game['players']['team2'] if pid != target_user_id)
+            opponents = game['players']['team1']
+        
+        teammate = users.get(teammate_id, {})
+        opponent1 = users.get(opponents[0], {})
+        opponent2 = users.get(opponents[1], {})
+        
+        teammate_name = create_user_profile_link(teammate, teammate_id)
+        opponent1_name = create_user_profile_link(opponent1, opponents[0])
+        opponent2_name = create_user_profile_link(opponent2, opponents[1])
+        
+        history_text += f"👥 Команда 1:\n"
+        history_text += f"• {create_user_profile_link(target_user, target_user.get('telegram_id', ''))}\n"
+        history_text += f"• {teammate_name}\n\n"
+        history_text += f"👥 Команда 2:\n"
+        history_text += f"• {opponent1_name}\n"
+        history_text += f"• {opponent2_name}\n\n"
+    
+    # Добавляем счет
+    history_text += f"📊 Счет: {game['score']}\n\n"
+    
+    # Добавляем изменение рейтинга
+    history_text += f"📈 Изменение рейтинга: {rating_change_str}\n"
+    
+    # Создаем клавиатуру с навигацией
+    keyboard = create_history_navigation_keyboard(game_index, len(user_games), target_user_id, str(callback.from_user.id))
+    
+    # Проверяем, есть ли медиафайл
+    if game.get('media_filename'):
+        media_path = f"data/games_photo/{game['media_filename']}"
+        if os.path.exists(media_path):
+            # Определяем тип медиа
+            if game['media_filename'].endswith(('.jpg', '.jpeg', '.png')):
+                with open(media_path, 'rb') as photo:
+                    await callback.message.delete()
+                    await callback.message.answer_photo(
+                        photo,
+                        caption=history_text,
+                        reply_markup=keyboard,
+                        parse_mode='Markdown',
+                    )
+            elif game['media_filename'].endswith(('.mp4', '.mov')):
+                with open(media_path, 'rb') as video:
+                    await callback.message.delete()
+                    await callback.message.answer_video(
+                        video,
+                        caption=history_text,
+                        reply_markup=keyboard,
+                        parse_mode='Markdown',
+                    )
+            else:
+                try:
+                    await callback.message.edit_text(history_text, reply_markup=keyboard, parse_mode='Markdown')
+                except:
+                    await callback.message.delete()
+                    await callback.message.answer(history_text, reply_markup=keyboard, parse_mode='Markdown')
+        else:
+            try:
+                await callback.message.edit_text(history_text, reply_markup=keyboard, parse_mode='Markdown')
+            except:
+                await callback.message.delete()
+                await callback.message.answer(history_text, reply_markup=keyboard, parse_mode='Markdown')
+    else:
+        try:
+            await callback.message.edit_text(history_text, reply_markup=keyboard, parse_mode='Markdown')
+        except:
+            await callback.message.delete()
+            await callback.message.answer(history_text, reply_markup=keyboard, parse_mode='Markdown')
+    
+    await callback.answer()

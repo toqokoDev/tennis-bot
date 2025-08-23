@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 from aiogram import Bot, Dispatcher
-from handlers import game_offers_menu, registration, game_offers, more, payments, profile, enter_invoice, search_partner
+from handlers import game_offers_menu, registration, game_offers, more, payments, profile, enter_invoice, search_partner, tours
 from config.config import TOKEN
 from utils.json_data import load_users, write_users
 from utils.notifications import send_subscription_reminders
@@ -71,6 +71,7 @@ async def main():
     dp.include_router(profile.router)
     dp.include_router(enter_invoice.router)
     dp.include_router(search_partner.router)
+    dp.include_router(tours.router)
 
     # Запускаем фоновую задачу проверки подписок
     subscription_task = asyncio.create_task(check_subscriptions(bot))

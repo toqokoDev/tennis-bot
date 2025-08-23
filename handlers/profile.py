@@ -359,3 +359,19 @@ async def save_photo_upload(message: types.Message, state: FSMContext):
         await message.answer("❌ Ошибка при сохранении фото", reply_markup=base_keyboard)
     
     await state.clear()
+
+@router.callback_query(F.data == "main_menu")
+async def main_menu_callback(callback: types.CallbackQuery):
+    try:
+        await callback.message.edit_text(
+            "🏠 Главное меню",
+            reply_markup=base_keyboard
+        )
+    except:
+        await callback.message.delete()
+        
+        await callback.message.answer(
+            "🏠 Главное меню",
+            reply_markup=base_keyboard
+        )
+    await callback.answer()
