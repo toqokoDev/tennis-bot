@@ -14,13 +14,16 @@ async def show_current_data(message: types.Message, state: FSMContext, text: str
                             reply_markup=None, parse_mode="HTML"):
     user_data = await state.get_data()
     prev_msg_id = user_data.get('prev_msg_id')
-    if prev_msg_id:
-        try:
-            await message.bot.delete_message(chat_id=message.chat.id, message_id=prev_msg_id)
+    try:
+        msg = await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+    except:
+        try: 
+            if prev_msg_id:
+                await message.bot.delete_message(chat_id=message.chat.id, message_id=prev_msg_id)
         except:
             pass
+        msg = await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
 
-    msg = await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
     await state.update_data(prev_msg_id=msg.message_id)
     save_session(message.from_user.id, await state.get_data())
 
@@ -45,7 +48,12 @@ async def show_profile(message: types.Message, profile: dict):
         caption_lines.append(f"💵 Стоимость тренировки: {profile.get('price')} руб")
     
     caption_lines.append(f"\n🌍 Страна: {profile.get('country', '—')}")
-    caption_lines.append(f"🏙 Город: {profile.get('city', '—')}")
+    city = profile.get('city', '—')
+    district = profile.get('district', None)
+    if district:
+        caption_lines.append(f"🏙 Город: {city} - {district}")
+    else:
+        caption_lines.append(f"🏙 Город: {city}")
     caption_lines.append(f"🗂 Вид спорта: {profile.get('sport', '—')}")
     caption_lines.append(f"👫 Пол: {profile.get('gender', '—')}")
     
@@ -74,22 +82,23 @@ async def show_profile(message: types.Message, profile: dict):
     
     caption = "\n".join(caption_lines) if caption_lines else "Анкета недоступна."
 
-    # Создаем клавиатуру в зависимости от того, свой это профиль или чужой
     if message.chat.id == profile.get('telegram_id'):
         # Клавиатура для своего профиля
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="✏️ Редактировать профиль", callback_data="edit_profile")],
                 [InlineKeyboardButton(text="📋 Мои предложения", callback_data="my_offers")],
-                [InlineKeyboardButton(text="🎾 Новое предложение", callback_data="new_offer")],
-                [InlineKeyboardButton(text="Моя история игр", callback_data=f"game_history:{message.chat.id}")]
+                [InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer")],
+                [InlineKeyboardButton(text="Моя история игр", callback_data=f"game_history:{message.chat.id}")],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
             ]
         )
     else:
         # Клавиатура для чужого профиля
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="Просмотреть историю матчей", callback_data=f"game_history:{profile.get('telegram_id')}")]
+                [InlineKeyboardButton(text="Просмотреть историю матчей", callback_data=f"game_history:{profile.get('telegram_id')}")],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
             ]
         )
 

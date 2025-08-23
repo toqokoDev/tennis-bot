@@ -90,3 +90,15 @@ class SearchPartnerStates(StatesGroup):
 class BrowseOffersStates(StatesGroup):
     SELECT_COUNTRY = State()
     SELECT_CITY = State()
+
+class RespondToOfferStates(StatesGroup):
+    ENTER_COMMENT = State()
+
+class BrowseToursStates(StatesGroup):
+    SELECT_COUNTRY = State()
+    SELECT_CITY = State()
+
+class CreateTourStates(StatesGroup):
+    ENTER_START_DATE = State()
+    ENTER_END_DATE = State()
+    ENTER_COMMENT = State()
