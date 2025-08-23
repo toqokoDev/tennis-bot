@@ -1,11 +1,16 @@
-Tennis-bot
-Телеграмм бот для игры в теннис и не только
+# Tennis Bot 🎾
+Telegram-бот для организации теннисных матчей и других спортивных мероприятий.
 
-команда для запуска:
-docker build -t tennis-bot . && docker run -d -p 8850:8850 --name tennis-container-bot tennis-bot
+## Quick Start
 
-команда для удаления:
-docker stop tennis-container-bot && docker rm tennis-container-bot
+### Installation & Deployment
+```docker build -t tennis-bot . && docker run -d -p 8850:8850 --name tennis-container-bot tennis-bot```
 
-просмотр логов:
-docker logs -f tennis-container-bot
+### Stop and remove container
+```docker stop tennis-container-bot && docker rm tennis-container-bot```
+
+### Monitor logs
+```docker logs -f tennis-container-bot```
+
+### Check status
+```docker ps -a | grep tennis-container-bot```
