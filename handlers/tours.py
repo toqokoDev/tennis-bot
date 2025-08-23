@@ -17,17 +17,27 @@ router = Router()
 async def browse_tours_start(message: types.Message, state: FSMContext):
     """Начало просмотра туров - выбор страны"""
     users = load_users()
+    current_user_id = str(message.from_user.id)
     
-    # Собираем статистику по странам с активными турами
+    # Собираем статистику по странам с активными турами (исключая текущего пользователя)
     country_stats = {}
     for user_id, user_data in users.items():
+        # Пропускаем текущего пользователя
+        if user_id == current_user_id:
+            continue
+            
         if user_data.get('vacation_tennis', False):
             country = user_data.get('country', '')
             if country:
                 country_stats[country] = country_stats.get(country, 0) + 1
     
     if not country_stats:
-        await message.answer("❌ На данный момент нет активных туров.")
+        await message.answer("❌ На данный момент нет активных туров от других пользователей.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="🎾 Найти партнера на время отдыха",
+                callback_data="create_tour"
+            )]
+        ]))
         return
     
     # Создаем клавиатуру с кнопками стран
