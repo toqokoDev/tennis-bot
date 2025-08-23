@@ -22,7 +22,119 @@ cities_data = load_json("cities.json")
 
 # ---------- Обработчики предложений игры ----------
 @router.callback_query(F.data == "my_offers")
-async def my_offers_handler(callback: types.CallbackQuery):
+async def my_offers_handler(callback: types.CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    profile = get_user_profile_from_storage(user_id)
+    
+    if not profile:
+        await callback.answer("❌ Профиль не найден")
+        return
+    
+    active_games = [game for game in profile.get('games', []) if game.get('active', True)]
+    
+    if not active_games:
+        await callback.answer("❌ У вас нет активных предложений")
+        return
+    
+    # Сохраняем список активных игр в state для навигации
+    await state.update_data(active_games=active_games, current_offer_index=0)
+    
+    # Показываем первое предложение
+    await show_single_offer(callback, state)
+    await callback.answer()
+
+async def show_single_offer(callback: types.CallbackQuery, state: FSMContext):
+    user_data = await state.get_data()
+    active_games = user_data.get('active_games', [])
+    current_index = user_data.get('current_offer_index', 0)
+    
+    if not active_games:
+        await callback.answer("❌ Нет активных предложений")
+        return
+    
+    # Получаем текущее предложение
+    game = active_games[current_index]
+    
+    # Формируем сообщение с предложением
+    response = [
+        f"🎾 Предложение #{game['id']} ({current_index + 1}/{len(active_games)})",
+        f"🏙 Город: {game.get('city', '—')}",
+        f"📅 Дата: {game.get('date', '—')}",
+        f"⏰ Время: {game.get('time', '—')}",
+        f"🔍 Тип: {game.get('type', '—')}",
+        f"💳 Оплата: {game.get('payment_type', '—')}",
+        f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}",
+        f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}"
+    ]
+    
+    if game.get('comment'):
+        response.append(f"💬 Комментарий: {game['comment']}")
+    
+    # Создаем клавиатуру для навигации
+    keyboard_buttons = []
+    
+    # Кнопки навигации (только если больше одного предложения)
+    if len(active_games) > 1:
+        nav_buttons = []
+        if current_index > 0:
+            nav_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data="offer_prev"))
+        if current_index < len(active_games) - 1:
+            nav_buttons.append(InlineKeyboardButton(text="Вперед ➡️", callback_data="offer_next"))
+        if nav_buttons:
+            keyboard_buttons.append(nav_buttons)
+    
+    # Кнопки действий
+    action_buttons = [
+        InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_offer_{game['id']}"),
+        InlineKeyboardButton(text="🔙 Назад к списку", callback_data="back_to_offers_list")
+    ]
+    keyboard_buttons.append(action_buttons)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    
+    try:
+        if hasattr(callback, 'message'):
+            await callback.message.edit_text("\n".join(response), reply_markup=keyboard)
+        else:
+            await callback.message.delete()
+            await callback.answer("\n".join(response), reply_markup=keyboard)
+            
+    except:
+        await callback.message.delete()
+        if hasattr(callback, 'message'):
+            await callback.message.answer("\n".join(response), reply_markup=keyboard)
+        else:
+            await callback.answer("\n".join(response), reply_markup=keyboard)
+
+@router.callback_query(F.data == "offer_prev")
+async def offer_prev_handler(callback: types.CallbackQuery, state: FSMContext):
+    user_data = await state.get_data()
+    current_index = user_data.get('current_offer_index', 0)
+    
+    if current_index > 0:
+        await state.update_data(current_offer_index=current_index - 1)
+        await show_single_offer(callback, state)
+    
+    await callback.answer()
+
+@router.callback_query(F.data == "offer_next")
+async def offer_next_handler(callback: types.CallbackQuery, state: FSMContext):
+    user_data = await state.get_data()
+    active_games = user_data.get('active_games', [])
+    current_index = user_data.get('current_offer_index', 0)
+    
+    if current_index < len(active_games) - 1:
+        await state.update_data(current_offer_index=current_index + 1)
+        await show_single_offer(callback, state)
+    
+    await callback.answer()
+
+@router.callback_query(F.data == "back_to_offers_list")
+async def back_to_offers_list_handler(callback: types.CallbackQuery, state: FSMContext):
+    # Очищаем данные навигации
+    await state.update_data(active_games=None, current_offer_index=None)
+    
+    # Возвращаемся к обычному списку предложений
     user_id = callback.from_user.id
     profile = get_user_profile_from_storage(user_id)
     
@@ -44,27 +156,108 @@ async def my_offers_handler(callback: types.CallbackQuery):
         response.append(f"🏙 Город: {game.get('city', '—')}")
         response.append(f"📅 Дата: {game.get('date', '—')}")
         response.append(f"⏰ Время: {game.get('time', '—')}")
-        response.append(f"🔍 Тип: {game.get('type', '—')}")
-        response.append(f"💳 Оплата: {game.get('payment_type', '—')}")
-        response.append(f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}")
-        response.append(f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}")
-        if game.get('comment'):
-            response.append(f"💬 Комментарий: {game['comment']}")
         response.append("─" * 20)
     
     # Клавиатура для управления предложениями
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="📄 Просмотреть по одному", callback_data="my_offers")],
             [InlineKeyboardButton(text="❌ Удалить предложение", callback_data="delete_offer")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{user_id}")]
         ]
     )
+    
     try:
         await callback.message.delete()
     except:
         pass
+    
     await callback.message.answer("\n".join(response), reply_markup=keyboard)
     await callback.answer()
+
+@router.callback_query(F.data.startswith("delete_offer_"))
+async def delete_offer_single_handler(callback: types.CallbackQuery, state: FSMContext):
+    game_id = callback.data.split("_", maxsplit=2)[2]
+    
+    # Клавиатура подтверждения удаления
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Да", callback_data=f"delete_yes_{game_id}"),
+                InlineKeyboardButton(text="❌ Нет", callback_data="delete_no_single")
+            ]
+        ]
+    )
+    
+    try:
+        await callback.message.delete()
+    except:
+        pass
+    
+    await callback.message.answer(
+        f"❓ Вы уверены, что хотите удалить предложение #{game_id}?",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "delete_no_single")
+async def delete_no_single_handler(callback: types.CallbackQuery, state: FSMContext):
+    # Возвращаемся к просмотру предложения
+    await show_single_offer(callback, state)
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("delete_yes_"))
+async def delete_yes_handler(callback: types.CallbackQuery, state: FSMContext):
+    game_id = callback.data.split("_", maxsplit=2)[2]
+    user_id = callback.from_user.id
+    
+    # Загружаем пользователей
+    users = load_users()
+    user_data = users.get(str(user_id))
+    
+    if not user_data:
+        await callback.answer("❌ Пользователь не найден")
+        return
+    
+    # Помечаем игру как неактивную
+    for game in user_data.get('games', []):
+        if str(game.get('id')) == game_id:
+            game['active'] = False
+            break
+    
+    # Сохраняем изменения
+    users[str(user_id)] = user_data
+    write_users(users)
+    
+    # Обновляем данные в state
+    user_data = await state.get_data()
+    active_games = user_data.get('active_games', [])
+    current_index = user_data.get('current_offer_index', 0)
+    
+    # Удаляем предложение из списка
+    active_games = [game for game in active_games if str(game.get('id')) != game_id]
+    
+    if not active_games:
+        # Если предложений больше нет
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        await callback.message.answer("✅ Предложение успешно удалено! У вас больше нет активных предложений.")
+        await state.update_data(active_games=None, current_offer_index=None)
+        return
+    
+    # Корректируем индекс
+    if current_index >= len(active_games):
+        current_index = len(active_games) - 1
+    
+    await state.update_data(active_games=active_games, current_offer_index=current_index)
+    
+    # Показываем обновленное предложение
+    await show_single_offer(callback, state)
+    await callback.answer()
+
+# Остальной код остается без изменений...
 
 @router.callback_query(F.data == "new_offer")
 async def new_offer_handler(callback: types.CallbackQuery, state: FSMContext):
@@ -76,20 +269,29 @@ async def new_offer_handler(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("❌ Сначала завершите регистрацию")
         return
 
-    # if not users[str(user_id)].get('subscription', {}).get('active', False):
-    #     text = (
-    #         "🔒 <b>Доступ закрыт</b>\n\n"
-    #         "Функция предложения игры доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
-    #         f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
-    #         "Перейдите в раздел '💳 Платежи' для оформления подписки."
-    #     )
+    # Проверяем подписку и количество бесплатных предложений
+    user_data = users.get(str(user_id), {})
+    subscription_active = user_data.get('subscription', {}).get('active', False)
+    
+    if not subscription_active:
+        # Получаем количество созданных бесплатных предложений
+        free_offers_used = user_data.get('free_offers_used', 0)
         
-    #     await callback.message.answer(
-    #         text,
-    #         parse_mode="HTML"
-    #     )
-        
-    #     return
+        if free_offers_used >= 2:
+            text = (
+                "🔒 <b>Доступ закрыт</b>\n\n"
+                "Вы использовали все бесплатные предложения игры (максимум 2).\n\n"
+                "Функция предложения игры доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
+                f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
+                "Перейдите в раздел '💳 Платежи' для оформления подписки."
+            )
+            
+            await callback.message.answer(
+                text,
+                parse_mode="HTML"
+            )
+            await callback.answer()
+            return
     
     # Запускаем процесс создания нового предложения
     country = profile.get('country', '')
@@ -132,6 +334,28 @@ async def offer_game_command(message: types.Message, state: FSMContext):
     if not user_data:
         await message.answer("❌ Сначала зарегистрируйтесь с помощью /start")
         return
+    
+    # Проверяем подписку и количество бесплатных предложений
+    subscription_active = user_data.get('subscription', {}).get('active', False)
+    
+    if not subscription_active:
+        # Получаем количество созданных бесплатных предложений
+        free_offers_used = user_data.get('free_offers_used', 0)
+        
+        if free_offers_used >= 2:
+            text = (
+                "🔒 <b>Доступ закрыт</b>\n\n"
+                "Вы использовали все бесплатные предложения игры (максимум 2).\n\n"
+                "Функция предложения игры доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
+                f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
+                "Перейдите в раздел '💳 Платежи' для оформления подписки."
+            )
+            
+            await message.answer(
+                text,
+                parse_mode="HTML"
+            )
+            return
     
     country = user_data.get('country', '')
     city = user_data.get('city', '')
@@ -281,7 +505,7 @@ async def process_game_type(callback: types.CallbackQuery, state: FSMContext):
     buttons = [[InlineKeyboardButton(text=pt, callback_data=f"paytype_{pt.split()[1]}")] for pt in payment_types]
     await show_current_data(
         callback.message, state,
-        "💳 Выберите тип оплаты:",
+        "💳 Выберите тип оплата:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(GameOfferStates.PAYMENT_TYPE)
@@ -355,14 +579,53 @@ async def process_game_comment(message: types.Message, state: FSMContext):
         "comment": user_data.get('game_comment')
     }
     
-    save_user_game(message.from_user.id, game_data)
+    # Сохраняем игру
+    game_id = save_user_game(message.from_user.id, game_data)
+    
+    # Обновляем счетчик бесплатных предложений, если нет подписки
+    users = load_users()
+    user_id_str = str(message.from_user.id)
+    
+    if user_id_str in users:
+        if not users[user_id_str].get('subscription', {}).get('active', False):
+            free_offers_used = users[user_id_str].get('free_offers_used', 0)
+            users[user_id_str]['free_offers_used'] = free_offers_used + 1
+            write_users(users)
+    
     await state.clear()
     delete_session(message.from_user.id)
     
-    await message.answer("✅ Предложение игры успешно создано!")
+    # Формируем информационное сообщение о созданной игре
+    response = [
+        "✅ Предложение игры успешно создано!\n\n",
+        f"🎾 Предложение #{game_id}",
+        f"🏙 Город: {game_data.get('city', '—')}",
+        f"📅 Дата: {game_data.get('date', '—')}",
+        f"⏰ Время: {game_data.get('time', '—')}",
+        f"🔍 Тип: {game_data.get('type', '—')}",
+        f"💳 Оплата: {game_data.get('payment_type', '—')}",
+        f"🏆 На счет: {'Да' if game_data.get('competitive') else 'Нет'}",
+        f"🔄 Повтор: {'Да' if game_data.get('repeat') else 'Нет'}"
+    ]
+    
+    if game_data.get('comment'):
+        response.append(f"💬 Комментарий: {game_data['comment']}")
+    
+    # Добавляем информацию о статусе подписки
+    users = load_users()
+    user_data = users.get(str(message.from_user.id), {})
+    subscription_active = user_data.get('subscription', {}).get('active', False)
+    
+    if not subscription_active:
+        free_offers_used = user_data.get('free_offers_used', 0)
+        remaining_offers = max(0, 2 - free_offers_used)
+        response.append(f"\n📊 Бесплатных предложений осталось: {remaining_offers}/2")
+        response.append("💳 Оформите подписку для неограниченного создания предложений!")
+    
+    await message.answer("\n".join(response))
 
 @router.message(F.text == "📋 Мои предложения")
-async def list_my_games(message: types.Message):
+async def list_my_games(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     games = get_user_games(user_id)
     
@@ -376,25 +639,53 @@ async def list_my_games(message: types.Message):
         await message.answer("❌ У вас нет активных предложений игры.")
         return
     
-    response = ["📋 Ваши активные предложения игры:\n"]
+    # Сохраняем список активных игр в state для навигации
+    await state.update_data(active_games=active_games, current_offer_index=0)
     
-    for game in active_games:
-        response.append(f"🎾 Предложение #{game['id']}")
-        response.append(f"🏙 Город: {game.get('city', '—')}")
-        response.append(f"📅 Дата: {game.get('date', '—')}")
-        response.append(f"⏰ Время: {game.get('time', '—')}")
-        response.append(f"🔍 Тип: {game.get('type', '—')}")
-        response.append(f"💳 Оплата: {game.get('payment_type', '—')}")
-        response.append(f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}")
-        response.append(f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}")
-        if game.get('comment'):
-            response.append(f"💬 Комментарий: {game['comment']}")
-        response.append("─" * 20)
+    # Показываем первое предложение
+    response = []
+    game = active_games[0]
     
-    await message.answer("\n".join(response))
+    response = [
+        f"🎾 Предложение #{game['id']} (1/{len(active_games)})",
+        f"🏙 Город: {game.get('city', '—')}",
+        f"📅 Дата: {game.get('date', '—')}",
+        f"⏰ Время: {game.get('time', '—')}",
+        f"🔍 Тип: {game.get('type', '—')}",
+        f"💳 Оплата: {game.get('payment_type', '—')}",
+        f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}",
+        f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}"
+    ]
+    
+    if game.get('comment'):
+        response.append(f"💬 Комментарий: {game['comment']}")
+    
+    # Создаем клавиатуру для навигации
+    keyboard_buttons = []
+    
+    # Кнопки навигации (только если больше одного предложения)
+    if len(active_games) > 1:
+        nav_buttons = []
+        if 0 > 0:
+            nav_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data="offer_prev"))
+        if 0 < len(active_games) - 1:
+            nav_buttons.append(InlineKeyboardButton(text="Вперед ➡️", callback_data="offer_next"))
+        if nav_buttons:
+            keyboard_buttons.append(nav_buttons)
+    
+    # Кнопки действий
+    action_buttons = [
+        InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_offer_{game['id']}"),
+        InlineKeyboardButton(text="🔙 Назад к списку", callback_data="back_to_offers_list")
+    ]
+    keyboard_buttons.append(action_buttons)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    
+    await message.answer("\n".join(response), reply_markup=keyboard)
 
 @router.callback_query(F.data == "delete_offer")
-async def delete_offer_handler(callback: types.CallbackQuery, state: FSMContext):
+async def delete_offer_handler(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     profile = get_user_profile_from_storage(user_id)
     
@@ -477,37 +768,6 @@ async def confirm_delete_handler(callback: types.CallbackQuery):
         f"❓ Вы уверены, что хотите удалить предложение #{game_id}?",
         reply_markup=keyboard
     )
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("delete_yes_"))
-async def delete_yes_handler(callback: types.CallbackQuery):
-    game_id = callback.data.split("_", maxsplit=2)[2]
-    user_id = callback.from_user.id
-    
-    # Загружаем пользователей
-    users = load_users()
-    user_data = users.get(str(user_id))
-    
-    if not user_data:
-        await callback.answer("❌ Пользователь не найден")
-        return
-    
-    # Помечаем игру как неактивную
-    for game in user_data.get('games', []):
-        if str(game.get('id')) == game_id:
-            game['active'] = False
-            break
-    
-    # Сохраняем изменения
-    users[str(user_id)] = user_data
-    write_users(users)
-    
-    try:
-        await callback.message.delete()
-    except:
-        pass
-    
-    await callback.message.answer("✅ Предложение успешно удалено!")
     await callback.answer()
 
 @router.callback_query(F.data == "delete_no")

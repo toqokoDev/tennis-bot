@@ -27,6 +27,8 @@ def save_user_game(user_id: int, game_data: dict) -> None:
     users[user_key]['games'].append(game_data)
     write_users(users)
 
+    return game_data['id']
+
 def update_user_game(user_id: int, game_id: int, updates: dict) -> None:
     """Обновить данные игры"""
     users = load_users()
