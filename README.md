@@ -4,7 +4,7 @@ Telegram-бот для организации теннисных матчей и
 ## Quick Start
 
 ### Installation & Deployment
-```docker build -t tennis-bot . && docker run -d -p 8850:8850 --name tennis-container-bot tennis-bot```
+```docker build -t tennis-bot . && docker run -d --name tennis-container-bot --env-file .env tennis-bot```
 
 ### Stop and remove container
 ```docker stop tennis-container-bot && docker rm tennis-container-bot```
