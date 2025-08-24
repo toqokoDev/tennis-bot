@@ -162,11 +162,13 @@ async def process_phone(message: Message, state: FSMContext):
     await state.update_data(prev_msg_id=msg.message_id)
 
     # Спрашиваем вид спорта после телефона
-    buttons = [
-        [InlineKeyboardButton(text=sports[i], callback_data=f"sport_{sports[i]}"), 
-        InlineKeyboardButton(text=sports[i+1], callback_data=f"sport_{sports[i+1]}")]
-        for i in range(0, len(sports), 2)
-    ]
+    buttons = []
+    row = []
+    for i, sport in enumerate(sports):
+        row.append(InlineKeyboardButton(text=sport, callback_data=f"sport_{sport}"))
+        if (i + 1) % 2 == 0 or i == len(sports) - 1:  # меняем 4 на 2
+            buttons.append(row)
+            row = []
 
     await show_current_data(
         message, state,
