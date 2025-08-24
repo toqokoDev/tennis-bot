@@ -647,6 +647,15 @@ async def handle_video(message: types.Message, state: FSMContext):
     await confirm_score(message, state)
 
 async def confirm_score(message_or_callback: Union[types.Message, types.CallbackQuery], state: FSMContext):
+    """
+    Подтверждение счета: пересчёт рейтингов, формирование итогового сообщения,
+    сохранение игры в историю и обновление пользователей.
+    Исправления:
+      - Всегда фиксируем старые рейтинги ДО любых изменений.
+      - rating_changes в game_data считаем на основе разницы (новый - старый), а не по данным уже перезаписанных объектов.
+      - Аккуратно обновляем users[...] без перезаписи whole-объектов deep copy.
+    """
+    # Разворачиваем message/callback
     if isinstance(message_or_callback, types.CallbackQuery):
         message = message_or_callback.message
         callback = message_or_callback
@@ -655,17 +664,20 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         message = message_or_callback
         callback = None
         bot = message.bot
-    
+
+    # Данные состояния
     data = await state.get_data()
-    game_type = data.get('game_type')
+    game_type: str = data.get('game_type')            # 'single' | 'double'
     score = data.get('score')
     sets = data.get('sets')
     game_diff = data.get('game_difference')
-    winner_side = data.get('winner_side')
-    
+    winner_side = data.get('winner_side')             # 'team1' | 'team2'
+
+    # Загрузка пользователей и текущего
     users = load_users()
-    current_user = copy.deepcopy(users.get(str(message.chat.id), {}))
-    
+    current_id = str(message.chat.id)
+    current_user = copy.deepcopy(users.get(current_id, {}))
+
     if not current_user:
         if callback:
             await callback.message.edit_text("Ошибка: ваш профиль не найден")
@@ -673,150 +685,242 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             await message.answer("Ошибка: ваш профиль не найден")
         await state.clear()
         return
-    
-    # Генерируем уникальный ID для игры
+
+    # Уникальный ID игры
     game_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # Сохраняем медиафайлы, если есть
+
+    # Сохраняем медиафайл (если есть)
     media_filename = None
-    if 'photo_id' in data and bot:
-        try:
+    try:
+        if 'photo_id' in data and bot:
             media_filename = await save_media_file(bot, data['photo_id'], 'photo', game_id)
-        except Exception as e:
-            print(f"Ошибка при сохранении фото: {e}")
-    elif 'video_id' in data and bot:
-        try:
+        elif 'video_id' in data and bot:
             media_filename = await save_media_file(bot, data['video_id'], 'video', game_id)
-        except Exception as e:
-            print(f"Ошибка при сохранении видео: {e}")
-    
-    # Расчет рейтинга и формирование результата
+    except Exception as e:
+        print(f"Ошибка при сохранении медиа: {e}")
+
+    # Утилиты для ID и получения рейтингов
+    def pid(player_dict: dict | None) -> str | None:
+        if not player_dict:
+            return None
+        return str(player_dict.get('telegram_id'))
+
+    def rating_of(player_dict: dict | None) -> float:
+        """Получить рейтинг игрока из users (если есть), иначе из самого объекта."""
+        if not player_dict:
+            return 0.0
+        _id = pid(player_dict)
+        if _id and _id in users:
+            return float(users[_id].get('rating_points', 0))
+        return float(player_dict.get('rating_points', 0))
+
+    # Фиксируем старые рейтинги ДО изменений
+    old_ratings: dict[str, float] = {}
+    old_ratings[current_id] = float(current_user.get('rating_points', 0))
+
+    partner = data.get('partner') if game_type == 'double' else None
+    opponent1 = data.get('opponent1')
+    opponent2 = data.get('opponent2') if game_type == 'double' else None
+
+    if partner:
+        pid_partner = pid(partner)
+        if pid_partner:
+            old_ratings[pid_partner] = rating_of(partner)
+    if opponent1:
+        pid_op1 = pid(opponent1)
+        if pid_op1:
+            old_ratings[pid_op1] = rating_of(opponent1)
+    if opponent2:
+        pid_op2 = pid(opponent2)
+        if pid_op2:
+            old_ratings[pid_op2] = rating_of(opponent2)
+
+    # Готовим переменные для результата
+    result_text = ""
+    rating_changes_for_game: dict[str, float] = {}
+
+    # ---- ОДИНОЧНАЯ ИГРА ----
     if game_type == 'single':
-        opponent = data.get('opponent1')
-        
-        # Сохраняем старые рейтинги для возможного отката
-        await state.update_data(
-            old_rating=current_user.get('rating_points', 0),
-            opponent_old_rating=opponent.get('rating_points', 0)
-        )
-        
-        if winner_side == "team1":
-            winner_points = current_user.get('rating_points', 0)
-            loser_points = opponent.get('rating_points', 0)
+        opponent = opponent1
+        op_id = pid(opponent)
+        if not opponent or not op_id:
+            # Без соперника не можем подтвердить
+            err = "Ошибка: соперник не выбран"
+            if callback:
+                await callback.message.edit_text(err)
+            else:
+                await message.answer(err)
+            await state.clear()
+            return
+
+        # Старые рейтинги
+        curr_old = old_ratings[current_id]
+        opp_old = old_ratings[op_id]
+
+        # Кто победил
+        if winner_side == "team1":  # team1 = текущий пользователь
             winner_user = current_user
             loser_user = opponent
-        else:
-            winner_points = opponent.get('rating_points', 0)
-            loser_points = current_user.get('rating_points', 0)
+            winner_old = curr_old
+            loser_old = opp_old
+        else:  # победил соперник
             winner_user = opponent
             loser_user = current_user
-        
+            winner_old = opp_old
+            loser_old = curr_old
+
+        # Пересчёт рейтингов
         new_winner_points, new_loser_points = calculate_new_ratings(
-            winner_points, loser_points, game_diff
-        )
-        
-        # Сохраняем изменения рейтинга для отображения
-        await state.update_data(
-            rating_change=new_winner_points - winner_points if winner_side == "team1" else new_loser_points - loser_points,
-            opponent_rating_change=new_loser_points - loser_points if winner_side == "team1" else new_winner_points - winner_points
-        )
-        
-        # Обновляем рейтинги в словаре users
-        if winner_side == "team1":
-            current_user['rating_points'] = new_winner_points
-            if opponent['telegram_id'] in users:
-                users[opponent['telegram_id']]['rating_points'] = new_loser_points
-        else:
-            current_user['rating_points'] = new_loser_points
-            if opponent['telegram_id'] in users:
-                users[opponent['telegram_id']]['rating_points'] = new_winner_points
-        
-        # Формируем сообщение (ИЗМЕНЕНА ЛОГИКА ВЫВОДА)
-        result_text = (
-            f"🎯 Одиночная игра\n\n"
-            f"👤 {create_user_profile_link(winner_user, winner_user.get('telegram_id', ''))}\n"
-            f"🆚\n"
-            f"👤 {create_user_profile_link(loser_user, loser_user.get('telegram_id', ''))}\n\n"
-            f"📊 Счет: {score}\n\n"
-            f"📈 Изменение рейтинга:\n"
-            f"• {winner_user.get('first_name', '')}: {winner_points} → {new_winner_points} "
-            f"({'+' if new_winner_points > winner_points else ''}{new_winner_points - winner_points:.1f})\n"
-            f"• {loser_user.get('first_name', '')}: {loser_points} → {new_loser_points} "
-            f"({'+' if new_loser_points > loser_points else ''}{new_loser_points - loser_points:.1f})"
+            winner_old, loser_old, game_diff
         )
 
-        users[str(message.chat.id)] = current_user
-        
-    else:  # Парная игра
-        partner = data.get('partner')
-        opponent1 = data.get('opponent1')
-        opponent2 = data.get('opponent2')
-        
-        # Расчет среднего рейтинга для команд
-        team1_avg = (current_user.get('rating_points', 0) + partner.get('rating_points', 0)) / 2
-        team2_avg = (opponent1.get('rating_points', 0) + opponent2.get('rating_points', 0)) / 2
-        
+        # Обновляем users по факту победителя/проигравшего
         if winner_side == "team1":
-            winner_points = team1_avg
-            loser_points = team2_avg
+            # Текущий пользователь — победитель
+            users[current_id]['rating_points'] = new_winner_points
+            if op_id in users:
+                users[op_id]['rating_points'] = new_loser_points
+
+            # Дельты для game_data
+            rating_changes_for_game[current_id] = float(new_winner_points - curr_old)
+            rating_changes_for_game[op_id] = float(new_loser_points - opp_old)
+
+            # Для state (если используется дальше)
+            await state.update_data(
+                rating_change=rating_changes_for_game[current_id],
+                opponent_rating_change=rating_changes_for_game[op_id]
+            )
+        else:
+            # Соперник — победитель
+            users[current_id]['rating_points'] = new_loser_points
+            if op_id in users:
+                users[op_id]['rating_points'] = new_winner_points
+
+            rating_changes_for_game[current_id] = float(new_loser_points - curr_old)
+            rating_changes_for_game[op_id] = float(new_winner_points - opp_old)
+
+            await state.update_data(
+                rating_change=rating_changes_for_game[current_id],
+                opponent_rating_change=rating_changes_for_game[op_id]
+            )
+
+        # Текст результата
+        # Показываем сверху победителя
+        winner_name_link = create_user_profile_link(winner_user, pid(winner_user) or "")
+        loser_name_link = create_user_profile_link(loser_user, pid(loser_user) or "")
+
+        result_text = (
+            f"🎯 Одиночная игра\n\n"
+            f"👤 {winner_name_link}\n"
+            f"🆚\n"
+            f"👤 {loser_name_link}\n\n"
+            f"📊 Счёт: {score}\n\n"
+            f"📈 Изменение рейтинга:\n"
+            f"• {winner_user.get('first_name', '')}: {winner_old:.1f} → "
+            f"{(winner_old + (new_winner_points - winner_old)):.1f} "
+            f"({'+' if (new_winner_points - winner_old) > 0 else ''}{(new_winner_points - winner_old):.1f})\n"
+            f"• {loser_user.get('first_name', '')}: {loser_old:.1f} → "
+            f"{(loser_old + (new_loser_points - loser_old)):.1f} "
+            f"({'+' if (new_loser_points - loser_old) > 0 else ''}{(new_loser_points - loser_old):.1f})"
+        )
+
+    # ---- ПАРНАЯ ИГРА ----
+    else:
+        # Проверим наличие всех участников
+        pid_partner = pid(partner)
+        pid_op1 = pid(opponent1)
+        pid_op2 = pid(opponent2)
+        if not (pid_partner and pid_op1 and pid_op2):
+            err = "Ошибка: для парной игры должны быть выбран(ы) партнёр и оба соперника"
+            if callback:
+                await callback.message.edit_text(err)
+            else:
+                await message.answer(err)
+            await state.clear()
+            return
+
+        # Средние рейтинги команд (старые)
+        team1_old_avg = (old_ratings[current_id] + old_ratings[pid_partner]) / 2
+        team2_old_avg = (old_ratings[pid_op1] + old_ratings[pid_op2]) / 2
+
+        if winner_side == "team1":
             winner_team = [current_user, partner]
             loser_team = [opponent1, opponent2]
+            winner_old_avg = team1_old_avg
+            loser_old_avg = team2_old_avg
         else:
-            winner_points = team2_avg
-            loser_points = team1_avg
             winner_team = [opponent1, opponent2]
             loser_team = [current_user, partner]
-        
-        new_winner_points, new_loser_points = calculate_new_ratings(
-            winner_points, loser_points, game_diff
+            winner_old_avg = team2_old_avg
+            loser_old_avg = team1_old_avg
+
+        # Пересчёт рейтингов для средних значений
+        new_winner_avg, new_loser_avg = calculate_new_ratings(
+            winner_old_avg, loser_old_avg, game_diff
         )
-        
-        # Распределяем изменение рейтинга пропорционально
-        points_change_winner = new_winner_points - winner_points
-        points_change_loser = new_loser_points - loser_points
-        
-        # Сохраняем старые рейтинги для возможного отката
-        old_ratings = {
-            str(message.chat.id): current_user.get('rating_points', 0),
-            partner['telegram_id']: partner.get('rating_points', 0),
-            opponent1['telegram_id']: opponent1.get('rating_points', 0),
-            opponent2['telegram_id']: opponent2.get('rating_points', 0)
-        }
-        
-        await state.update_data(old_ratings=old_ratings)
-        
-        # Обновляем рейтинги
-        for player in winner_team:
-            if str(player['telegram_id']) in users:
-                users[str(player['telegram_id'])]['rating_points'] += points_change_winner
-        
-        for player in loser_team:
-            if str(player['telegram_id']) in users:
-                users[str(player['telegram_id'])]['rating_points'] += points_change_loser
-        
-        # Формируем сообщение (ИЗМЕНЕНА ЛОГИКА ВЫВОДА)
+
+        # Дельты (распределяем поровну каждому участнику своей команды — как и у вас ранее)
+        delta_winner_each = new_winner_avg - winner_old_avg
+        delta_loser_each = new_loser_avg - loser_old_avg
+
+        # Обновляем users, добавляя дельту каждому игроку соответствующей команды
+        for p in winner_team:
+            _id = pid(p)
+            if _id and _id in users:
+                users[_id]['rating_points'] = float(users[_id].get('rating_points', 0)) + float(delta_winner_each)
+
+        for p in loser_team:
+            _id = pid(p)
+            if _id and _id in users:
+                users[_id]['rating_points'] = float(users[_id].get('rating_points', 0)) + float(delta_loser_each)
+
+        # Считаем rating_changes_for_game на основе old_ratings
+        for p in (winner_team + loser_team):
+            _id = pid(p)
+            if not _id:
+                continue
+            old_val = old_ratings.get(_id, float(p.get('rating_points', 0)))
+            # Зная, к какой команде принадлежит p, применяем нужную дельту
+            d = delta_winner_each if p in winner_team else delta_loser_each
+            rating_changes_for_game[_id] = float(d)
+
+        # Готовим текст результата
+        def line_player(player_dict: dict) -> str:
+            _id = pid(player_dict) or ""
+            name_link = create_user_profile_link(player_dict, _id)
+            old_val = old_ratings.get(_id, rating_of(player_dict))
+            delta = rating_changes_for_game.get(_id, 0.0)
+            new_val = old_val + delta
+            sign = '+' if delta > 0 else ''
+            return f"• {name_link}: {old_val:.1f} → {new_val:.1f} ({sign}{delta:.1f})"
+
         result_text = (
             f"👥 Парная игра\n\n"
             f"Команда 1:\n"
-            f"• {create_user_profile_link(current_user, current_user.get('telegram_id', ''))}\n"
-            f"• {create_user_profile_link(partner, partner.get('telegram_id', ''))}\n\n"
+            f"• {create_user_profile_link(current_user, current_id)}\n"
+            f"• {create_user_profile_link(partner, pid_partner)}\n\n"
             f"Команда 2:\n"
-            f"• {create_user_profile_link(opponent1, opponent1.get('telegram_id', ''))}\n"
-            f"• {create_user_profile_link(opponent2, opponent2.get('telegram_id', ''))}\n\n"
-            f"📊 Счет: {score}\n\n"
+            f"• {create_user_profile_link(opponent1, pid_op1)}\n"
+            f"• {create_user_profile_link(opponent2, pid_op2)}\n\n"
+            f"📊 Счёт: {score}\n\n"
             f"📈 Изменение рейтинга:\n"
         )
-        
-        # Добавляем изменения рейтинга для всех игроков
-        for player in winner_team + loser_team:
-            old_rating = old_ratings.get(str(player['telegram_id']), player.get('rating_points', 0) - points_change_winner)
-            new_rating = users[str(player['telegram_id'])]['rating_points']
-            change = new_rating - old_rating
-            
-            result_text += f"• {player.get('first_name', '')}: {old_rating:.0f} → {new_rating:.0f} ({'+' if change > 0 else ''}{change:.1f})\n"
-    
-    # Сохраняем игру в истории
-    games = load_games()
+
+        # Добавляем строки с изменениями для всех игроков (в порядке победители, потом проигравшие)
+        for p in (winner_team + loser_team):
+            result_text += line_player(p) + "\n"
+
+        # Для обратных действий (если у вас где-то есть откат) сохраню old_ratings в state
+        await state.update_data(old_ratings=old_ratings)
+
+    # ---- Сохранение игры в историю ----
+    # Формируем списки игроков по командам
+    players_block = {
+        'team1': [current_id] + ([pid_partner] if game_type == 'double' and pid_partner else []),
+        'team2': [pid_op1] + ([pid_op2] if game_type == 'double' and pid_op2 else [])
+    }
+
+    # game_data.rating_changes — используем уже посчитанные дельты (новый - старый)
     game_data = {
         'id': game_id,
         'date': datetime.now().isoformat(),
@@ -824,55 +928,34 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         'score': score,
         'sets': sets,
         'media_filename': media_filename,
-        'players': {
-            'team1': [str(message.chat.id)] + ([data.get('partner', {}).get('telegram_id')] if game_type == 'double' else []),
-            'team2': [data.get('opponent1', {}).get('telegram_id')] + ([data.get('opponent2', {}).get('telegram_id')] if game_type == 'double' else [])
-        },
-        'rating_changes': {
-            str(message.chat.id): (users[str(message.chat.id)]['rating_points'] - current_user.get('rating_points', 0)) * -1
-        }
-    } 
-    
-    if game_type == 'double':
-        game_data['rating_changes'][data.get('partner', {}).get('telegram_id')] = (
-            users[data.get('partner', {}).get('telegram_id')]['rating_points'] - partner.get('rating_points', 0)
-        )
-    
-    opponent1_data = data.get('opponent1', {})
-    if opponent1_data:
-        game_data['rating_changes'][opponent1_data.get('telegram_id')] = (
-            users[opponent1_data.get('telegram_id')]['rating_points'] - opponent1_data.get('rating_points', 0)
-        )
-    
-    if game_type == 'double':
-        opponent2_data = data.get('opponent2', {})
-        if opponent2_data:
-            game_data['rating_changes'][opponent2_data.get('telegram_id')] = (
-                users[opponent2_data.get('telegram_id')]['rating_points'] - opponent2_data.get('rating_points', 0)
-            )
-    
+        'players': players_block,
+        'rating_changes': rating_changes_for_game
+    }
 
+    games = load_games()
     games.append(game_data)
+
+    # Сохраняем игры и пользователей
     save_games(games)
     save_users(users)
-    
+
+    # Обновляем state — пригодится на экране подтверждения
     await state.update_data(result_text=result_text, game_id=game_id)
     await state.set_state(AddScoreState.confirming_score)
-    
+
     keyboard = create_confirmation_keyboard()
-    
-    # Подготавливаем данные медиа для отправки
+
+    # Подготовка медиа
     media_data = {}
     if 'photo_id' in data:
         media_data['photo_id'] = data['photo_id']
     elif 'video_id' in data:
         media_data['video_id'] = data['video_id']
-    
+
+    # Отправка/редактирование сообщения
     if callback:
-        # Если это callback, используем специальную функцию для редактирования
         await edit_media_message(callback, result_text, keyboard, media_data)
     else:
-        # Если это сообщение, отправляем новое
         if 'photo_id' in data:
             await message.answer_photo(
                 data['photo_id'],

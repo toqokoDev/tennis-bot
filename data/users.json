@@ -12,31 +12,20 @@
     "role": "Игрок",
     "sport": "Настольный теннис",
     "gender": "Мужской",
-    "player_level": "2.0",
-    "rating_points": 900,
+    "player_level": "3.0",
+    "rating_points": 1200,
     "price": null,
-    "photo_path": "data/user_photos/1829352344_1756013527.jpg",
+    "photo_path": "data/user_photos/1829352344_1756061897.jpg",
     "games_played": 0,
     "games_wins": 0,
     "default_payment": "Пополам",
     "show_in_search": true,
-    "profile_comment": null,
-    "games": [
-      {
-        "city": "Могилёв",
-        "date": "25.08.2025",
-        "time": "18:00",
-        "type": "Одиночная",
-        "payment_type": "Соперник",
-        "competitive": true,
-        "repeat": false,
-        "comment": null,
-        "id": 1,
-        "created_at": "2025-08-24T08:32:25",
-        "active": true
-      }
-    ],
-    "created_at": "2025-08-24T08:32:12",
-    "free_offers_used": 1
+    "profile_comment": "Я создатель",
+    "games": [],
+    "created_at": "2025-08-24T21:58:42",
+    "vacation_tennis": true,
+    "vacation_start": "20.09.2025",
+    "vacation_end": "30.09.2025",
+    "vacation_comment": null
   }
 }

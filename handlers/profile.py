@@ -23,7 +23,7 @@ countries = list(cities_data.keys())
 # Добавляем обработчики для кнопок
 @router.callback_query(F.data == "edit_profile")
 async def edit_profile_handler(callback: types.CallbackQuery, state: FSMContext):
-    user_id = callback.from_user.id
+    user_id = callback.message.chat.id
     profile = get_user_profile_from_storage(user_id)
     
     if not profile:
@@ -132,7 +132,7 @@ async def save_comment_edit(message: types.Message, state: FSMContext):
 async def save_payment_edit(callback: types.CallbackQuery):
     payment = callback.data.split("_", 2)[2]
     users = load_users()
-    user_key = str(callback.from_user.id)
+    user_key = str(callback.message.chat.id)
     
     if user_key in users:
         users[user_key]['default_payment'] = payment
@@ -236,7 +236,7 @@ async def process_city_input(message: types.Message, state: FSMContext):
 
 async def save_location(callback: types.CallbackQuery, city: str, state: FSMContext):
     users = load_users()
-    user_key = str(callback.from_user.id)
+    user_key = str(callback.message.chat.id)
     
     if user_key in users:
         data = await state.get_data()
@@ -282,7 +282,7 @@ async def save_location_message(message: types.Message, city: str, state: FSMCon
 async def edit_photo_handler(callback: types.CallbackQuery, state: FSMContext):
     action = callback.data.split("_", 2)[2]
     users = load_users()
-    user_key = str(callback.from_user.id)
+    user_key = str(callback.message.chat.id)
     
     if user_key not in users:
         await callback.answer("❌ Профиль не найден", reply_markup=base_keyboard)
@@ -304,11 +304,11 @@ async def edit_photo_handler(callback: types.CallbackQuery, state: FSMContext):
     elif action == "profile":
         # Логика для установки фото из профиля Telegram
         try:
-            photos = await callback.message.bot.get_user_profile_photos(callback.from_user.id, limit=1)
+            photos = await callback.message.bot.get_user_profile_photos(callback.message.chat.id, limit=1)
             if photos.total_count > 0:
                 file_id = photos.photos[0][-1].file_id
                 ts = int(datetime.now().timestamp())
-                filename = f"{callback.from_user.id}_{ts}.jpg"
+                filename = f"{callback.message.chat.id}_{ts}.jpg"
                 dest_path = PHOTOS_DIR / filename
                 ok = await download_photo_to_path(callback.message.bot, file_id, dest_path)
                 if ok:

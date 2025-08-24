@@ -62,7 +62,7 @@ async def handle_payments(message: types.Message, state: FSMContext):
 @router.callback_query(F.data == "buy_subscription")
 async def start_payment_process(callback: types.CallbackQuery, state: FSMContext):
     # Проверяем наличие активной подписки перед началом оплаты
-    user_id = callback.from_user.id
+    user_id = callback.message.chat.id
     users = load_users()
     
     if str(user_id) in users and users[str(user_id)].get('subscription', {}).get('active', False):
@@ -123,7 +123,7 @@ async def confirm_payment(callback: types.CallbackQuery, state: FSMContext):
     
     if payment.status == "succeeded":
         # Дополнительная проверка перед активацией подписки
-        user_id = callback.from_user.id
+        user_id = callback.message.chat.id
         users = load_users()
         
         if str(user_id) in users and users[str(user_id)].get('subscription', {}).get('active', False):
@@ -152,7 +152,7 @@ async def confirm_payment(callback: types.CallbackQuery, state: FSMContext):
         )
         
         # Сохраняем информацию о подписке в базе данных
-        user_id = callback.from_user.id
+        user_id = callback.message.chat.id
         users = load_users()
         if str(user_id) not in users:
             users[str(user_id)] = {}
