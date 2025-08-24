@@ -155,7 +155,7 @@ async def process_search_city_partner(callback: types.CallbackQuery, state: FSMC
     await state.update_data(search_city=city)
     
     # Получаем вид спорта из профиля текущего пользователя
-    current_user_profile = get_user_profile_from_storage(callback.from_user.id)
+    current_user_profile = get_user_profile_from_storage(callback.message.chat.id)
     if current_user_profile and 'sport' in current_user_profile:
         await state.update_data(sport_type=current_user_profile['sport'])
         await show_gender_selection(callback.message, state)

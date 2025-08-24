@@ -301,7 +301,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
         text += f"💬 Комментарий: {game['comment']}\n"
     
     # Добавляем ID для админа
-    if is_admin(callback.from_user.id):
+    if is_admin(callback.message.chat.id):
         text += f"\n🆔 ID предложения: `{game_id}`"
         text += f"\n🆔 ID пользователя: `{user_id}`"
     
@@ -309,7 +309,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     keyboard_buttons = []
     
     # Кнопка отклика (только если это не свое предложение)
-    if str(callback.from_user.id) != user_id:
+    if str(callback.message.chat.id) != user_id:
         keyboard_buttons.append([
             InlineKeyboardButton(
                 text="✅ Откликнуться на предложение", 

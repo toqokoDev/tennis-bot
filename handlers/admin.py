@@ -97,10 +97,69 @@ async def delete_all_offers_cmd(message: Message):
         keyboard
     )
 
+# Команда для просмотра забаненных пользователей
+@admin_router.message(Command("banned_users"))
+async def banned_users_cmd(message: Message):
+    if not is_admin(message.from_user.id):
+        await safe_send_message(message, "❌ У вас нет прав администратора")
+        return
+    
+    banned_users = load_banned_users()
+    
+    if not banned_users:
+        await safe_send_message(message, "📋 Список забаненных пользователей пуст.")
+        return
+    
+    text = "🚫 Забаненные пользователи:\n\n"
+    for user_id, ban_data in banned_users.items():
+        text += f"👤 {ban_data.get('first_name', '')} {ban_data.get('last_name', '')}\n"
+        text += f"📞 {ban_data.get('phone', '')}\n"
+        text += f"🆔 ID: {user_id}\n"
+        text += f"⏰ Забанен: {ban_data.get('banned_at', 'Неизвестно')}\n"
+        text += "─" * 20 + "\n"
+    
+    # Добавляем кнопку для разбана
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔓 Разбанить пользователя", callback_data="admin_unban_menu")
+    builder.button(text="🗑️ Очистить список банов", callback_data="admin_clear_all_bans")
+    builder.adjust(1)
+    
+    await safe_send_message(message, text, builder.as_markup())
+
+# Команда для разбана пользователя
+@admin_router.message(Command("unban_user"))
+async def unban_user_cmd(message: Message):
+    if not is_admin(message.from_user.id):
+        await safe_send_message(message, "❌ У вас нет прав администратора")
+        return
+    
+    await show_unban_menu(message)
+
+async def show_unban_menu(message: Message):
+    banned_users = load_banned_users()
+    
+    if not banned_users:
+        await safe_send_message(message, "📋 Список забаненных пользователей пуст.")
+        return
+    
+    builder = InlineKeyboardBuilder()
+    for user_id, ban_data in banned_users.items():
+        name = f"{ban_data.get('first_name', '')} {ban_data.get('last_name', '')}"
+        builder.button(text=f"🔓 {name}", callback_data=f"admin_unban_user:{user_id}")
+    
+    builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
+    builder.adjust(1)
+    
+    await safe_send_message(
+        message,
+        "🔓 Выберите пользователя для разбана:",
+        builder.as_markup()
+    )
+
 # Обработка подтверждения удаления всех пользователей
 @admin_router.callback_query(F.data == "admin_confirm_delete_all_users")
 async def confirm_delete_all_users(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
+    if not is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
@@ -130,7 +189,7 @@ async def confirm_delete_all_users(callback: CallbackQuery):
 # Обработка подтверждения удаления всех игр
 @admin_router.callback_query(F.data == "admin_confirm_delete_all_games")
 async def confirm_delete_all_games(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
+    if not is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
@@ -159,7 +218,7 @@ async def confirm_delete_all_games(callback: CallbackQuery):
 # Обработка подтверждения удаления всех предложений
 @admin_router.callback_query(F.data == "admin_confirm_delete_all_offers")
 async def confirm_delete_all_offers(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
+    if not is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
@@ -187,7 +246,8 @@ def get_admin_keyboard():
     builder.button(text="⚠️ Удалить ВСЕХ пользователей", callback_data="admin_delete_all_users")
     builder.button(text="⚠️ Удалить ВСЕ игры", callback_data="admin_delete_all_games")
     builder.button(text="⚠️ Удалить ВСЕ предложения", callback_data="admin_delete_all_offers")
-    builder.adjust(2)
+    builder.button(text="🚫 Забаненные пользователи", callback_data="admin_banned_list")
+    builder.adjust(1)
     return builder.as_markup()
 
 # Команда админской панели
@@ -205,6 +265,144 @@ async def admin_panel(message: Message):
     )
 
 # Обработчики кнопок админской панели - меню выбора
+@admin_router.callback_query(F.data == "admin_banned_list")
+async def banned_list_handler(callback: CallbackQuery):
+    if not is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    banned_users = load_banned_users()
+    
+    if not banned_users:
+        await callback.answer("📋 Список забаненных пользователей пуст.")
+        return
+    
+    text = "🚫 Забаненные пользователи:\n\n"
+    for user_id, ban_data in banned_users.items():
+        text += f"👤 {ban_data.get('first_name', '')} {ban_data.get('last_name', '')}\n"
+        text += f"📞 {ban_data.get('phone', '')}\n"
+        text += f"🆔 ID: {user_id}\n"
+        text += f"⏰ Забанен: {ban_data.get('banned_at', 'Неизвестно')}\n"
+        text += "─" * 20 + "\n"
+    
+    # Добавляем кнопки для управления банами
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔓 Разбанить пользователя", callback_data="admin_unban_menu")
+    builder.button(text="🗑️ Очистить список банов", callback_data="admin_clear_all_bans")
+    builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
+    builder.adjust(1)
+    
+    await safe_edit_message(callback, text, builder.as_markup())
+    await callback.answer()
+
+@admin_router.callback_query(F.data == "admin_unban_menu")
+async def unban_menu_handler(callback: CallbackQuery):
+    if not is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    banned_users = load_banned_users()
+    
+    if not banned_users:
+        await callback.answer("📋 Список забаненных пользователей пуст.")
+        return
+    
+    builder = InlineKeyboardBuilder()
+    for user_id, ban_data in banned_users.items():
+        name = f"{ban_data.get('first_name', '')} {ban_data.get('last_name', '')}"
+        builder.button(text=f"🔓 {name}", callback_data=f"admin_unban_user:{user_id}")
+    
+    builder.button(text="🔙 Назад", callback_data="admin_banned_list")
+    builder.adjust(1)
+    
+    await safe_edit_message(
+        callback,
+        "🔓 Выберите пользователя для разбана:",
+        builder.as_markup()
+    )
+    await callback.answer()
+
+@admin_router.callback_query(F.data == "admin_clear_all_bans")
+async def clear_all_bans_handler(callback: CallbackQuery):
+    if not is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    keyboard = get_confirmation_keyboard("clear_all_bans")
+    await safe_edit_message(
+        callback,
+        "⚠️ Вы уверены, что хотите очистить ВЕСЬ список банов?\n\n"
+        "Это действие разбанит всех пользователей и очистит историю банов.\n\n"
+        "Действие необратимо!",
+        keyboard
+    )
+    await callback.answer()
+
+@admin_router.callback_query(F.data == "admin_confirm_clear_all_bans")
+async def confirm_clear_all_bans(callback: CallbackQuery):
+    if not is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    # Очищаем список банов
+    save_banned_users({})
+    
+    await safe_edit_message(callback, "✅ Все баны успешно очищены!")
+    await callback.answer()
+
+@admin_router.callback_query(F.data.startswith("admin_unban_user:"))
+async def unban_user_handler(callback: CallbackQuery):
+    if not is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    user_id = callback.data.split(':')[1]
+    banned_users = load_banned_users()
+    
+    if user_id not in banned_users:
+        await callback.answer("❌ Пользователь не найден в списке банов")
+        return
+    
+    user_data = banned_users[user_id]
+    keyboard = get_confirmation_keyboard("unban_user", user_id)
+    
+    await safe_edit_message(
+        callback,
+        f"⚠️ Вы уверены, что хотите разбанить пользователя?\n\n"
+        f"👤 {user_data.get('first_name', '')} {user_data.get('last_name', '')}\n"
+        f"📞 {user_data.get('phone', '')}\n"
+        f"🆔 ID: {user_id}\n"
+        f"⏰ Забанен: {user_data.get('banned_at', 'Неизвестно')}\n\n"
+        "Пользователь сможет снова зарегистрироваться в системе.",
+        keyboard
+    )
+    await callback.answer()
+
+@admin_router.callback_query(F.data.startswith("admin_confirm_unban_user:"))
+async def confirm_unban_user(callback: CallbackQuery):
+    if not is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    user_id = callback.data.split(':')[1]
+    banned_users = load_banned_users()
+    
+    if user_id not in banned_users:
+        await callback.answer("❌ Пользователь не найден в списке банов")
+        return
+    
+    # Удаляем пользователя из списка банов
+    user_data = banned_users.pop(user_id)
+    save_banned_users(banned_users)
+    
+    await safe_edit_message(
+        callback,
+        f"✅ Пользователь {user_data.get('first_name', '')} {user_data.get('last_name', '')} успешно разбанен!\n"
+        f"🆔 ID: {user_id}\n\n"
+        "Теперь пользователь может снова зарегистрироваться в системе."
+    )
+    await callback.answer()
+
 @admin_router.callback_query(F.data == "admin_delete_user_menu")
 async def delete_user_menu(callback: CallbackQuery):
     users = load_users()
@@ -344,18 +542,24 @@ async def select_user(callback: CallbackQuery):
         return
     
     user_data = users[user_id]
-    keyboard = get_confirmation_keyboard("delete_user", user_id)
+    
+    # Создаем клавиатуру с опциями удаления и бана
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Удалить", callback_data=f"admin_confirm_delete_user:{user_id}")
+    builder.button(text="🚫 Забанить", callback_data=f"admin_ban_user:{user_id}")
+    builder.button(text="❌ Отмена", callback_data="admin_cancel")
+    builder.adjust(2)
     
     await safe_edit_message(
         callback,
-        f"⚠️ Вы уверены, что хотите удалить пользователя?\n\n"
+        f"⚠️ Выберите действие для пользователя:\n\n"
         f"👤 {user_data.get('first_name', '')} {user_data.get('last_name', '')}\n"
         f"📞 {user_data.get('phone', '')}\n"
         f"🏆 Рейтинг: {user_data.get('rating_points', 0)}\n"
         f"🎮 Игр сыграно: {user_data.get('games_played', 0)}\n"
         f"📋 Активных предложений: {len(user_data.get('games', []))}\n\n"
-        "Это действие также удалит все его игры и фотографии!",
-        keyboard
+        "🚫 Забан - удалит пользователя и добавит в черный список",
+        builder.as_markup()
     )
     await callback.answer()
 
@@ -507,7 +711,7 @@ async def back_to_main(callback: CallbackQuery):
 # Обработка подтверждения для отдельных действий
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_user:"))
 async def confirm_delete_user(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
+    if not is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
@@ -562,7 +766,7 @@ async def confirm_delete_user(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_game:"))
 async def confirm_delete_game(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
+    if not is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
@@ -601,7 +805,7 @@ async def confirm_delete_game(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_vacation:"))
 async def confirm_delete_vacation(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
+    if not is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
@@ -625,7 +829,7 @@ async def confirm_delete_vacation(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_subscription:"))
 async def confirm_delete_subscription(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
+    if not is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
@@ -646,7 +850,7 @@ async def confirm_delete_subscription(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_offer:"))
 async def confirm_delete_offer(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
+    if not is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
@@ -717,7 +921,7 @@ async def delete_all_offers_callback(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data.startswith("admin_ban_user:"))
 async def ban_user_handler(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
+    if not is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
@@ -739,7 +943,7 @@ async def ban_user_handler(callback: CallbackQuery):
         'last_name': user_data.get('last_name', ''),
         'username': user_data.get('username', ''),
         'phone': user_data.get('phone', ''),
-        'banned_by': callback.from_user.id,
+        'banned_by': callback.message.chat.id,
         'banned_at': datetime.now().isoformat()
     }
     save_banned_users(banned_users)

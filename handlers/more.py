@@ -764,7 +764,7 @@ async def handle_back_to_sport(callback: types.CallbackQuery, state: FSMContext)
 
 @router.callback_query(F.data == "profile")
 async def handle_my_profile(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
+    user_id = callback.message.chat.id
     if not is_user_registered(user_id):
         await callback.answer("❌ Вы еще не зарегистрированы. Введите /start для регистрации.")
         return
