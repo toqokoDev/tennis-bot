@@ -13,6 +13,7 @@ from config.config import BOT_USERNAME, SUBSCRIPTION_PRICE
 from models.states import AddScoreState
 from utils.json_data import load_games, load_users, save_games, save_users
 from utils.media import save_media_file
+from utils.notifications import send_game_notification_to_channel
 from utils.utils import calculate_new_ratings, create_user_profile_link, search_users
 
 router = Router()
@@ -256,6 +257,7 @@ async def handle_opponent_search(message: types.Message, state: FSMContext):
     search_query = message.text
     current_user_id = str(message.chat.id)
     
+    
     matching_users = search_users(search_query, exclude_ids=[current_user_id])
     
     if not matching_users:
@@ -431,15 +433,16 @@ async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMCo
     await callback.message.edit_text(
         f"Команды сформированы:\n\n"
         f"Команда 1 (ваша):\n"
-        f"• {current_user.get('first_name', '')} {current_user.get('last_name', '')} ({current_user.get('rating_points', 0)})\n"
-        f"• {partner.get('first_name', '')} {partner.get('last_name', '')} ({partner.get('rating_points', 0)})\n"
+        f"• {create_user_profile_link(current_user, current_user.get('telegram_id'))}\n" 
+        f"• {create_user_profile_link(partner, partner.get('telegram_id'))}\n"
         f"Средний рейтинг: {team1_avg:.0f}\n\n"
         f"Команда 2:\n"
-        f"• {opponent1.get('first_name', '')} {opponent1.get('last_name', '')} ({opponent1.get('rating_points', 0)})\n"
-        f"• {opponent2.get('first_name', '')} {opponent2.get('last_name', '')} ({opponent2.get('rating_points', 0)})\n"
+        f"• {create_user_profile_link(opponent1, opponent1.get('telegram_id'))}\n"
+        f"• {create_user_profile_link(opponent2, opponent2.get('telegram_id'))}\n"
         f"Средний рейтинг: {team2_avg:.0f}\n\n"
         f"Выберите счет 1-го сета:",
-        reply_markup=keyboard
+        reply_markup=keyboard, 
+        parse_mode="Markdown"
     )
     await callback.answer()
 
@@ -887,6 +890,9 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
 async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMContext):
     action = callback.data.split(":")[1]
     
+    current_user_id = str(callback.from_user.id)
+    await state.update_data(current_user_id=current_user_id)
+    
     if action == "yes":
         data = await state.get_data()
         result_text = data.get('result_text', '')
@@ -895,9 +901,6 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         users = load_users()
         game_type = data.get('game_type')
         winner_side = data.get('winner_side')
-        
-        # Обновляем статистику для всех игроков
-        current_user_id = str(callback.from_user.id)
         
         # Для одиночной игры
         if game_type == 'single':
@@ -1013,6 +1016,12 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
                     except Exception as e:
                         print(f"Ошибка при отправке уведомления игроку {player_id}: {e}")
         
+        # Отправляем уведомление в канал о завершенной игре
+        try:
+            await send_game_notification_to_channel(callback.bot, data, users)
+        except Exception as e:
+            print(f"Ошибка при отправке уведомления в канал: {e}")
+        
         try:
             await callback.message.delete()
         except:
@@ -1021,7 +1030,8 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         # Вместо сообщения об успешном сохранении отправляем информацию об игре
         await callback.message.answer(
             result_text,
-            reply_markup=None
+            reply_markup=None,
+            parse_mode="Markdown"
         )
         await state.clear()
         
