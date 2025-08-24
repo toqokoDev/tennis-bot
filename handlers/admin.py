@@ -184,11 +184,6 @@ async def cancel_action(callback: CallbackQuery):
 # Клавиатура админской панели
 def get_admin_keyboard():
     builder = InlineKeyboardBuilder()
-    builder.button(text="🗑️ Удалить пользователя", callback_data="admin_delete_user_menu")
-    builder.button(text="🎾 Удалить игру", callback_data="admin_delete_game_menu")
-    builder.button(text="📋 Удалить предложение", callback_data="admin_delete_offer_menu")
-    builder.button(text="🏖️ Удалить отпуск", callback_data="admin_delete_vacation_menu")
-    builder.button(text="🔔 Удалить подписку", callback_data="admin_delete_subscription_menu")
     builder.button(text="⚠️ Удалить ВСЕХ пользователей", callback_data="admin_delete_all_users")
     builder.button(text="⚠️ Удалить ВСЕ игры", callback_data="admin_delete_all_games")
     builder.button(text="⚠️ Удалить ВСЕ предложения", callback_data="admin_delete_all_offers")

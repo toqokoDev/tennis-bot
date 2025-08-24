@@ -87,6 +87,7 @@ class SearchPartnerStates(StatesGroup):
     SEARCH_PRICE_RANGE = State()
     SEARCH_RESULTS = State()
     SEARCH_NO_RESULTS = State()
+    SEARCH_ERROR = State()
 
 class BrowseOffersStates(StatesGroup):
     SELECT_COUNTRY = State()

@@ -19,7 +19,6 @@ from utils.utils import count_users_by_location, count_users_by_filters
 router = Router()
 
 cities_data = load_json("cities.json")
-sport_types = load_json("sports.json")
 countries = list(cities_data.keys())
 
 @router.message(F.text == "🎾 Поиск партнера")
@@ -155,7 +154,20 @@ async def process_search_city_partner(callback: types.CallbackQuery, state: FSMC
     city = callback.data.split("_", maxsplit=3)[3]
     await state.update_data(search_city=city)
     
-    await show_sport_types_partner(callback.message, state)
+    # Получаем вид спорта из профиля текущего пользователя
+    current_user_profile = get_user_profile_from_storage(callback.from_user.id)
+    if current_user_profile and 'sport' in current_user_profile:
+        await state.update_data(sport_type=current_user_profile['sport'])
+        await show_gender_selection(callback.message, state)
+    else:
+        await callback.message.edit_text(
+            "❌ Не удалось определить ваш вид спорта. Пожалуйста, заполните профиль сначала.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="partner_back_to_cities")
+            ]])
+        )
+        await state.set_state(SearchPartnerStates.SEARCH_ERROR)
+    
     await callback.answer()
 
 @router.callback_query(SearchPartnerStates.SEARCH_CITY, F.data == "partner_search_other_city")
@@ -182,7 +194,21 @@ async def process_search_city_input_partner(message: Message, state: FSMContext)
         except:
             pass
     
-    await show_sport_types_partner(message, state, True)
+    # Получаем вид спорта из профиля текущего пользователя
+    current_user_profile = get_user_profile_from_storage(message.from_user.id)
+    if current_user_profile and 'sport' in current_user_profile:
+        await state.update_data(sport_type=current_user_profile['sport'])
+        await show_gender_selection(message, state, True)
+    else:
+        sent_message = await message.answer(
+            "❌ Не удалось определить ваш вид спорта. Пожалуйста, заполните профиль сначала.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="⬅️ Назад", callback_data="partner_back_to_cities")
+            ]])
+        )
+        await state.update_data(last_message_id=sent_message.message_id)
+        await state.set_state(SearchPartnerStates.SEARCH_ERROR)
+    
     save_session(message.from_user.id, await state.get_data())
 
 @router.callback_query(SearchPartnerStates.SEARCH_CITY_INPUT, F.data == "partner_back_to_countries")
@@ -218,7 +244,7 @@ async def partner_back_to_countries(callback: types.CallbackQuery, state: FSMCon
     await state.set_state(SearchPartnerStates.SEARCH_COUNTRY)
     await callback.answer()
 
-async def show_sport_types_partner(message: Union[types.Message, types.CallbackQuery], state: FSMContext, new_mess = False):
+async def show_gender_selection(message: Union[types.Message, types.CallbackQuery], state: FSMContext, new_mess = False):
     if isinstance(message, types.CallbackQuery):
         message_obj = message.message
     else:
@@ -226,17 +252,17 @@ async def show_sport_types_partner(message: Union[types.Message, types.CallbackQ
     
     builder = InlineKeyboardBuilder()
     
-    for sport in sport_types:
+    for gender in GENDER_TYPES:
         builder.add(InlineKeyboardButton(
-            text=sport,
-            callback_data=f"partner_sport_{sport}"
+            text=gender,
+            callback_data=f"partner_gender_{gender}"
         ))
     
     builder.adjust(2)
     
     builder.row(InlineKeyboardButton(
-        text="🏆 Любой вид спорта",
-        callback_data="partner_sport_any"
+        text="👥 Любой пол",
+        callback_data="partner_gender_any"
     ))
     
     builder.row(InlineKeyboardButton(
@@ -246,29 +272,29 @@ async def show_sport_types_partner(message: Union[types.Message, types.CallbackQ
     
     if new_mess:
         await message_obj.answer(
-            "🏆 Выберите вид спорта:",
+            "👥 Выберите пол партнера:",
             reply_markup=builder.as_markup()
         )
     else:
         await message_obj.edit_text(
-            "🏆 Выберите вид спорта:",
+            "👥 Выберите пол партнера:",
             reply_markup=builder.as_markup()
         )
-    await state.set_state(SearchPartnerStates.SEARCH_SPORT)
+    await state.set_state(SearchPartnerStates.SEARCH_GENDER)
 
-@router.callback_query(SearchPartnerStates.SEARCH_SPORT, F.data.startswith("partner_sport_"))
-async def process_sport_selection_partner(callback: types.CallbackQuery, state: FSMContext):
-    if callback.data == "partner_sport_any":
-        await state.update_data(sport_type=None)
+@router.callback_query(SearchPartnerStates.SEARCH_GENDER, F.data.startswith("partner_gender_"))
+async def process_gender_selection(callback: types.CallbackQuery, state: FSMContext):
+    if callback.data == "partner_gender_any":
+        await state.update_data(gender=None)
     else:
-        sport_type = callback.data.split("_", 2)[2]
-        await state.update_data(sport_type=sport_type)
+        gender = callback.data.split("_", 2)[2]
+        await state.update_data(gender=gender)
     
-    await show_gender_selection(callback.message, state)
+    await show_level_selection(callback.message, state)
     await callback.answer()
 
-@router.callback_query(SearchPartnerStates.SEARCH_SPORT, F.data == "partner_back_to_cities")
-async def partner_back_to_cities_from_sport(callback: types.CallbackQuery, state: FSMContext):
+@router.callback_query(SearchPartnerStates.SEARCH_GENDER, F.data == "partner_back_to_cities")
+async def partner_back_to_cities_from_gender(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     country = data.get('search_country')
     
@@ -313,54 +339,6 @@ async def partner_back_to_cities_from_sport(callback: types.CallbackQuery, state
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(SearchPartnerStates.SEARCH_CITY)
-    await callback.answer()
-
-async def show_gender_selection(message: Union[types.Message, types.CallbackQuery], state: FSMContext):
-    if isinstance(message, types.CallbackQuery):
-        message_obj = message.message
-    else:
-        message_obj = message
-    
-    builder = InlineKeyboardBuilder()
-    
-    for gender in GENDER_TYPES:
-        builder.add(InlineKeyboardButton(
-            text=gender,
-            callback_data=f"partner_gender_{gender}"
-        ))
-    
-    builder.adjust(2)
-    
-    builder.row(InlineKeyboardButton(
-        text="👥 Любой пол",
-        callback_data="partner_gender_any"
-    ))
-    
-    builder.row(InlineKeyboardButton(
-        text="⬅️ Назад к виду спорта",
-        callback_data="partner_back_to_sport"
-    ))
-    
-    await message_obj.edit_text(
-        "👥 Выберите пол партнера:",
-        reply_markup=builder.as_markup()
-    )
-    await state.set_state(SearchPartnerStates.SEARCH_GENDER)
-
-@router.callback_query(SearchPartnerStates.SEARCH_GENDER, F.data.startswith("partner_gender_"))
-async def process_gender_selection(callback: types.CallbackQuery, state: FSMContext):
-    if callback.data == "partner_gender_any":
-        await state.update_data(gender=None)
-    else:
-        gender = callback.data.split("_", 2)[2]
-        await state.update_data(gender=gender)
-    
-    await show_level_selection(callback.message, state)
-    await callback.answer()
-
-@router.callback_query(SearchPartnerStates.SEARCH_GENDER, F.data == "partner_back_to_sport")
-async def partner_back_to_sport_from_gender(callback: types.CallbackQuery, state: FSMContext):
-    await show_sport_types_partner(callback.message, state)
     await callback.answer()
 
 async def show_level_selection(message: Union[types.Message, types.CallbackQuery], state: FSMContext):
@@ -420,7 +398,7 @@ async def perform_partner_search(message: Union[types.Message, types.CallbackQue
     data = await state.get_data()
     country = data.get('search_country')
     city = data.get('search_city')
-    sport_type = data.get('sport_type')
+    sport_type = data.get('sport_type')  # Берется из профиля текущего пользователя
     gender = data.get('gender')
     level = data.get('level')
     
@@ -434,13 +412,14 @@ async def perform_partner_search(message: Union[types.Message, types.CallbackQue
             
         if not profile.get('show_in_search', True):
             continue
-            
+        
         if profile.get('role') != "Игрок":
             continue
         
         if profile.get('country') != country or profile.get('city') != city:
             continue
         
+        # Ищем только тех, кто играет в тот же вид спорта
         if sport_type and profile.get('sport') != sport_type:
             continue
             
@@ -474,7 +453,7 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
     results = data.get('search_results', [])
     country = data.get('search_country')
     city = data.get('search_city')
-    sport_type = data.get('sport_type')
+    sport_type = data.get('sport_type')  # Берется из профиля текущего пользователя
     gender = data.get('gender')
     level = data.get('level')
     
@@ -578,4 +557,52 @@ async def handle_back_to_results_partner(callback: types.CallbackQuery, state: F
 @router.callback_query(SearchPartnerStates.SEARCH_NO_RESULTS, F.data == "partner_back_to_level")
 async def partner_back_to_level_from_results(callback: types.CallbackQuery, state: FSMContext):
     await show_level_selection(callback.message, state)
+    await callback.answer()
+
+@router.callback_query(SearchPartnerStates.SEARCH_ERROR, F.data == "partner_back_to_cities")
+async def partner_back_to_cities_from_error(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    country = data.get('search_country')
+    
+    if country == "Россия":
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
+        buttons = []
+        for city in main_russian_cities:
+            count = count_users_by_location("partner", country, city)
+            buttons.append([InlineKeyboardButton(
+                text=f"🏙 {city} ({count})", 
+                callback_data=f"partner_search_city_{city}"
+            )])
+        
+        count_other = count_users_by_location("partner", country) - sum(count_users_by_location("partner", country, c) for c in main_russian_cities)
+        buttons.append([InlineKeyboardButton(
+            text=f"🏙 Другие города ({count_other})", 
+            callback_data="partner_search_other_city"
+        )])
+    else:
+        cities = cities_data.get(country, [])
+        buttons = []
+        for city in cities[:5]:
+            count = count_users_by_location("partner", country, city)
+            buttons.append([InlineKeyboardButton(
+                text=f"🏙 {city} ({count})", 
+                callback_data=f"partner_search_city_{city}"
+            )])
+        
+        count_other = count_users_by_location("partner", country) - sum(count_users_by_location("partner", country, c) for c in cities[:5])
+        buttons.append([InlineKeyboardButton(
+            text=f"🏙 Другие города ({count_other})", 
+            callback_data="partner_search_other_city"
+        )])
+    
+    buttons.append([InlineKeyboardButton(
+        text="⬅️ Назад к странам", 
+        callback_data="partner_back_to_countries"
+    )])
+    
+    await callback.message.edit_text(
+        f"🏙 Выберите город для поиска партнера в {country}:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await state.set_state(SearchPartnerStates.SEARCH_CITY)
     await callback.answer()
