@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List
 
 from config.config import BOT_USERNAME
+from utils.admin import load_banned_users
 from utils.json_data import load_users
 
 def count_users_by_location(search_type=None, country=None, city=None):
@@ -142,4 +143,8 @@ def format_tour_date(date_str):
                 return date_str
             except:
                 return date_str
+
+def is_user_banned(user_id: str) -> bool:
+    banned_users = load_banned_users()
+    return user_id in banned_users
             

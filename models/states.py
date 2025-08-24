@@ -22,6 +22,7 @@ class RegistrationStates(StatesGroup):
     CITY_INPUT = State()
     PROFILE_COMMENT = State()
     DEFAULT_PAYMENT = State()
+    CREATE_GAME_OFFER = State()
 
 class GameOfferStates(StatesGroup):
     GAME_CITY = State()
@@ -102,3 +103,14 @@ class CreateTourStates(StatesGroup):
     ENTER_START_DATE = State()
     ENTER_END_DATE = State()
     ENTER_COMMENT = State()
+
+class AdminEditProfileStates(StatesGroup):
+    SELECT_USER = State()
+    COMMENT = State()
+    PAYMENT = State()
+    COUNTRY = State()
+    COUNTRY_INPUT = State()
+    CITY = State()
+    CITY_INPUT = State()
+    PHOTO_UPLOAD = State()
+    

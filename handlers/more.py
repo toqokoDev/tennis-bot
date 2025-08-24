@@ -11,6 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import SUBSCRIPTION_PRICE
 from config.profile import PRICE_RANGES
 from models.states import SearchStates
+from utils.admin import is_admin
 from utils.bot import show_profile
 from utils.json_data import get_user_profile_from_storage, is_user_registered, load_json, load_users
 from utils.ssesion import save_session
@@ -78,21 +79,22 @@ async def handle_all_players(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.message.chat.id
     users = load_users()
 
-    if not users[str(user_id)].get('subscription', {}).get('active', False):
-        text = (
-            "🔒 <b>Доступ закрыт</b>\n\n"
-            "Функция просмотра всех игроков доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
-            f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
-            "Перейдите в раздел '💳 Платежи' для оформления подписки."
-        )
-        
-        await callback.message.answer(
-            text,
-            parse_mode="HTML"
-        )
+    if not is_admin(user_id):
+        if not users[str(user_id)].get('subscription', {}).get('active', False):
+            text = (
+                "🔒 <b>Доступ закрыт</b>\n\n"
+                "Функция просмотра всех игроков доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
+                f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
+                "Перейдите в раздел '💳 Платежи' для оформления подписки."
+            )
+            
+            await callback.message.answer(
+                text,
+                parse_mode="HTML"
+            )
 
-        await state.clear()
-        return
+            await state.clear()
+            return
     
     buttons = []
     for country in countries[:5]:

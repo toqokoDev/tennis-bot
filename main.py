@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 from aiogram import Bot, Dispatcher
-from handlers import game_offers_menu, registration, game_offers, more, payments, profile, enter_invoice, search_partner, tours
+from handlers import game_offers_menu, registration, game_offers, more, payments, profile, enter_invoice, search_partner, tours, admin, admin_edit
 from config.config import TOKEN
 from utils.json_data import load_users, write_users
 from utils.notifications import send_subscription_reminders
@@ -62,7 +62,9 @@ async def main():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
 
-    # Подключаем роутеры           
+    # Подключаем роутеры       
+    dp.include_router(admin.admin_router)    
+    dp.include_router(admin_edit.admin_edit_router) 
     dp.include_router(registration.router)
     dp.include_router(game_offers_menu.router)
     dp.include_router(game_offers.router)

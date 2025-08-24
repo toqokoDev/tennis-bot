@@ -11,6 +11,7 @@ from datetime import datetime
 
 from config.config import BOT_USERNAME, SUBSCRIPTION_PRICE
 from models.states import AddScoreState
+from utils.admin import is_admin
 from utils.json_data import load_games, load_users, save_games, save_users
 from utils.media import save_media_file
 from utils.notifications import send_game_notification_to_channel
@@ -195,7 +196,7 @@ async def edit_media_message(callback: types.CallbackQuery, text: str, keyboard:
             pass
         new_msg = await callback.message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
     
-    save_message_id(callback.from_user.id, new_msg.message_id)
+    save_message_id(callback.message.chat.id, new_msg.message_id)
     return new_msg
 
 @router.message(F.text == "📝 Внести счет")
@@ -204,20 +205,21 @@ async def handle_add_score(message: types.Message, state: FSMContext):
     user_id = message.chat.id
     users = load_users()
     
-    if not users[str(user_id)].get('subscription', {}).get('active', False):
-        # Показываем сообщение о необходимости подписки
-        text = (
-            "🔒 <b>Доступ закрыт</b>\n\n"
-            "Функция внесения счета доступна только для пользователей с активной подписки Tennis-Play PRO.\n\n"
-            f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
-            "Перейдите в раздел '💳 Платежи' для оформления подписки."
-        )
-        
-        await message.answer(
-            text,
-            parse_mode="HTML"
-        )
-        return
+    if not is_admin(user_id):
+        if not users[str(user_id)].get('subscription', {}).get('active', False):
+            # Показываем сообщение о необходимости подписки
+            text = (
+                "🔒 <b>Доступ закрыт</b>\n\n"
+                "Функция внесения счета доступна только для пользователей с активной подписки Tennis-Play PRO.\n\n"
+                f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
+                "Перейдите в раздел '💳 Платежи' для оформления подписки."
+            )
+            
+            await message.answer(
+                text,
+                parse_mode="HTML"
+            )
+            return
     
     # Если подписка активна, продолжаем процесс
     await state.set_state(AddScoreState.selecting_game_type)
@@ -423,7 +425,7 @@ async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMCo
     partner = data.get('partner')
     opponent1 = data.get('opponent1')
     opponent2 = selected_opponent
-    current_user = users.get(str(callback.from_user.id))
+    current_user = users.get(str(callback.message.chat.id))
     
     team1_avg = (current_user.get('rating_points', 0) + partner.get('rating_points', 0)) / 2
     team2_avg = (opponent1.get('rating_points', 0) + opponent2.get('rating_points', 0)) / 2
@@ -462,7 +464,7 @@ async def handle_single_opponent_selection(callback: types.CallbackQuery, state:
     await state.set_state(AddScoreState.selecting_set_score)
     
     opponent = selected_opponent
-    current_user = users.get(str(callback.from_user.id))
+    current_user = users.get(str(callback.message.chat.id))
     
     keyboard = create_set_score_keyboard(1)
     
@@ -742,6 +744,8 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             f"• {loser_user.get('first_name', '')}: {loser_points} → {new_loser_points} "
             f"({'+' if new_loser_points > loser_points else ''}{new_loser_points - loser_points:.1f})"
         )
+
+        users[str(message.chat.id)] = current_user
         
     else:  # Парная игра
         partner = data.get('partner')
@@ -847,7 +851,7 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
                 users[opponent2_data.get('telegram_id')]['rating_points'] - opponent2_data.get('rating_points', 0)
             )
     
-    users[str(message.chat.id)] = current_user
+
     games.append(game_data)
     save_games(games)
     save_users(users)
@@ -890,7 +894,7 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
 async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMContext):
     action = callback.data.split(":")[1]
     
-    current_user_id = str(callback.from_user.id)
+    current_user_id = str(callback.message.chat.id)
     await state.update_data(current_user_id=current_user_id)
     
     if action == "yes":
@@ -1049,7 +1053,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
             "Выберите счет 1-го сета:",
             reply_markup=keyboard
         )
-        save_message_id(callback.from_user.id, new_msg.message_id)
+        save_message_id(callback.message.chat.id, new_msg.message_id)
         
     elif action == "no":
         # Откатываем изменения рейтинга и статистики
@@ -1059,7 +1063,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         winner_side = data.get('winner_side')
         
         if game_type == 'single':
-            current_user_id = str(callback.from_user.id)
+            current_user_id = str(callback.message.chat.id)
             opponent_id = data.get('opponent1', {}).get('telegram_id')
             
             # Откатываем рейтинг
@@ -1088,7 +1092,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
             
             # Откатываем статистику игр для всех участников
             players = [
-                str(callback.from_user.id),
+                str(callback.message.chat.id),
                 data.get('partner', {}).get('telegram_id'),
                 data.get('opponent1', {}).get('telegram_id'),
                 data.get('opponent2', {}).get('telegram_id')
@@ -1101,7 +1105,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
             # Откатываем победы для победившей команды
             if winner_side == "team1":  # Отменяем победу команды 1
                 team1_players = [
-                    str(callback.from_user.id),
+                    str(callback.message.chat.id),
                     data.get('partner', {}).get('telegram_id')
                 ]
                 for player_id in team1_players:
@@ -1184,7 +1188,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         await state.set_state(AddScoreState.searching_partner)
         data = await state.get_data()
         search_query = data.get('partner_search', '')
-        current_user_id = str(callback.from_user.id)
+        current_user_id = str(callback.message.chat.id)
         
         matching_users = search_users(search_query, exclude_ids=[current_user_id])
         
@@ -1212,7 +1216,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         await state.set_state(AddScoreState.selecting_opponent1)
         data = await state.get_data()
         search_query = data.get('opponent1_search', '')
-        current_user_id = str(callback.from_user.id)
+        current_user_id = str(callback.message.chat.id)
         partner_id = data.get('partner', {}).get('telegram_id')
         
         matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id])
@@ -1245,7 +1249,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
             await state.set_state(AddScoreState.selecting_opponent)
             data = await state.get_data()
             search_query = data.get('opponent_search', '')
-            current_user_id = str(callback.from_user.id)
+            current_user_id = str(callback.message.chat.id)
             
             matching_users = search_users(search_query, exclude_ids=[current_user_id])
             
@@ -1268,7 +1272,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
                 await state.set_state(AddScoreState.selecting_opponent2)
                 data = await state.get_data()
                 search_query = data.get('opponent2_search', '')
-                current_user_id = str(callback.from_user.id)
+                current_user_id = str(callback.message.chat.id)
                 partner_id = data.get('partner', {}).get('telegram_id')
                 opponent1_id = data.get('opponent1', {}).get('telegram_id')
                 
@@ -1290,7 +1294,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
                 await state.set_state(AddScoreState.selecting_opponent1)
                 data = await state.get_data()
                 search_query = data.get('opponent1_search', '')
-                current_user_id = str(callback.from_user.id)
+                current_user_id = str(callback.message.chat.id)
                 partner_id = data.get('partner', {}).get('telegram_id')
                 
                 matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id])
@@ -1330,7 +1334,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
     page = int(page_str)
     
     users = load_users()
-    current_user_id = str(callback.from_user.id)
+    current_user_id = str(callback.message.chat.id)
     
     if action == "select_opponent":
         data = await state.get_data()
@@ -1379,24 +1383,25 @@ async def handle_history_request(callback: types.CallbackQuery):
     try:
         # Извлекаем ID пользователя, чью историю запрашиваем
         target_user_id = callback.data.split(":")[1]
-        current_user_id = str(callback.from_user.id)
+        current_user_id = str(callback.message.chat.id)
         
         # Проверяем права доступа для просмотра чужой истории
-        if current_user_id != target_user_id:
-            users = load_users()
-            if not users.get(current_user_id, {}).get('subscription', {}).get('active', False):
-                text = (
-                    "🔒 <b>Доступ закрыт</b>\n\n"
-                    "Функция просмотра истории игр игроков доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
-                    f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
-                    "Перейдите в раздел '💳 Платежи' для оформления подписки."
-                )
-                
-                await callback.message.answer(
-                    text,
-                    parse_mode="HTML"
-                )
-                return
+        if not is_admin(callback.message.chat.id):
+            if current_user_id != target_user_id:
+                users = load_users()
+                if not users.get(current_user_id, {}).get('subscription', {}).get('active', False):
+                    text = (
+                        "🔒 <b>Доступ закрыт</b>\n\n"
+                        "Функция просмотра истории игр игроков доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
+                        f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
+                        "Перейдите в раздел '💳 Платежи' для оформления подписки."
+                    )
+                    
+                    await callback.message.answer(
+                        text,
+                        parse_mode="HTML"
+                    )
+                    return
 
         # Показываем первую игру из истории
         await show_single_game_history(callback, target_user_id, 0)
@@ -1448,7 +1453,7 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
             f"📊 История игр пользователя {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n"
             "Пока нет сыгранных игр.",
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{callback.from_user.id}")]]
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{callback.message.chat.id}")]]
             )
         )
         await callback.answer()
@@ -1462,6 +1467,7 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
     
     # Получаем текущую игру
     game = user_games[game_index]
+    game_id = game['id']
     
     # Форматируем дату
     game_date = datetime.fromisoformat(game['date'])
@@ -1493,12 +1499,11 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
         # Для одиночной игры
         opponent_id = game['players']['team2'][0] if user_in_team1 else game['players']['team1'][0]
         opponent = users.get(opponent_id, {})
-        opponent_name = f"{opponent.get('first_name', '')} {opponent.get('last_name', '')}"
-        
+
         history_text += f"👤 Игрок:\n"
-        history_text += f"• {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n"
+        history_text += f"• {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n" 
         history_text += f"👤 Соперник:\n"
-        history_text += f"• {opponent_name}\n\n"
+        history_text += f"• {create_user_profile_link(opponent, opponent.get('telegram_id'))}\n\n"
         
     else:
         # Для парной игры
@@ -1530,8 +1535,47 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
     # Добавляем изменение рейтинга
     history_text += f"📈 Изменение рейтинга: {rating_change_str}\n"
     
+    # Добавляем ID игры для админа
+    if is_admin(callback.message.chat.id):
+        history_text += f"\n🆔 ID игры: `{game_id}`"
+    
     # Создаем клавиатуру с навигацией
-    keyboard = create_history_navigation_keyboard(game_index, len(user_games), target_user_id, str(callback.from_user.id))
+    keyboard_buttons = []
+    
+    # Кнопки навигации
+    nav_buttons = []
+    if game_index > 0:
+        nav_buttons.append(InlineKeyboardButton(
+            text="⬅️ Назад", 
+            callback_data=f"game_history:{target_user_id}:{game_index - 1}"
+        ))
+    if game_index < len(user_games) - 1:
+        nav_buttons.append(InlineKeyboardButton(
+            text="Вперед ➡️", 
+            callback_data=f"game_history:{target_user_id}:{game_index + 1}"
+        ))
+    
+    if nav_buttons:
+        keyboard_buttons.append(nav_buttons)
+    
+    # Кнопка возврата к профилю
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="🔙 К профилю", 
+            callback_data=f"back_to_profile:{target_user_id}"
+        )
+    ])
+    
+    # Кнопка удаления игры для админа (если это не свой профиль или админ смотрит чужую игру)
+    if (is_admin(callback.message.chat.id)):
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="🗑️ Удалить игру", 
+                callback_data=f"admin_select_game:{game_id}"
+            )
+        ])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
     # Проверяем, есть ли медиафайл
     if game.get('media_filename'):

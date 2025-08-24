@@ -14,6 +14,7 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 
+SERVERDATA
 data/sessions/*
 data/user_photos/*
 data/games_photo/*
