@@ -19,7 +19,7 @@ from config.profile import moscow_districts, player_levels, base_keyboard
 
 from models.states import RegistrationStates
 
-from utils.utils import calculate_age, create_user_profile_link
+from utils.utils import calculate_age, create_user_profile_link, is_user_banned
 from utils.media import download_photo_to_path
 from utils.bot import show_current_data, show_profile
 from utils.ssesion import delete_session, load_session, save_session
@@ -39,6 +39,16 @@ countries = list(cities_data.keys())
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = str(message.chat.id)
     
+    # Проверяем, забанен ли пользователь
+    if is_user_banned(user_id):
+        await message.answer(
+            "⛔ Ваш аккаунт заблокирован.\n\n"
+            "Вы не можете использовать бота. Если вы считаете, что это ошибка, "
+            "свяжитесь с администрацией.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+    
     # Проверяем, есть ли параметр в команде start (для ссылок на профили)
     if len(message.text.split()) > 1:
         command_parts = message.text.split()
@@ -48,11 +58,16 @@ async def cmd_start(message: types.Message, state: FSMContext):
             # Если это ссылка на профиль (profile_12345)
             if start_param.startswith('profile_'):
                 profile_user_id = start_param.replace('profile_', '')
+                
+                # Проверяем, не забанен ли целевой пользователь
+                if is_user_banned(profile_user_id):
+                    await message.answer("⛔ Этот профиль недоступен.")
+                    return
+                
                 users = load_users()
                 
                 if profile_user_id in users:
                     profile_user = users[profile_user_id]
-                    
                     await show_profile(message, profile_user)
                 else:
                     await message.answer("Профиль не найден.")
@@ -93,7 +108,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "💡 Здесь вы сможете:\n\n"
         "• Найти партнёра по большому, настольному, плядному и падл-теннису, бадминтону, сквошу и пиклболу.\n"
         "• Предлагать и находить предложения игр в определенное время и месте.\n"
-        "• Участвовать в многодневных турнирах в вашем городе и на вашем корте.\n"
+        "• Участвовать в многодневных турниров в вашем городе и на вашем корте.\n"
         "• Находить тренеров по теннису.\n"
         "• Отслеживать свой рейтинг.\n\n"
         "Для начала пройдите краткую регистрацию. Пожалуйста, отправьте номер телефона:"
@@ -599,14 +614,30 @@ async def process_default_payment(callback: types.CallbackQuery, state: FSMConte
     payment = callback.data.split("_", maxsplit=1)[1]
     await state.update_data(default_payment=payment)
     
-    # Завершаем регистрацию
-    await finish_registration(callback.message, state)
+    # Спрашиваем, хочет ли пользователь создать игру
+    await ask_for_create_game(callback.message, state)
     await callback.answer()
     save_session(callback.from_user.id, await state.get_data())
 
-async def finish_registration(message: types.Message, state: FSMContext):
-    user_id = message.chat.id
-    username = message.chat.username
+async def ask_for_create_game(message: types.Message, state: FSMContext):
+    """Спрашивает пользователя, хочет ли он создать игру после регистрации"""
+    buttons = [
+        [InlineKeyboardButton(text="✅ Да, создать игру", callback_data="registerTonew_offer")],
+        [InlineKeyboardButton(text="❌ Нет, позже", callback_data="skip_offer")]
+    ]
+    await show_current_data(
+        message, state,
+        "🎾 Хотите сразу создать предложение об игре?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await state.set_state(RegistrationStates.CREATE_GAME_OFFER)
+    save_session(message.chat.id, await state.get_data())
+
+@router.callback_query(RegistrationStates.CREATE_GAME_OFFER, F.data == "registerTonew_offer")
+async def process_create_game_offer(callback: types.CallbackQuery, state: FSMContext):
+    """Пользователь хочет создать игру - завершаем регистрацию и переходим к созданию игры"""
+    user_id = callback.from_user.id
+    username = callback.from_user.username
 
     user_state = await state.get_data()
 
@@ -646,8 +677,68 @@ async def finish_registration(message: types.Message, state: FSMContext):
     await state.clear()
     delete_session(user_id)
 
-    await show_profile(message, profile)
+    # Отправляем уведомление о регистрации
+    await send_registration_notification(callback.message, profile)
+    
+    # Переходим к созданию игры (здесь нужно будет добавить логику создания игры)
+    await callback.message.edit_text(
+        "✅ Регистрация завершена! Теперь вы можете создать предложение об игре.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Предложить игру", callback_data="new_offer")]])
+    )
+    await callback.answer()
 
+@router.callback_query(RegistrationStates.CREATE_GAME_OFFER, F.data == "skip_offer")
+async def process_skip_game_offer(callback: types.CallbackQuery, state: FSMContext):
+    """Пользователь не хочет создавать игру - завершаем регистрацию и показываем профиль"""
+    user_id = callback.from_user.id
+    username = callback.from_user.username
+
+    user_state = await state.get_data()
+
+    profile = {
+        "telegram_id": user_id,
+        "username": username,
+        "first_name": user_state.get("first_name"),
+        "last_name": user_state.get("last_name"),
+        "phone": user_state.get("phone"),
+        "birth_date": user_state.get("birth_date"),
+        "country": user_state.get("country"),
+        "city": user_state.get("city"),
+        "district": user_state.get("district", ""),
+        "role": user_state.get("role", "пользователь"),
+        "sport": user_state.get("sport"),
+        "gender": user_state.get("gender"),
+        "player_level": user_state.get("player_level"),
+        "rating_points": player_levels.get(user_state.get("player_level"), {}).get("points", 0),
+        "price": user_state.get("price"),
+        "photo_path": user_state.get("photo_path"),
+        "games_played": 0,
+        "games_wins": 0,
+        "default_payment": user_state.get("default_payment"),
+        "show_in_search": True,
+        "profile_comment": user_state.get("profile_comment"),
+        "games": [],
+        "created_at": datetime.now().isoformat(timespec="seconds")
+    }
+
+    if user_state.get('vacation_tennis', False):
+        profile["vacation_tennis"] = True
+        profile["vacation_start"] = user_state.get('vacation_start')
+        profile["vacation_end"] = user_state.get('vacation_end')
+        profile["vacation_comment"] = user_state.get('vacation_comment')
+
+    save_user_to_json(user_id, profile)
+    await state.clear()
+    delete_session(user_id)
+
+    # Отправляем уведомление о регистрации
+    await send_registration_notification(callback.message, profile)
+    
+    # Показываем профиль пользователя
+    await show_profile(callback.message, profile)
+    await callback.answer()
+
+async def send_registration_notification(message: types.Message, profile: dict):
     """Отправляет уведомление о новой регистрации в канал"""
     try:
         city = profile.get('city', '—')
@@ -656,12 +747,12 @@ async def finish_registration(message: types.Message, state: FSMContext):
             city = f"{city} - {district}"
             
         username_text = "\n"
-        if username:
-            username_text = f"✉️ @{username}\n\n"
+        if profile.get('username'):
+            username_text = f"✉️ @{profile.get('username')}\n\n"
 
         registration_text = (
             "🎾 *Новый участник присоединился к сообществу!*\n\n"
-            f"👤 {create_user_profile_link(profile, user_id)}\n" 
+            f"👤 {create_user_profile_link(profile, profile.get('telegram_id'))}\n" 
             f"🏸 {profile.get('sport', 'Не указан')} ({profile.get('player_level', 'Не указан')} Лвл)\n"
             f"📍 {city} ({profile.get('country', '')})\n"
             f"{username_text}"

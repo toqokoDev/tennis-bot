@@ -7,6 +7,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE
+from utils.admin import is_admin
 from utils.json_data import load_users, load_json, save_users
 from models.states import BrowseOffersStates, RespondToOfferStates
 from utils.utils import create_user_profile_link, get_weekday_short
@@ -299,17 +300,41 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     if game.get('comment'):
         text += f"💬 Комментарий: {game['comment']}\n"
     
-    # Кнопка для возврата к списку
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(
-                text="✅ Откликнуться на предложение", callback_data="respond_to_offer"
-            )],
-            [InlineKeyboardButton(
-                text="🔙 Назад к списку", callback_data="back_to_offers_list"
-            )]
-        ]
-    )
+    # Добавляем ID для админа
+    if is_admin(callback.from_user.id):
+        text += f"\n🆔 ID предложения: `{game_id}`"
+        text += f"\n🆔 ID пользователя: `{user_id}`"
+    
+    # Создаем клавиатуру
+    keyboard_buttons = []
+    
+    # Кнопка отклика (только если это не свое предложение)
+    if str(callback.from_user.id) != user_id:
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="✅ Откликнуться на предложение", 
+                callback_data="respond_to_offer"
+            )
+        ])
+    
+    # Кнопка возврата
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="🔙 Назад к списку", 
+            callback_data="back_to_offers_list"
+        )
+    ])
+    
+    # Кнопка удаления для админа (если это не свое предложение)
+    if (is_admin(callback.message.chat.id)):
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="🗑️ Удалить предложение", 
+                callback_data=f"admin_select_offer:{user_id}:{game_id}"
+            )
+        ])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()

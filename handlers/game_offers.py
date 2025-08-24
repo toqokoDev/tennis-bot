@@ -7,11 +7,12 @@ from aiogram.types import (
 from datetime import datetime, timedelta
 from config.config import SUBSCRIPTION_PRICE
 from models.states import GameOfferStates
+from utils.admin import is_admin
 from utils.bot import show_current_data
 from utils.game import get_user_games, save_user_game
 from utils.json_data import get_user_profile_from_storage, load_json, load_users, write_users
 from utils.ssesion import delete_session, save_session
-from config.profile import moscow_districts, game_types, payment_types
+from config.profile import moscow_districts, game_types, payment_types, base_keyboard
 from utils.validate import validate_time, validate_date
 
 router = Router()
@@ -228,25 +229,26 @@ async def new_offer_handler(callback: types.CallbackQuery, state: FSMContext):
     user_data = users.get(str(user_id), {})
     subscription_active = user_data.get('subscription', {}).get('active', False)
     
-    if not subscription_active:
-        # Получаем количество созданных бесплатных предложений
-        free_offers_used = user_data.get('free_offers_used', 0)
-        
-        if free_offers_used >= 2:
-            text = (
-                "🔒 <b>Доступ закрыт</b>\n\n"
-                "Вы использовали все бесплатные предложения игры (максимум 2).\n\n"
-                "Функция предложения игры доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
-                f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
-                "Перейдите в раздел '💳 Платежи' для оформления подписки."
-            )
+    if not is_admin(callback.message.chat.id):
+        if not subscription_active:
+            # Получаем количество созданных бесплатных предложений
+            free_offers_used = user_data.get('free_offers_used', 0)
             
-            await callback.message.answer(
-                text,
-                parse_mode="HTML"
-            )
-            await callback.answer()
-            return
+            if free_offers_used >= 2:
+                text = (
+                    "🔒 <b>Доступ закрыт</b>\n\n"
+                    "Вы использовали все бесплатные предложения игры (максимум 2).\n\n"
+                    "Функция предложения игры доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
+                    f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
+                    "Перейдите в раздел '💳 Платежи' для оформления подписки."
+                )
+                
+                await callback.message.answer(
+                    text,
+                    parse_mode="HTML"
+                )
+                await callback.answer()
+                return
     
     # Запускаем процесс создания нового предложения
     country = profile.get('country', '')
@@ -293,24 +295,25 @@ async def offer_game_command(message: types.Message, state: FSMContext):
     # Проверяем подписку и количество бесплатных предложений
     subscription_active = user_data.get('subscription', {}).get('active', False)
     
-    if not subscription_active:
-        # Получаем количество созданных бесплатных предложений
-        free_offers_used = user_data.get('free_offers_used', 0)
-        
-        if free_offers_used >= 2:
-            text = (
-                "🔒 <b>Доступ закрыт</b>\n\n"
-                "Вы использовали все бесплатные предложения игры (максимум 2).\n\n"
-                "Функция предложения игры доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
-                f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
-                "Перейдите в раздел '💳 Платежи' для оформления подписки."
-            )
+    if not is_admin(message.chat.id):
+        if not subscription_active:
+            # Получаем количество созданных бесплатных предложений
+            free_offers_used = user_data.get('free_offers_used', 0)
             
-            await message.answer(
-                text,
-                parse_mode="HTML"
-            )
-            return
+            if free_offers_used >= 2:
+                text = (
+                    "🔒 <b>Доступ закрыт</b>\n\n"
+                    "Вы использовали все бесплатные предложения игры (максимум 2).\n\n"
+                    "Функция предложения игры доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
+                    f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
+                    "Перейдите в раздел '💳 Платежи' для оформления подписки."
+                )
+                
+                await message.answer(
+                    text,
+                    parse_mode="HTML"
+                )
+                return
     
     country = user_data.get('country', '')
     city = user_data.get('city', '')
@@ -577,7 +580,7 @@ async def process_game_comment(message: types.Message, state: FSMContext):
         response.append(f"\n📊 Бесплатных предложений осталось: {remaining_offers}/2")
         response.append("💳 Оформите подписку для неограниченного создания предложений!")
     
-    await message.answer("\n".join(response))
+    await message.answer("\n".join(response), reply_markup=base_keyboard)
 
 @router.message(F.text == "📋 Мои предложения")
 async def list_my_games(message: types.Message, state: FSMContext):

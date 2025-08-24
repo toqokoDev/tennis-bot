@@ -1,4 +1,5 @@
 from config.paths import BASE_DIR
+from utils.admin import is_admin
 from utils.ssesion import save_session
 from aiogram import types
 from aiogram.fsm.context import FSMContext
@@ -82,26 +83,45 @@ async def show_profile(message: types.Message, profile: dict):
     
     caption = "\n".join(caption_lines) if caption_lines else "Анкета недоступна."
 
-    if message.chat.id == profile.get('telegram_id'):
+    # Проверяем, является ли текущий пользователь админом
+    is_user_admin = is_admin(message.chat.id)
+    profile_user_id = profile.get('telegram_id')
+
+    admin_buttons = [
+        [InlineKeyboardButton(text="🗑️ Удалить пользователя", callback_data=f"admin_select_user:{profile_user_id}")],
+        [InlineKeyboardButton(text="🔔 Удалить подписку", callback_data=f"admin_select_subscription:{profile_user_id}")],
+        [InlineKeyboardButton(text="⛔ Забанить пользователя", callback_data=f"admin_ban_user:{profile_user_id}")],
+        [InlineKeyboardButton(text="🗑️ Удалить тур", callback_data=f"admin_confirm_delete_vacation:{profile_user_id}")]
+    ]
+    
+    if message.chat.id == profile_user_id:
         # Клавиатура для своего профиля
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="✏️ Редактировать профиль", callback_data="edit_profile")],
-                [InlineKeyboardButton(text="✈️ Найти партнера на время отдыха",callback_data="create_tour")],
-                [InlineKeyboardButton(text="📋 Мои предложения игр", callback_data="my_offers")],
-                [InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer")],
-                [InlineKeyboardButton(text="Моя история игр", callback_data=f"game_history:{message.chat.id}")],
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
-            ]
-        )
+        keyboard_buttons = [
+            [InlineKeyboardButton(text="✏️ Редактировать профиль", callback_data="edit_profile")],
+            [InlineKeyboardButton(text="✈️ Найти партнера на время отдыха", callback_data="create_tour")],
+            [InlineKeyboardButton(text="📋 Мои предложения игр", callback_data="my_offers")],
+            [InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer")],
+            [InlineKeyboardButton(text="Моя история игр", callback_data=f"game_history:{message.chat.id}")],
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+        ]
+        
+        # Если админ смотрит свой профиль - добавляем админские кнопки
+        if is_user_admin:
+            keyboard_buttons = admin_buttons + keyboard_buttons
+            
     else:
         # Клавиатура для чужого профиля
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="Просмотреть историю матчей", callback_data=f"game_history:{profile.get('telegram_id')}")],
-                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
-            ]
-        )
+        keyboard_buttons = [
+            [InlineKeyboardButton(text="Просмотреть историю матчей", callback_data=f"game_history:{profile_user_id}")],
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+        ]
+        
+        # Если админ смотрит чужой профиль - добавляем админские кнопки
+        if is_user_admin:
+            admin_buttons.append([InlineKeyboardButton(text="✏️ Редактировать чужой профиль", callback_data=f"admin_edit_profile:{profile_user_id}")])
+            keyboard_buttons = admin_buttons + keyboard_buttons
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
     photo_path = profile.get("photo_path")
     if photo_path and (BASE_DIR / photo_path).exists():
