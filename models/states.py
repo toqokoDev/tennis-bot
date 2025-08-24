@@ -72,7 +72,7 @@ class AddScoreState(StatesGroup):
     searching_opponent1 = State()
     searching_opponent2 = State()
     selecting_opponent1 = State()
-    electing_opponent2 = State()
+    selecting_opponent2 = State()
     
 class SearchPartnerStates(StatesGroup):
     SEARCH_TYPE = State()

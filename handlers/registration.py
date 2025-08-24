@@ -4,6 +4,7 @@ from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
+    FSInputFile,
     Message,
     ReplyKeyboardMarkup,
     KeyboardButton,
@@ -12,12 +13,13 @@ from aiogram.types import (
     InlineKeyboardButton
 )
 
+from config.config import CHANNEL_ID
 from config.paths import BASE_DIR, PHOTOS_DIR
 from config.profile import moscow_districts, player_levels, base_keyboard
 
 from models.states import RegistrationStates
 
-from utils.utils import calculate_age
+from utils.utils import calculate_age, create_user_profile_link
 from utils.media import download_photo_to_path
 from utils.bot import show_current_data, show_profile
 from utils.ssesion import delete_session, load_session, save_session
@@ -628,9 +630,9 @@ async def finish_registration(message: types.Message, state: FSMContext):
         "games_played": 0,
         "games_wins": 0,
         "default_payment": user_state.get("default_payment"),
-        "show_in_search": True,  # Всегда показывать в поиске
+        "show_in_search": True,
         "profile_comment": user_state.get("profile_comment"),
-        "games": [],  # Теперь это массив игр
+        "games": [],
         "created_at": datetime.now().isoformat(timespec="seconds")
     }
 
@@ -645,3 +647,39 @@ async def finish_registration(message: types.Message, state: FSMContext):
     delete_session(user_id)
 
     await show_profile(message, profile)
+
+    """Отправляет уведомление о новой регистрации в канал"""
+    try:
+        city = profile.get('city', '—')
+        district = profile.get('district', None)
+        if district:
+            city = f"{city} - {district}"
+            
+        username_text = "\n"
+        if username:
+            username_text = f"✉️ @{username}\n\n"
+
+        registration_text = (
+            "🎾 *Новый участник присоединился к сообществу!*\n\n"
+            f"👤 {create_user_profile_link(profile, user_id)}\n" 
+            f"🏸 {profile.get('sport', 'Не указан')} ({profile.get('player_level', 'Не указан')} Лвл)\n"
+            f"📍 {city} ({profile.get('country', '')})\n"
+            f"{username_text}"
+            f"#анкета"
+        )
+        
+        if profile.get('photo_path'):
+            await message.bot.send_photo(
+                chat_id=CHANNEL_ID,
+                photo=FSInputFile(BASE_DIR / profile.get('photo_path')),
+                caption=registration_text,
+                parse_mode="Markdown"
+            )
+        else:
+            await message.bot.send_message(
+                chat_id=CHANNEL_ID,
+                text=registration_text,
+                parse_mode="Markdown"
+            )
+    except:
+        pass
