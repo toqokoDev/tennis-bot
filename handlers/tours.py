@@ -10,6 +10,7 @@ from config.config import ITEMS_PER_PAGE
 from utils.json_data import load_users, save_users
 from models.states import BrowseToursStates, CreateTourStates
 from utils.utils import create_user_profile_link, format_tour_date
+from utils.validate import validate_future_date
 
 router = Router()
 
@@ -295,10 +296,21 @@ async def back_to_tours_list(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "create_tour")
 async def start_create_tour(callback: types.CallbackQuery, state: FSMContext):
     """Начало создания тура"""
-    await callback.message.edit_text(
-        "📅 Введите дату начала поездки в формате ДД.ММ.ГГГГ:\n"
-        "Например: 25.08.2025"
-    )
+    try:
+        await callback.message.edit_text(
+            "📅 Введите дату начала поездки в формате ДД.ММ.ГГГГ:\n"
+            "Например: 25.08.2025"
+        )
+    except:
+        try:
+            await callback.message.delete()
+        except:
+            pass
+
+        await callback.message.answer(
+            "📅 Введите дату начала поездки в формате ДД.ММ.ГГГГ:\n"
+            "Например: 25.08.2025"
+        )
     await state.set_state(CreateTourStates.ENTER_START_DATE)
     await callback.answer()
 
@@ -308,6 +320,16 @@ async def process_start_date(message: types.Message, state: FSMContext):
     try:
         # Проверяем формат даты
         datetime.strptime(message.text, "%d.%m.%Y")
+        
+        # Проверяем что дата в будущем
+        if not validate_future_date(message.text):
+            await message.answer(
+                "❌ Неверный формат даты. "
+                "Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ:\n"
+                "Например: 25.08.2025"
+            )
+            return
+            
         await state.update_data(vacation_start=message.text)
         await message.answer(
             "📅 Введите дату завершения поездки в формате ДД.ММ.ГГГГ:\n"
@@ -326,6 +348,15 @@ async def process_end_date(message: types.Message, state: FSMContext):
     try:
         # Проверяем формат даты
         datetime.strptime(message.text, "%d.%m.%Y")
+        
+        # Проверяем что дата в будущем
+        if not validate_future_date(message.text):
+            await message.answer(
+                "❌ Неверный формат даты. "
+                "Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ:\n"
+                "Например: 30.08.2025"
+            )
+            return
         
         state_data = await state.get_data()
         start_date = datetime.strptime(state_data['vacation_start'], "%d.%m.%Y")
