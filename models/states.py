@@ -57,7 +57,7 @@ class EditProfileStates(StatesGroup):
     COUNTRY_INPUT = State()
 
 class PaymentStates(StatesGroup):
-    ENTER_EMAIL = State()
+    WAITING_EMAIL = State()
     CONFIRM_PAYMENT = State()
 
 class AddScoreState(StatesGroup):
