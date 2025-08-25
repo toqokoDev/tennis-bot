@@ -1,9 +1,9 @@
-from yookassa import Payment
 import uuid
+from yookassa import Payment
 
 from config.config import BOT_USERNAME
 
-def create_payment(user_id, amount, description):
+async def create_payment(user_id, amount, description):
     """
     Создает платеж и возвращает ссылку для оплаты
     """

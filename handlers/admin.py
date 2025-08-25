@@ -6,8 +6,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 import os
 import logging
 
-from utils.admin import get_confirmation_keyboard, is_admin, load_banned_users, load_games, save_banned_users, save_games, save_users
-from utils.json_data import load_users
+from services.storage import storage
+from utils.admin import get_confirmation_keyboard, is_admin
 
 admin_router = Router()
 logger = logging.getLogger(__name__)
@@ -46,11 +46,11 @@ async def safe_send_message(message: Message, text: str, reply_markup=None):
 # Команда удаления всех пользователей
 @admin_router.message(Command("delete_all_users"))
 async def delete_all_users_cmd(message: Message):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         await safe_send_message(message, "❌ У вас нет прав администратора")
         return
     
-    keyboard = get_confirmation_keyboard("delete_all_users")
+    keyboard = await get_confirmation_keyboard("delete_all_users")
     await safe_send_message(
         message,
         "⚠️ Вы уверены, что хотите удалить ВСЕХ пользователей?\n"
@@ -66,11 +66,11 @@ async def delete_all_users_cmd(message: Message):
 # Команда удаления всех игр
 @admin_router.message(Command("delete_all_games"))
 async def delete_all_games_cmd(message: Message):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         await safe_send_message(message, "❌ У вас нет прав администратора")
         return
     
-    keyboard = get_confirmation_keyboard("delete_all_games")
+    keyboard = await get_confirmation_keyboard("delete_all_games")
     await safe_send_message(
         message,
         "⚠️ Вы уверены, что хотите удалить ВСЕ игры?\n"
@@ -84,11 +84,11 @@ async def delete_all_games_cmd(message: Message):
 # Команда удаления всех предложений игр
 @admin_router.message(Command("delete_all_offers"))
 async def delete_all_offers_cmd(message: Message):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         await safe_send_message(message, "❌ У вас нет прав администратора")
         return
     
-    keyboard = get_confirmation_keyboard("delete_all_offers")
+    keyboard = await get_confirmation_keyboard("delete_all_offers")
     await safe_send_message(
         message,
         "⚠️ Вы уверены, что хотите удалить ВСЕ предложения игр?\n"
@@ -100,11 +100,11 @@ async def delete_all_offers_cmd(message: Message):
 # Команда для просмотра забаненных пользователей
 @admin_router.message(Command("banned_users"))
 async def banned_users_cmd(message: Message):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         await safe_send_message(message, "❌ У вас нет прав администратора")
         return
     
-    banned_users = load_banned_users()
+    banned_users = await storage.load_banned_users()
     
     if not banned_users:
         await safe_send_message(message, "📋 Список забаненных пользователей пуст.")
@@ -129,14 +129,14 @@ async def banned_users_cmd(message: Message):
 # Команда для разбана пользователя
 @admin_router.message(Command("unban_user"))
 async def unban_user_cmd(message: Message):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         await safe_send_message(message, "❌ У вас нет прав администратора")
         return
     
     await show_unban_menu(message)
 
 async def show_unban_menu(message: Message):
-    banned_users = load_banned_users()
+    banned_users = await storage.load_banned_users()
     
     if not banned_users:
         await safe_send_message(message, "📋 Список забаненных пользователей пуст.")
@@ -159,12 +159,12 @@ async def show_unban_menu(message: Message):
 # Обработка подтверждения удаления всех пользователей
 @admin_router.callback_query(F.data == "admin_confirm_delete_all_users")
 async def confirm_delete_all_users(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
-    users = load_users()
-    games = load_games()
+    users = await storage.load_users()
+    games = await storage.load_games()
     
     # Откат рейтингов и удаление фото
     for user_id, user_data in users.items():
@@ -177,11 +177,11 @@ async def confirm_delete_all_users(callback: CallbackQuery):
     
     # Удаление всех пользователей
     users.clear()
-    save_users(users)
+    await storage.save_users(users)
     
     # Удаление всех игр
     games.clear()
-    save_games(games)
+    await storage.save_games(games)
     
     await safe_edit_message(callback, "✅ Все пользователи и игры успешно удалены!")
     await callback.answer()
@@ -189,12 +189,12 @@ async def confirm_delete_all_users(callback: CallbackQuery):
 # Обработка подтверждения удаления всех игр
 @admin_router.callback_query(F.data == "admin_confirm_delete_all_games")
 async def confirm_delete_all_games(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
-    users = load_users()
-    games = load_games()
+    users = await storage.load_users()
+    games = await storage.load_games()
     
     # Откат рейтингов
     for game in games:
@@ -209,8 +209,8 @@ async def confirm_delete_all_games(callback: CallbackQuery):
     
     # Удаление всех игр
     games.clear()
-    save_games(games)
-    save_users(users)
+    await storage.save_users(users)
+    await storage.save_games(games)
     
     await safe_edit_message(callback, "✅ Все игры удалены, рейтинги откачены!")
     await callback.answer()
@@ -218,18 +218,18 @@ async def confirm_delete_all_games(callback: CallbackQuery):
 # Обработка подтверждения удаления всех предложений
 @admin_router.callback_query(F.data == "admin_confirm_delete_all_offers")
 async def confirm_delete_all_offers(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
-    users = load_users()
+    users = await storage.load_users()
     
     # Удаление всех предложений игр у пользователей
     for user_id, user_data in users.items():
         if 'games' in user_data and user_data['games']:
             user_data['games'] = []
     
-    save_users(users)
+    await storage.save_users(users)
     
     await safe_edit_message(callback, "✅ Все предложения игр успешно удалены!")
     await callback.answer()
@@ -253,7 +253,7 @@ def get_admin_keyboard():
 # Команда админской панели
 @admin_router.message(Command("admin"))
 async def admin_panel(message: Message):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         await safe_send_message(message, "❌ У вас нет прав администратора")
         return
     
@@ -267,11 +267,11 @@ async def admin_panel(message: Message):
 # Обработчики кнопок админской панели - меню выбора
 @admin_router.callback_query(F.data == "admin_banned_list")
 async def banned_list_handler(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
-    banned_users = load_banned_users()
+    banned_users = await storage.load_banned_users()
     
     if not banned_users:
         await callback.answer("📋 Список забаненных пользователей пуст.")
@@ -297,11 +297,11 @@ async def banned_list_handler(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_unban_menu")
 async def unban_menu_handler(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
-    banned_users = load_banned_users()
+    banned_users = await storage.load_banned_users()
     
     if not banned_users:
         await callback.answer("📋 Список забаненных пользователей пуст.")
@@ -324,11 +324,11 @@ async def unban_menu_handler(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_clear_all_bans")
 async def clear_all_bans_handler(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
-    keyboard = get_confirmation_keyboard("clear_all_bans")
+    keyboard = await get_confirmation_keyboard("clear_all_bans")
     await safe_edit_message(
         callback,
         "⚠️ Вы уверены, что хотите очистить ВЕСЬ список банов?\n\n"
@@ -340,31 +340,31 @@ async def clear_all_bans_handler(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_confirm_clear_all_bans")
 async def confirm_clear_all_bans(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
     # Очищаем список банов
-    save_banned_users({})
+    await storage.save_banned_users({})
     
     await safe_edit_message(callback, "✅ Все баны успешно очищены!")
     await callback.answer()
 
 @admin_router.callback_query(F.data.startswith("admin_unban_user:"))
 async def unban_user_handler(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
     user_id = callback.data.split(':')[1]
-    banned_users = load_banned_users()
+    banned_users = await storage.load_banned_users()
     
     if user_id not in banned_users:
         await callback.answer("❌ Пользователь не найден в списке банов")
         return
     
     user_data = banned_users[user_id]
-    keyboard = get_confirmation_keyboard("unban_user", user_id)
+    keyboard = await get_confirmation_keyboard("unban_user", user_id)
     
     await safe_edit_message(
         callback,
@@ -380,12 +380,12 @@ async def unban_user_handler(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data.startswith("admin_confirm_unban_user:"))
 async def confirm_unban_user(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
     user_id = callback.data.split(':')[1]
-    banned_users = load_banned_users()
+    banned_users = await storage.load_banned_users()
     
     if user_id not in banned_users:
         await callback.answer("❌ Пользователь не найден в списке банов")
@@ -393,7 +393,7 @@ async def confirm_unban_user(callback: CallbackQuery):
     
     # Удаляем пользователя из списка банов
     user_data = banned_users.pop(user_id)
-    save_banned_users(banned_users)
+    await storage.save_banned_users(banned_users)
     
     await safe_edit_message(
         callback,
@@ -405,7 +405,7 @@ async def confirm_unban_user(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_delete_user_menu")
 async def delete_user_menu(callback: CallbackQuery):
-    users = load_users()
+    users = await storage.load_users()
     
     if not users:
         await callback.answer("❌ Нет пользователей для удаления")
@@ -424,7 +424,7 @@ async def delete_user_menu(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_delete_game_menu")
 async def delete_game_menu(callback: CallbackQuery):
-    games = load_games()
+    games = await storage.load_games()
     
     if not games:
         await callback.answer("❌ Нет игр для удаления")
@@ -444,7 +444,7 @@ async def delete_game_menu(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_delete_offer_menu")
 async def delete_offer_menu(callback: CallbackQuery):
-    users = load_users()
+    users = await storage.load_users()
     offers_list = []
     
     for user_id, user_data in users.items():
@@ -476,7 +476,7 @@ async def delete_offer_menu(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_delete_vacation_menu")
 async def delete_vacation_menu(callback: CallbackQuery):
-    users = load_users()
+    users = await storage.load_users()
     vacation_users = []
     
     for user_id, user_data in users.items():
@@ -505,7 +505,7 @@ async def delete_vacation_menu(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_delete_subscription_menu")
 async def delete_subscription_menu(callback: CallbackQuery):
-    users = load_users()
+    users = await storage.load_users()
     sub_users = []
     
     for user_id, user_data in users.items():
@@ -535,7 +535,7 @@ async def delete_subscription_menu(callback: CallbackQuery):
 @admin_router.callback_query(F.data.startswith("admin_select_user:"))
 async def select_user(callback: CallbackQuery):
     user_id = callback.data.split(':')[1]
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id not in users:
         await callback.answer("❌ Пользователь не найден")
@@ -566,8 +566,8 @@ async def select_user(callback: CallbackQuery):
 @admin_router.callback_query(F.data.startswith("admin_select_game:"))
 async def select_game(callback: CallbackQuery):
     game_id = callback.data.split(':')[1]
-    games = load_games()
-    users = load_users()
+    games = await storage.load_games()
+    users = await storage.load_users()
     
     game_to_delete = None
     for game in games:
@@ -586,7 +586,7 @@ async def select_game(callback: CallbackQuery):
                 user = users[player_id]
                 player_names.append(f"{user.get('first_name', '')} {user.get('last_name', '')}")
     
-    keyboard = get_confirmation_keyboard("delete_game", game_id)
+    keyboard = await get_confirmation_keyboard("delete_game", game_id)
     
     await safe_edit_message(
         callback,
@@ -604,14 +604,14 @@ async def select_game(callback: CallbackQuery):
 @admin_router.callback_query(F.data.startswith("admin_select_vacation:"))
 async def select_vacation(callback: CallbackQuery):
     user_id = callback.data.split(':')[1]
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id not in users:
         await callback.answer("❌ Пользователь не найден")
         return
     
     user_data = users[user_id]
-    keyboard = get_confirmation_keyboard("delete_vacation", user_id)
+    keyboard = await get_confirmation_keyboard("delete_vacation", user_id)
     
     vacation_info = "❌ Отпуск не установлен"
     if user_data.get('vacation_tennis'):
@@ -630,14 +630,14 @@ async def select_vacation(callback: CallbackQuery):
 @admin_router.callback_query(F.data.startswith("admin_select_subscription:"))
 async def select_subscription(callback: CallbackQuery):
     user_id = callback.data.split(':')[1]
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id not in users:
         await callback.answer("❌ Пользователь не найден")
         return
     
     user_data = users[user_id]
-    keyboard = get_confirmation_keyboard("delete_subscription", user_id)
+    keyboard = await get_confirmation_keyboard("delete_subscription", user_id)
     
     sub_info = "❌ Подписка не активна"
     if user_data.get('subscription', {}).get('active'):
@@ -663,7 +663,7 @@ async def select_offer(callback: CallbackQuery):
         await callback.answer("❌ Ошибка формата ID")
         return
     
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id not in users:
         await callback.answer("❌ Пользователь не найден")
@@ -681,7 +681,7 @@ async def select_offer(callback: CallbackQuery):
         await callback.answer("❌ Предложение не найдено")
         return
     
-    keyboard = get_confirmation_keyboard("delete_offer", f"{user_id}:{offer_id}")
+    keyboard = await get_confirmation_keyboard("delete_offer", f"{user_id}:{offer_id}")
     
     await safe_edit_message(
         callback,
@@ -711,13 +711,13 @@ async def back_to_main(callback: CallbackQuery):
 # Обработка подтверждения для отдельных действий
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_user:"))
 async def confirm_delete_user(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
     user_id = callback.data.split(':')[1]
-    users = load_users()
-    games = load_games()
+    users = await storage.load_users()
+    games = await storage.load_games()
     
     if user_id not in users:
         await callback.answer("❌ Пользователь не найден")
@@ -758,21 +758,21 @@ async def confirm_delete_user(callback: CallbackQuery):
     # Удаление пользователя
     del users[user_id]
     
-    save_users(users)
-    save_games(new_games)
+    await storage.save_users(users)
+    await storage.save_games(new_games)
     
     await safe_edit_message(callback, f"✅ Пользователь {user_id} успешно удален! Все связанные игры также удалены.")
     await callback.answer()
 
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_game:"))
 async def confirm_delete_game(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
     game_id = callback.data.split(':')[1]
-    users = load_users()
-    games = load_games()
+    users = await storage.load_users()
+    games = await storage.load_games()
     
     game_to_delete = None
     new_games = []
@@ -797,20 +797,20 @@ async def confirm_delete_game(callback: CallbackQuery):
                 users[player_id]['games_wins'] = max(0, users[player_id].get('games_wins', 0) - 1)
     
     # Удаление игры
-    save_games(new_games)
-    save_users(users)
+    await storage.save_games(new_games)
+    await storage.save_users(users)
     
     await safe_edit_message(callback, f"✅ Игра {game_id} успешно удалена! Рейтинги откачены.")
     await callback.answer()
 
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_vacation:"))
 async def confirm_delete_vacation(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
     user_id = callback.data.split(':')[1]
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id not in users:
         await callback.answer("❌ Пользователь не найден")
@@ -822,19 +822,19 @@ async def confirm_delete_vacation(callback: CallbackQuery):
     users[user_id].pop('vacation_end', None)
     users[user_id].pop('vacation_comment', None)
     
-    save_users(users)
+    await storage.save_users(users)
     
     await safe_edit_message(callback, f"✅ Отпуск пользователя {user_id} успешно удален!")
     await callback.answer()
 
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_subscription:"))
 async def confirm_delete_subscription(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
     user_id = callback.data.split(':')[1]
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id not in users:
         await callback.answer("❌ Пользователь не найден")
@@ -843,14 +843,14 @@ async def confirm_delete_subscription(callback: CallbackQuery):
     # Удаляем подписку
     users[user_id].pop('subscription', None)
     
-    save_users(users)
+    await storage.save_users(users)
     
     await safe_edit_message(callback, f"✅ Подписка пользователя {user_id} успешно удалена!")
     await callback.answer()
 
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_offer:"))
 async def confirm_delete_offer(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав")
         return
     
@@ -860,7 +860,7 @@ async def confirm_delete_offer(callback: CallbackQuery):
         await callback.answer("❌ Ошибка формата ID")
         return
     
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id not in users:
         await callback.answer("❌ Пользователь не найден")
@@ -871,7 +871,7 @@ async def confirm_delete_offer(callback: CallbackQuery):
     new_games = [game for game in user_games if str(game.get('id')) != offer_id]
     users[user_id]['games'] = new_games
     
-    save_users(users)
+    await storage.save_users(users)
     
     await safe_edit_message(callback, f"✅ Предложение {offer_id} пользователя {user_id} успешно удалено!")
     await callback.answer()
@@ -879,7 +879,7 @@ async def confirm_delete_offer(callback: CallbackQuery):
 # Обработчики для кнопок массового удаления из админской панели
 @admin_router.callback_query(F.data == "admin_delete_all_users")
 async def delete_all_users_callback(callback: CallbackQuery):
-    keyboard = get_confirmation_keyboard("delete_all_users")
+    keyboard = await get_confirmation_keyboard("delete_all_users")
     await safe_edit_message(
         callback,
         "⚠️ Вы уверены, что хотите удалить ВСЕХ пользователей?\n"
@@ -895,7 +895,7 @@ async def delete_all_users_callback(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_delete_all_games")
 async def delete_all_games_callback(callback: CallbackQuery):
-    keyboard = get_confirmation_keyboard("delete_all_games")
+    keyboard = await get_confirmation_keyboard("delete_all_games")
     await safe_edit_message(
         callback,
         "⚠️ Вы уверены, что хотите удалить ВСЕ игры?\n"
@@ -909,7 +909,7 @@ async def delete_all_games_callback(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_delete_all_offers")
 async def delete_all_offers_callback(callback: CallbackQuery):
-    keyboard = get_confirmation_keyboard("delete_all_offers")
+    keyboard = await get_confirmation_keyboard("delete_all_offers")
     await safe_edit_message(
         callback,
         "⚠️ Вы уверены, что хотите удалить ВСЕ предложения игр?\n"
@@ -921,12 +921,12 @@ async def delete_all_offers_callback(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data.startswith("admin_ban_user:"))
 async def ban_user_handler(callback: CallbackQuery):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
     user_id = callback.data.split(':')[1]
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id not in users:
         await callback.answer("❌ Пользователь не найден")
@@ -935,7 +935,7 @@ async def ban_user_handler(callback: CallbackQuery):
     user_data = users[user_id]
     
     # Загружаем список забаненных пользователей
-    banned_users = load_banned_users()
+    banned_users = await storage.load_banned_users()
     
     # Добавляем пользователя в бан лист
     banned_users[str(user_id)] = {
@@ -946,10 +946,10 @@ async def ban_user_handler(callback: CallbackQuery):
         'banned_by': callback.message.chat.id,
         'banned_at': datetime.now().isoformat()
     }
-    save_banned_users(banned_users)
+    await storage.save_banned_users(banned_users)
     
     # Удаляем пользователя (та же логика что и при удалении)
-    games = load_games()
+    games = await storage.load_games()
     new_games = []
     for game in games:
         user_in_game = False
@@ -979,8 +979,8 @@ async def ban_user_handler(callback: CallbackQuery):
     # Удаление пользователя
     del users[user_id]
     
-    save_users(users)
-    save_games(new_games)
+    await storage.save_users(users)
+    await storage.save_games(new_games)
     
     await safe_edit_message(callback, f"✅ Пользователь {user_id} забанен и удален!")
     await callback.answer()

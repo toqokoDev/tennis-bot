@@ -8,18 +8,13 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config.config import SUBSCRIPTION_PRICE
-from config.profile import GENDER_TYPES, PLAYER_LEVELS
+from config.profile import GENDER_TYPES, PLAYER_LEVELS, cities_data, countries
 from models.states import SearchPartnerStates
 from utils.bot import show_profile
-from utils.json_data import get_user_profile_from_storage, is_user_registered, load_json, load_users
-from utils.ssesion import save_session
-from utils.utils import count_users_by_location, count_users_by_filters
+from utils.utils import count_users_by_location
+from services.storage import storage
 
 router = Router()
-
-cities_data = load_json("cities.json")
-countries = list(cities_data.keys())
 
 @router.message(F.text == "🎾 Поиск партнера")
 async def handle_search_partner(message: types.Message, state: FSMContext):
@@ -31,13 +26,13 @@ async def handle_search_partner(message: types.Message, state: FSMContext):
     
     buttons = []
     for country in countries[:5]:
-        count = count_users_by_location("partner", country)
+        count = await count_users_by_location("partner", country)
         buttons.append([InlineKeyboardButton(
             text=f"{country} ({count})", 
             callback_data=f"partner_search_country_{country}"
         )])
     
-    count_other = count_users_by_location("partner") - sum(count_users_by_location("partner", c) for c in countries[:5])
+    count_other = await count_users_by_location("partner") - sum(await count_users_by_location("partner", c) for c in countries[:5])
     buttons.append([InlineKeyboardButton(
         text=f"🌎 Другие страны ({count_other})", 
         callback_data="partner_search_other_country"
@@ -68,13 +63,13 @@ async def process_search_country_partner(callback: types.CallbackQuery, state: F
         main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
         buttons = []
         for city in main_russian_cities:
-            count = count_users_by_location(search_type, country, city)
+            count = await count_users_by_location(search_type, country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"{city} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
         
-        count_other = count_users_by_location(search_type, country) - sum(count_users_by_location(search_type, country, c) for c in main_russian_cities)
+        count_other = await count_users_by_location(search_type, country) - sum(await count_users_by_location(search_type, country, c) for c in main_russian_cities)
         buttons.append([InlineKeyboardButton(
             text=f"🏙 Другие города ({count_other})", 
             callback_data="partner_search_other_city"
@@ -83,13 +78,13 @@ async def process_search_country_partner(callback: types.CallbackQuery, state: F
         cities = cities_data.get(country, [])
         buttons = []
         for city in cities[:5]:
-            count = count_users_by_location(search_type, country, city)
+            count = await count_users_by_location(search_type, country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"{city} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
         
-        count_other = count_users_by_location(search_type, country) - sum(count_users_by_location(search_type, country, c) for c in cities[:5])
+        count_other = await count_users_by_location(search_type, country) - sum(await count_users_by_location(search_type, country, c) for c in cities[:5])
         buttons.append([InlineKeyboardButton(
             text=f"🏙 Другие города ({count_other})", 
             callback_data="partner_search_other_city"
@@ -141,7 +136,7 @@ async def process_search_country_input_partner(message: Message, state: FSMConte
     )
     await state.update_data(last_message_id=sent_message.message_id)
     await state.set_state(SearchPartnerStates.SEARCH_CITY_INPUT)
-    save_session(message.from_user.id, await state.get_data())
+    await storage.save_session(message.from_user.id, await state.get_data())
 
 @router.callback_query(SearchPartnerStates.SEARCH_COUNTRY, F.data == "partner_back_to_main")
 async def partner_back_to_main(callback: types.CallbackQuery, state: FSMContext):
@@ -153,9 +148,9 @@ async def partner_back_to_main(callback: types.CallbackQuery, state: FSMContext)
 async def process_search_city_partner(callback: types.CallbackQuery, state: FSMContext):
     city = callback.data.split("_", maxsplit=3)[3]
     await state.update_data(search_city=city)
-    
+
     # Получаем вид спорта из профиля текущего пользователя
-    current_user_profile = get_user_profile_from_storage(callback.message.chat.id)
+    current_user_profile = await storage.get_user(callback.message.chat.id)
     if current_user_profile and 'sport' in current_user_profile:
         await state.update_data(sport_type=current_user_profile['sport'])
         await show_gender_selection(callback.message, state)
@@ -195,7 +190,7 @@ async def process_search_city_input_partner(message: Message, state: FSMContext)
             pass
     
     # Получаем вид спорта из профиля текущего пользователя
-    current_user_profile = get_user_profile_from_storage(message.from_user.id)
+    current_user_profile = await storage.get_user(message.from_user.id)
     if current_user_profile and 'sport' in current_user_profile:
         await state.update_data(sport_type=current_user_profile['sport'])
         await show_gender_selection(message, state, True)
@@ -209,7 +204,7 @@ async def process_search_city_input_partner(message: Message, state: FSMContext)
         await state.update_data(last_message_id=sent_message.message_id)
         await state.set_state(SearchPartnerStates.SEARCH_ERROR)
     
-    save_session(message.from_user.id, await state.get_data())
+    await storage.save_session(message.from_user.id, await state.get_data())
 
 @router.callback_query(SearchPartnerStates.SEARCH_CITY_INPUT, F.data == "partner_back_to_countries")
 @router.callback_query(SearchPartnerStates.SEARCH_COUNTRY_INPUT, F.data == "partner_back_to_countries")
@@ -220,13 +215,13 @@ async def partner_back_to_countries(callback: types.CallbackQuery, state: FSMCon
     
     buttons = []
     for country in countries[:5]:
-        count = count_users_by_location(search_type, country)
+        count = await count_users_by_location(search_type, country)
         buttons.append([InlineKeyboardButton(
             text=f"{country} ({count})", 
             callback_data=f"partner_search_country_{country}"
         )])
     
-    count_other = count_users_by_location(search_type) - sum(count_users_by_location(search_type, c) for c in countries[:5])
+    count_other = await count_users_by_location(search_type) - sum(await count_users_by_location(search_type, c) for c in countries[:5])
     buttons.append([InlineKeyboardButton(
         text=f"🌎 Другие страны ({count_other})", 
         callback_data="partner_search_other_country"
@@ -302,13 +297,13 @@ async def partner_back_to_cities_from_gender(callback: types.CallbackQuery, stat
         main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
         buttons = []
         for city in main_russian_cities:
-            count = count_users_by_location("partner", country, city)
+            count = await count_users_by_location("partner", country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"🏙 {city} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
         
-        count_other = count_users_by_location("partner", country) - sum(count_users_by_location("partner", country, c) for c in main_russian_cities)
+        count_other = await count_users_by_location("partner", country) - sum(await count_users_by_location("partner", country, c) for c in main_russian_cities)
         buttons.append([InlineKeyboardButton(
             text=f"🏙 Другие города ({count_other})", 
             callback_data="partner_search_other_city"
@@ -317,13 +312,13 @@ async def partner_back_to_cities_from_gender(callback: types.CallbackQuery, stat
         cities = cities_data.get(country, [])
         buttons = []
         for city in cities[:5]:
-            count = count_users_by_location("partner", country, city)
+            count = await count_users_by_location("partner", country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"🏙 {city} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
         
-        count_other = count_users_by_location("partner", country) - sum(count_users_by_location("partner", country, c) for c in cities[:5])
+        count_other = await count_users_by_location("partner", country) - sum(await count_users_by_location("partner", country, c) for c in cities[:5])
         buttons.append([InlineKeyboardButton(
             text=f"🏙 Другие города ({count_other})", 
             callback_data="partner_search_other_city"
@@ -402,7 +397,7 @@ async def perform_partner_search(message: Union[types.Message, types.CallbackQue
     gender = data.get('gender')
     level = data.get('level')
     
-    users = load_users()
+    users = await storage.load_users()
     current_user_id = str(message_obj.chat.id)
     results = []
     
@@ -528,7 +523,7 @@ async def handle_page_change_partner(callback: types.CallbackQuery, state: FSMCo
 async def handle_show_profile_partner(callback: types.CallbackQuery, state: FSMContext):
     user_id = int(callback.data.split("_", 3)[3])
     
-    profile = get_user_profile_from_storage(user_id)
+    profile = await storage.get_user(user_id)
     if not profile:
         await callback.answer("❌ Профиль не найден")
         return
@@ -568,13 +563,13 @@ async def partner_back_to_cities_from_error(callback: types.CallbackQuery, state
         main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
         buttons = []
         for city in main_russian_cities:
-            count = count_users_by_location("partner", country, city)
+            count = await count_users_by_location("partner", country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"🏙 {city} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
         
-        count_other = count_users_by_location("partner", country) - sum(count_users_by_location("partner", country, c) for c in main_russian_cities)
+        count_other = await count_users_by_location("partner", country) - sum(await count_users_by_location("partner", country, c) for c in main_russian_cities)
         buttons.append([InlineKeyboardButton(
             text=f"🏙 Другие города ({count_other})", 
             callback_data="partner_search_other_city"
@@ -583,13 +578,13 @@ async def partner_back_to_cities_from_error(callback: types.CallbackQuery, state
         cities = cities_data.get(country, [])
         buttons = []
         for city in cities[:5]:
-            count = count_users_by_location("partner", country, city)
+            count = await count_users_by_location("partner", country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"🏙 {city} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
         
-        count_other = count_users_by_location("partner", country) - sum(count_users_by_location("partner", country, c) for c in cities[:5])
+        count_other = await count_users_by_location("partner", country) - sum(await count_users_by_location("partner", country, c) for c in cities[:5])
         buttons.append([InlineKeyboardButton(
             text=f"🏙 Другие города ({count_other})", 
             callback_data="partner_search_other_city"

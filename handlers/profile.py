@@ -8,23 +8,19 @@ from aiogram.types import (
 )
 
 from config.paths import BASE_DIR, PHOTOS_DIR
-from config.profile import moscow_districts, base_keyboard
+from config.profile import moscow_districts, base_keyboard, cities_data, countries
 from models.states import EditProfileStates
 from utils.bot import show_profile
-from utils.json_data import get_user_profile_from_storage, load_json, load_users, write_users
 from utils.media import download_photo_to_path
+from services.storage import storage
 
 router = Router()
-
-# ---------- Первичные данные ----------
-cities_data = load_json("cities.json")
-countries = list(cities_data.keys())
 
 # Добавляем обработчики для кнопок
 @router.callback_query(F.data == "edit_profile")
 async def edit_profile_handler(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.message.chat.id
-    profile = get_user_profile_from_storage(user_id)
+    profile = await storage.get_user(user_id)
     
     if not profile:
         await callback.answer("❌ Профиль не найден", reply_markup=base_keyboard)
@@ -53,7 +49,7 @@ async def edit_profile_handler(callback: types.CallbackQuery, state: FSMContext)
 @router.callback_query(F.data.startswith("back_to_profile:"))
 async def back_to_profile_handler(callback: types.CallbackQuery):
     user_id = callback.data.split(":")[1]
-    profile = get_user_profile_from_storage(user_id)
+    profile = await storage.get_user(user_id)
     
     try:
         await callback.message.delete()
@@ -113,13 +109,14 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
 @router.message(EditProfileStates.COMMENT, F.text)
 async def save_comment_edit(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    users = load_users()
+    users = await storage.load_users()
+    
     user_key = str(user_id)
     
     if user_key in users:
         # Сохраняем новый комментарий
         users[user_key]['profile_comment'] = message.text.strip()
-        write_users(users)
+        await storage.save_users(users)
         
         await message.answer("✅ Комментарий о себе обновлен!")
         await show_profile(message, users[user_key])
@@ -131,12 +128,12 @@ async def save_comment_edit(message: types.Message, state: FSMContext):
 @router.callback_query(EditProfileStates.PAYMENT, F.data.startswith("edit_payment_"))
 async def save_payment_edit(callback: types.CallbackQuery):
     payment = callback.data.split("_", 2)[2]
-    users = load_users()
+    users = await storage.load_users()
     user_key = str(callback.message.chat.id)
     
     if user_key in users:
         users[user_key]['default_payment'] = payment
-        write_users(users)
+        await storage.save_users(users)
         
         try:
             await callback.message.delete()
@@ -157,7 +154,7 @@ async def process_country_selection(callback: types.CallbackQuery, state: FSMCon
     await state.update_data(country=country)
     
     # Получаем текущие данные пользователя
-    users = load_users()
+    users = await storage.load_users()
     user_key = str(callback.message.chat.id)
     current_city = users[user_key].get('city', '') if user_key in users else ''
     
@@ -175,7 +172,7 @@ async def process_country_input(message: types.Message, state: FSMContext):
     await state.update_data(country=message.text.strip())
     
     # Получаем текущие данные пользователя
-    users = load_users()
+    users = await storage.load_users()
     user_key = str(message.from_user.id)
     current_city = users[user_key].get('city', '') if user_key in users else ''
     
@@ -235,7 +232,7 @@ async def process_city_input(message: types.Message, state: FSMContext):
     await save_location_message(message, city, state)
 
 async def save_location(callback: types.CallbackQuery, city: str, state: FSMContext):
-    users = load_users()
+    users = await storage.load_users()
     user_key = str(callback.message.chat.id)
     
     if user_key in users:
@@ -244,7 +241,7 @@ async def save_location(callback: types.CallbackQuery, city: str, state: FSMCont
         
         users[user_key]['country'] = country
         users[user_key]['city'] = city
-        write_users(users)
+        await storage.save_users(users)
         
         try:
             await callback.message.delete()
@@ -259,7 +256,7 @@ async def save_location(callback: types.CallbackQuery, city: str, state: FSMCont
     await state.clear()
 
 async def save_location_message(message: types.Message, city: str, state: FSMContext):
-    users = load_users()
+    users = await storage.load_users()
     user_key = str(message.from_user.id)
     
     if user_key in users:
@@ -268,7 +265,7 @@ async def save_location_message(message: types.Message, city: str, state: FSMCon
         
         users[user_key]['country'] = country
         users[user_key]['city'] = city
-        write_users(users)
+        await storage.save_users(users)
         
         await message.answer("✅ Страна и город обновлены!")
         await show_profile(message, users[user_key])
@@ -281,7 +278,7 @@ async def save_location_message(message: types.Message, city: str, state: FSMCon
 @router.callback_query(F.data.startswith("edit_photo_"))
 async def edit_photo_handler(callback: types.CallbackQuery, state: FSMContext):
     action = callback.data.split("_", 2)[2]
-    users = load_users()
+    users = await storage.load_users()
     user_key = str(callback.message.chat.id)
     
     if user_key not in users:
@@ -298,7 +295,7 @@ async def edit_photo_handler(callback: types.CallbackQuery, state: FSMContext):
         await state.set_state(EditProfileStates.PHOTO_UPLOAD)
     elif action == "none":
         users[user_key]['photo_path'] = None
-        write_users(users)
+        await storage.save_users(users)
         await callback.message.answer("✅ Фото профиля удалено!")
         await show_profile(callback.message, users[user_key])
     elif action == "profile":
@@ -314,7 +311,7 @@ async def edit_photo_handler(callback: types.CallbackQuery, state: FSMContext):
                 if ok:
                     rel_path = dest_path.relative_to(BASE_DIR).as_posix()
                     users[user_key]['photo_path'] = rel_path
-                    write_users(users)
+                    await storage.save_users(users)
                     await callback.message.answer("✅ Фото из профиля установлено!")
                     await show_profile(callback.message, users[user_key])
                 else:
@@ -330,7 +327,7 @@ async def edit_photo_handler(callback: types.CallbackQuery, state: FSMContext):
 @router.message(EditProfileStates.PHOTO_UPLOAD, F.photo)
 async def save_photo_upload(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    users = load_users()
+    users = await storage.load_users()
     user_key = str(user_id)
     
     if user_key not in users:
@@ -348,7 +345,7 @@ async def save_photo_upload(message: types.Message, state: FSMContext):
         if ok:
             rel_path = dest_path.relative_to(BASE_DIR).as_posix()
             users[user_key]['photo_path'] = rel_path
-            write_users(users)
+            await storage.save_users(users)
             await message.answer("✅ Фото профиля обновлено!")
             await show_profile(message, users[user_key])
         else:

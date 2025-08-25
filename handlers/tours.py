@@ -7,17 +7,17 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE
-from utils.json_data import load_users, save_users
 from models.states import BrowseToursStates, CreateTourStates
 from utils.utils import create_user_profile_link, format_tour_date
 from utils.validate import validate_future_date
+from services.storage import storage
 
 router = Router()
 
 @router.message(F.text == "✈️ Туры")
 async def browse_tours_start(message: types.Message, state: FSMContext):
     """Начало просмотра туров - выбор страны"""
-    users = load_users()
+    users = await storage.load_users()
     current_user_id = str(message.from_user.id)
     
     # Собираем статистику по странам с активными турами (исключая текущего пользователя)
@@ -74,7 +74,7 @@ async def select_tour_country(callback: types.CallbackQuery, state: FSMContext):
     country = callback.data.split("_", maxsplit=1)[1]
     await state.update_data(selected_country=country)
     
-    users = load_users()
+    users = await storage.load_users()
     
     # Собираем статистику по городам в выбранной стране
     city_stats = {}
@@ -118,7 +118,7 @@ async def select_tour_city(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(selected_city=city)
     
     # Получаем все активные туры в выбранном городе и стране
-    users = load_users()
+    users = await storage.load_users()
     all_tours = []
     
     for user_id, user_data in users.items():
@@ -183,8 +183,8 @@ async def show_tours_page(message: types.Message, state: FSMContext):
         
         level = user_data.get('player_level', '-')
         
-        start_date = format_tour_date(tour.get('vacation_start', '-'))
-        end_date = format_tour_date(tour.get('vacation_end', '-'))
+        start_date = await format_tour_date(tour.get('vacation_start', '-'))
+        end_date = await format_tour_date(tour.get('vacation_end', '-'))
         
         # Итоговая строка
         tour_info = f"{gender_icon} {user_name} ({level}) | {start_date}-{end_date}"
@@ -235,7 +235,7 @@ async def view_tour_details(callback: types.CallbackQuery, state: FSMContext):
     """Просмотр деталей конкретного тура"""
     user_id = callback.data.split("_", maxsplit=1)[1]
     
-    users = load_users()
+    users = await storage.load_users()
     user_data = users.get(user_id)
     
     if not user_data or not user_data.get('vacation_tennis', False):
@@ -256,7 +256,7 @@ async def view_tour_details(callback: types.CallbackQuery, state: FSMContext):
         city = f"{city} - {district}"
     
     # Создаем ссылку на профиль
-    profile_link = create_user_profile_link(user_data, user_id)
+    profile_link = await create_user_profile_link(user_data, user_id)
     
     text = (
         f"✈️ Тур пользователя:\n\n"
@@ -322,7 +322,7 @@ async def process_start_date(message: types.Message, state: FSMContext):
         datetime.strptime(message.text, "%d.%m.%Y")
         
         # Проверяем что дата в будущем
-        if not validate_future_date(message.text):
+        if not await validate_future_date(message.text):
             await message.answer(
                 "❌ Неверный формат даты. "
                 "Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ:\n"
@@ -350,7 +350,7 @@ async def process_end_date(message: types.Message, state: FSMContext):
         datetime.strptime(message.text, "%d.%m.%Y")
         
         # Проверяем что дата в будущем
-        if not validate_future_date(message.text):
+        if not await validate_future_date(message.text):
             await message.answer(
                 "❌ Неверный формат даты. "
                 "Пожалуйста, введите корректную дату в формате ДД.ММ.ГГГГ:\n"
@@ -391,7 +391,7 @@ async def process_tour_comment(message: types.Message, state: FSMContext):
     vacation_end = state_data.get('vacation_end')
     
     # Загружаем данные пользователей
-    users = load_users()
+    users = await storage.load_users()
     user_id = str(message.from_user.id)
     
     if user_id not in users:
@@ -407,7 +407,7 @@ async def process_tour_comment(message: types.Message, state: FSMContext):
         users[user_id]['vacation_comment'] = comment
     
     # Сохраняем обновленные данные
-    save_users(users)
+    await storage.save_users(users)
     
     await message.answer(
         "✅ Ваш тур успешно создан! Теперь другие пользователи смогут увидеть его в списке туров.\n\n"

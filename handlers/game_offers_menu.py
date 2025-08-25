@@ -7,21 +7,17 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE
+from services.storage import storage
 from utils.admin import is_admin
-from utils.json_data import load_users, load_json, save_users
 from models.states import BrowseOffersStates, RespondToOfferStates
 from utils.utils import create_user_profile_link, get_weekday_short
-import json
 
 router = Router()
-
-# ---------- Загрузка данных ----------
-cities_data = load_json("cities.json")
 
 @router.message(F.text == "⏱ Предложение игр")
 async def browse_offers_start(message: types.Message, state: FSMContext):
     """Начало просмотра предложенных игр - выбор страны"""
-    users = load_users()
+    users = await storage.load_users()
     current_user_id = str(message.from_user.id)
     
     # Собираем статистику по странам (исключая текущего пользователя)
@@ -69,7 +65,7 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
     country = callback.data.split("_", maxsplit=1)[1]
     await state.update_data(selected_country=country)
     
-    users = load_users()
+    users = await storage.load_users()
     
     # Собираем статистику по городам в выбранной стране
     city_stats = {}
@@ -114,7 +110,7 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(selected_city=city)
     
     # Получаем все активные предложения в выбранном городе и стране
-    users = load_users()
+    users = await storage.load_users()
     all_offers = []
     
     for user_id, user_data in users.items():
@@ -200,7 +196,7 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         # Время
         time = offer.get('time', '-')
 
-        week_day = get_weekday_short(raw_date)
+        week_day = await get_weekday_short(raw_date)
         
         # Итоговая строка
         short_info = f"{gender_icon} {user_info} | {day_str} ({week_day}) {time}"
@@ -253,7 +249,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     user_id = parts[1]
     game_id = parts[2]
     
-    users = load_users()
+    users = await storage.load_users()
     user_data = users.get(user_id)
     
     if not user_data:
@@ -301,7 +297,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
         text += f"💬 Комментарий: {game['comment']}\n"
     
     # Добавляем ID для админа
-    if is_admin(callback.message.chat.id):
+    if await is_admin(callback.message.chat.id):
         text += f"\n🆔 ID предложения: `{game_id}`"
         text += f"\n🆔 ID пользователя: `{user_id}`"
     
@@ -326,7 +322,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     ])
     
     # Кнопка удаления для админа (если это не свое предложение)
-    if (is_admin(callback.message.chat.id)):
+    if (await is_admin(callback.message.chat.id)):
         keyboard_buttons.append([
             InlineKeyboardButton(
                 text="🗑️ Удалить предложение", 
@@ -371,7 +367,7 @@ async def process_respond_comment(message: types.Message, state: FSMContext):
         return
     
     # Загружаем данные пользователей
-    users = load_users()
+    users = await storage.load_users()
     
     # Получаем информацию о текущем пользователе
     current_user = users.get(str(message.from_user.id))
@@ -403,7 +399,7 @@ async def process_respond_comment(message: types.Message, state: FSMContext):
     respondent_name = f"{current_user.get('first_name', '')} {current_user.get('last_name', '')}".strip()
     respondent_username = current_user.get('username')
     
-    profile_link = create_user_profile_link(target_user, target_user_id)
+    profile_link = await create_user_profile_link(target_user, target_user_id)
     
     # Создаем объект отклика
     response_data = {
@@ -427,7 +423,7 @@ async def process_respond_comment(message: types.Message, state: FSMContext):
     
     # Сохраняем обновленные данные
     users[target_user_id] = target_user
-    save_users(users)
+    await storage.save_users(users)
     
     # Формируем сообщение для целевого пользователя
     target_message = (

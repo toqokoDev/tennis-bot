@@ -15,24 +15,18 @@ from aiogram.types import (
 
 from config.config import CHANNEL_ID
 from config.paths import BASE_DIR, PHOTOS_DIR
-from config.profile import moscow_districts, player_levels, base_keyboard
+from config.profile import moscow_districts, player_levels, base_keyboard, cities_data, sport_type, countries
 
 from models.states import RegistrationStates
 
-from utils.utils import calculate_age, create_user_profile_link, is_user_banned
+from utils.admin import is_user_banned
+from utils.utils import calculate_age, create_user_profile_link
 from utils.media import download_photo_to_path
 from utils.bot import show_current_data, show_profile
-from utils.ssesion import delete_session, load_session, save_session
 from utils.validate import validate_date, validate_date_range, validate_future_date, validate_price
-from utils.json_data import get_user_profile_from_storage, is_user_registered, load_json, load_users, save_user_to_json
-
+from services.storage import storage
 
 router = Router()
-
-# ---------- Первичные данные ----------
-cities_data = load_json("cities.json")
-sports = load_json("sports.json")
-countries = list(cities_data.keys())
 
 # ---------- Команды и логика ----------
 @router.message(Command("start"))
@@ -40,7 +34,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     user_id = str(message.chat.id)
     
     # Проверяем, забанен ли пользователь
-    if is_user_banned(user_id):
+    if await is_user_banned(user_id):
         await message.answer(
             "⛔ Ваш аккаунт заблокирован.\n\n"
             "Вы не можете использовать бота. Если вы считаете, что это ошибка, "
@@ -64,7 +58,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
                     await message.answer("⛔ Этот профиль недоступен.")
                     return
                 
-                users = load_users()
+                users = await storage.load_users()
                 
                 if profile_user_id in users:
                     profile_user = users[profile_user_id]
@@ -75,12 +69,13 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 return
     
     # Загружаем сессию если есть
-    session_data = load_session(user_id)
+    session_data = await storage.load_session(user_id)
+    
     if session_data:
         await state.set_data(session_data)
     
-    if is_user_registered(user_id):
-        profile = get_user_profile_from_storage(user_id) or {}
+    if await storage.is_user_registered(user_id):
+        profile = await storage.get_user(user_id) or {}
         first_name = profile.get('first_name', message.from_user.first_name or '')
         last_name = profile.get('last_name', message.from_user.last_name or '')
         rating = profile.get('rating_points', 0)
@@ -124,16 +119,16 @@ async def cmd_start(message: types.Message, state: FSMContext):
         ),
         parse_mode="HTML"
     )
-    save_session(user_id, await state.get_data())
+    await storage.save_session(user_id, await state.get_data())
 
 @router.message(Command("profile"))
 async def cmd_profile(message: types.Message):
     user_id = message.chat.id
-    if not is_user_registered(user_id):
+    if not await storage.is_user_registered(user_id):
         await message.answer("❌ Вы еще не зарегистрированы. Введите /start для регистрации.")
         return
     
-    profile = get_user_profile_from_storage(user_id) or {}
+    profile = await storage.get_user(user_id) or {}
     await show_profile(message, profile)
 
 @router.message(Command("profile_id"))
@@ -144,7 +139,7 @@ async def cmd_profile_id(message: types.Message):
         await message.answer("❌ Использование: /profile_id USER_ID")
         return
     
-    profile = get_user_profile_from_storage(user_id)
+    profile = await storage.get_user(user_id)
     if not profile:
         await message.answer("❌ Пользователь с таким ID не найден.")
         return
@@ -164,9 +159,9 @@ async def process_phone(message: Message, state: FSMContext):
     # Спрашиваем вид спорта после телефона
     buttons = []
     row = []
-    for i, sport in enumerate(sports):
+    for i, sport in enumerate(sport_type):
         row.append(InlineKeyboardButton(text=sport, callback_data=f"sport_{sport}"))
-        if (i + 1) % 2 == 0 or i == len(sports) - 1:  # меняем 4 на 2
+        if (i + 1) % 2 == 0 or i == len(sport_type) - 1:  # меняем 4 на 2
             buttons.append(row)
             row = []
 
@@ -176,7 +171,7 @@ async def process_phone(message: Message, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.SPORT)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.SPORT, F.data.startswith("sport_"))
 async def process_sport_selection(callback: types.CallbackQuery, state: FSMContext):
@@ -185,30 +180,30 @@ async def process_sport_selection(callback: types.CallbackQuery, state: FSMConte
     await callback.message.edit_text("📝 Введите ваше имя:", reply_markup=None)
     await state.set_state(RegistrationStates.FIRST_NAME)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.FIRST_NAME, F.text)
 async def process_first_name(message: Message, state: FSMContext):
     await state.update_data(first_name=message.text.strip())
     await message.answer("📝 Введите вашу фамилию:")
     await state.set_state(RegistrationStates.LAST_NAME)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.LAST_NAME, F.text)
 async def process_last_name(message: Message, state: FSMContext):
     await state.update_data(last_name=message.text.strip())
     await message.answer("📅 Введите вашу дату рождения в формате ДД.ММ.ГГГГ:")
     await state.set_state(RegistrationStates.BIRTH_DATE)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.BIRTH_DATE, F.text)
 async def process_birth_date(message: Message, state: FSMContext):
     date_str = message.text.strip()
-    if not validate_date(date_str):
+    if not await validate_date(date_str):
         await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
         return
     
-    age = calculate_age(date_str)
+    age = await calculate_age(date_str)
     if age < 12:
         await message.answer("❌ Извините, но наш сервис доступен только для пользователей старше 12 лет.")
         await state.clear()
@@ -230,7 +225,7 @@ async def process_birth_date(message: Message, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.COUNTRY)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.COUNTRY, F.data.startswith("country_"))
 async def process_country_selection(callback: types.CallbackQuery, state: FSMContext):
@@ -238,27 +233,27 @@ async def process_country_selection(callback: types.CallbackQuery, state: FSMCon
     await state.update_data(country=country)
     await ask_for_city(callback.message, state, country)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.COUNTRY, F.data == "other_country")
 async def process_other_country(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("🌍 Введите название страны:", reply_markup=None)
     await state.set_state(RegistrationStates.COUNTRY_INPUT)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.COUNTRY_INPUT, F.text)
 async def process_country_input(message: Message, state: FSMContext):
     await state.update_data(country=message.text.strip())
     await message.answer("🏙 Введите название города:")
     await state.set_state(RegistrationStates.CITY_INPUT)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.CITY_INPUT, F.text)
 async def process_city_input(message: Message, state: FSMContext):
     await state.update_data(city=message.text.strip())
     await ask_for_role(message, state)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_city(message: types.Message, state: FSMContext, country: str):
     if country == "Россия":
@@ -276,7 +271,7 @@ async def ask_for_city(message: types.Message, state: FSMContext, country: str):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.CITY)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.CITY, F.data.startswith("city_"))
 async def process_city_selection(callback: types.CallbackQuery, state: FSMContext):
@@ -294,7 +289,7 @@ async def process_city_selection(callback: types.CallbackQuery, state: FSMContex
         await ask_for_role(callback.message, state)
 
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.CITY, F.data.startswith("district_"))
 async def process_district_selection(callback: types.CallbackQuery, state: FSMContext):
@@ -303,14 +298,14 @@ async def process_district_selection(callback: types.CallbackQuery, state: FSMCo
     await state.update_data(district=district.split("-")[1].strip())
     await ask_for_role(callback.message, state)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.CITY, F.data == "other_city")
 async def process_other_city(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("🏙 Введите название города:", reply_markup=None)
     await state.set_state(RegistrationStates.CITY_INPUT)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 async def ask_for_role(message: types.Message, state: FSMContext):
     buttons = [
@@ -323,7 +318,7 @@ async def ask_for_role(message: types.Message, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.ROLE)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.ROLE, F.data.startswith("role_"))
 async def process_role_selection(callback: types.CallbackQuery, state: FSMContext):
@@ -338,12 +333,12 @@ async def process_role_selection(callback: types.CallbackQuery, state: FSMContex
         await show_levels_page(callback.message, state, page=0)
 
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.TRAINER_PRICE, F.text)
 async def process_trainer_price(message: types.Message, state: FSMContext):
     price_str = message.text.strip()
-    if not validate_price(price_str):
+    if not await validate_price(price_str):
         await message.answer("❌ Пожалуйста, введите корректную стоимость тренировки (только цифры, больше 0):")
         return
     
@@ -359,7 +354,7 @@ async def process_trainer_price(message: types.Message, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.GENDER)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 async def show_levels_page(message: types.Message, state: FSMContext, page: int = 0):
     """Показывает страницу с уровнями игроков с возможностью пролистывания"""
@@ -414,7 +409,7 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
     
     await state.set_state(RegistrationStates.PLAYER_LEVEL)
     await state.update_data(level_page=page)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.PLAYER_LEVEL, F.data.startswith("levelpage_"))
 async def process_level_page_navigation(callback: types.CallbackQuery, state: FSMContext):
@@ -422,7 +417,7 @@ async def process_level_page_navigation(callback: types.CallbackQuery, state: FS
     page = int(callback.data.split("_", maxsplit=1)[1])
     await show_levels_page(callback.message, state, page)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.PLAYER_LEVEL, F.data.startswith("level_"))
 async def process_player_level(callback: types.CallbackQuery, state: FSMContext):
@@ -446,7 +441,7 @@ async def process_player_level(callback: types.CallbackQuery, state: FSMContext)
     )
     await state.set_state(RegistrationStates.GENDER)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.GENDER, F.data.startswith("gender_"))
 async def process_gender_selection(callback: types.CallbackQuery, state: FSMContext):
@@ -457,7 +452,7 @@ async def process_gender_selection(callback: types.CallbackQuery, state: FSMCont
     await callback.message.edit_text("💬 Добавьте комментарий к анкете (или /skip для пропуска):", reply_markup=None)
     await state.set_state(RegistrationStates.PROFILE_COMMENT)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.PROFILE_COMMENT, F.text)
 async def process_profile_comment(message: types.Message, state: FSMContext):
@@ -477,7 +472,7 @@ async def process_profile_comment(message: types.Message, state: FSMContext):
     )
     await state.set_state(RegistrationStates.PHOTO)
     
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.PHOTO, F.data.startswith("photo_"))
 async def process_photo_choice(callback: types.CallbackQuery, state: FSMContext):
@@ -517,7 +512,7 @@ async def process_photo_choice(callback: types.CallbackQuery, state: FSMContext)
         await ask_for_vacation_tennis(callback.message, state)
 
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.PHOTO, F.photo)
 async def process_photo_upload(message: types.Message, state: FSMContext):
@@ -532,7 +527,7 @@ async def process_photo_upload(message: types.Message, state: FSMContext):
         await ask_for_vacation_tennis(message, state)
     else:
         await message.answer("❌ Не удалось сохранить фото. Попробуйте отправить ещё раз или выберите вариант без фото.")
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_vacation_tennis(message: types.Message, state: FSMContext):
     buttons = [
@@ -545,7 +540,7 @@ async def ask_for_vacation_tennis(message: types.Message, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.VACATION_TENNIS)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.VACATION_TENNIS, F.data.startswith("vacation_"))
 async def process_vacation_tennis(callback: types.CallbackQuery, state: FSMContext):
@@ -559,49 +554,49 @@ async def process_vacation_tennis(callback: types.CallbackQuery, state: FSMConte
         await ask_for_default_payment(callback.message, state)
     
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.VACATION_START, F.text)
 async def process_vacation_start(message: Message, state: FSMContext):
     date_str = message.text.strip()
-    if not validate_date(date_str):
+    if not await validate_date(date_str):
         await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
         return
     
-    if not validate_future_date(date_str):
+    if not await validate_future_date(date_str):
         await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
         return
     
     await state.update_data(vacation_start=date_str, vacation_tennis=True)
     await message.answer("✈️ Введите дату завершения отдыха (ДД.ММ.ГГГГ):")
     await state.set_state(RegistrationStates.VACATION_END)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.VACATION_END, F.text)
 async def process_vacation_end(message: Message, state: FSMContext):
     date_str = message.text.strip()
-    if not validate_date(date_str):
+    if not await validate_date(date_str):
         await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
         return
     
     user_data = await state.get_data()
     start_date = user_data.get('vacation_start')
     
-    if not validate_date_range(start_date, date_str):
+    if not await validate_date_range(start_date, date_str):
         await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
         return
     
     await state.update_data(vacation_end=date_str)
     await message.answer("💬 Добавьте комментарий к поездке (необязательно, или /skip для пропуска):")
     await state.set_state(RegistrationStates.VACATION_COMMENT)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.VACATION_COMMENT, F.text)
 async def process_vacation_comment(message: Message, state: FSMContext):
     if message.text.strip() != "/skip":
         await state.update_data(vacation_comment=message.text.strip())
     await ask_for_default_payment(message, state)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_default_payment(message: types.Message, state: FSMContext):
     buttons = [
@@ -615,7 +610,7 @@ async def ask_for_default_payment(message: types.Message, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.DEFAULT_PAYMENT)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.DEFAULT_PAYMENT, F.data.startswith("defaultpay_"))
 async def process_default_payment(callback: types.CallbackQuery, state: FSMContext):
@@ -625,7 +620,7 @@ async def process_default_payment(callback: types.CallbackQuery, state: FSMConte
     # Спрашиваем, хочет ли пользователь создать игру
     await ask_for_create_game(callback.message, state)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 async def ask_for_create_game(message: types.Message, state: FSMContext):
     """Спрашивает пользователя, хочет ли он создать игру после регистрации"""
@@ -639,7 +634,7 @@ async def ask_for_create_game(message: types.Message, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.CREATE_GAME_OFFER)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.CREATE_GAME_OFFER, F.data == "registerTonew_offer")
 async def process_create_game_offer(callback: types.CallbackQuery, state: FSMContext):
@@ -681,9 +676,9 @@ async def process_create_game_offer(callback: types.CallbackQuery, state: FSMCon
         profile["vacation_end"] = user_state.get('vacation_end')
         profile["vacation_comment"] = user_state.get('vacation_comment')
 
-    save_user_to_json(user_id, profile)
+    await storage.save_user(user_id, profile)
     await state.clear()
-    delete_session(user_id)
+    await storage.delete_session(user_id)
 
     # Отправляем уведомление о регистрации
     await send_registration_notification(callback.message, profile)
@@ -735,9 +730,9 @@ async def process_skip_game_offer(callback: types.CallbackQuery, state: FSMConte
         profile["vacation_end"] = user_state.get('vacation_end')
         profile["vacation_comment"] = user_state.get('vacation_comment')
 
-    save_user_to_json(user_id, profile)
+    await storage.save_user(user_id, profile)
     await state.clear()
-    delete_session(user_id)
+    await storage.delete_session(user_id)
 
     # Отправляем уведомление о регистрации
     await send_registration_notification(callback.message, profile)
@@ -760,7 +755,7 @@ async def send_registration_notification(message: types.Message, profile: dict):
 
         registration_text = (
             "🎾 *Новый участник присоединился к сообществу!*\n\n"
-            f"👤 {create_user_profile_link(profile, profile.get('telegram_id'))}\n" 
+            f"👤 {await create_user_profile_link(profile, profile.get('telegram_id'))}\n" 
             f"🏸 {profile.get('sport', 'Не указан')} ({profile.get('player_level', 'Не указан')} Лвл)\n"
             f"📍 {city} ({profile.get('country', '')})\n"
             f"{username_text}"

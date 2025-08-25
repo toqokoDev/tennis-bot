@@ -1,35 +1,30 @@
 from datetime import datetime
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
 
 from config.paths import BASE_DIR, PHOTOS_DIR
-from config.profile import moscow_districts, base_keyboard
-from models.states import AdminEditProfileStates, EditProfileStates
+from config.profile import moscow_districts, cities_data, countries
+from models.states import AdminEditProfileStates
+from services.storage import storage
 from utils.admin import is_admin
 from utils.bot import show_profile
-from utils.json_data import get_user_profile_from_storage, load_json, load_users, write_users
 from utils.media import download_photo_to_path
 
 admin_edit_router = Router()
 
-# ---------- Первичные данные ----------
-cities_data = load_json("cities.json")
-countries = list(cities_data.keys())
-
 # Обработчик для выбора пользователя для редактирования
 @admin_edit_router.callback_query(F.data.startswith("admin_edit_profile:"))
 async def admin_edit_profile_handler(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
     user_id = callback.data.split(":")[1]
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id not in users:
         await callback.answer("❌ Пользователь не найден")
@@ -82,7 +77,7 @@ async def admin_edit_profile_handler(callback: types.CallbackQuery, state: FSMCo
 # Обработчики для редактирования профиля
 @admin_edit_router.callback_query(F.data.startswith("adminUserProfile_edit_"))
 async def admin_edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
@@ -128,7 +123,7 @@ async def admin_edit_field_handler(callback: types.CallbackQuery, state: FSMCont
 # Обработчик для сохранения нового комментария о себе
 @admin_edit_router.message(AdminEditProfileStates.COMMENT, F.text)
 async def admin_save_comment_edit(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         await message.answer("❌ Нет прав администратора")
         await state.clear()
         return
@@ -141,11 +136,11 @@ async def admin_save_comment_edit(message: types.Message, state: FSMContext):
         await state.clear()
         return
     
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id in users:
         users[user_id]['profile_comment'] = message.text.strip()
-        write_users(users)
+        await storage.save_users(users)
         
         await message.answer("✅ Комментарий о себе обновлен!")
         await show_profile(message, users[user_id])
@@ -156,7 +151,7 @@ async def admin_save_comment_edit(message: types.Message, state: FSMContext):
 
 @admin_edit_router.callback_query(AdminEditProfileStates.PAYMENT, F.data.startswith("adminProfile_edit_payment_"))
 async def admin_save_payment_edit(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
@@ -169,11 +164,11 @@ async def admin_save_payment_edit(callback: types.CallbackQuery, state: FSMConte
         await state.clear()
         return
     
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id in users:
         users[user_id]['default_payment'] = payment
-        write_users(users)
+        await storage.save_users(users)
 
         await callback.message.edit_text("✅ Тип оплаты обновлен!")
         await show_profile(callback.message, users[user_id])
@@ -186,7 +181,7 @@ async def admin_save_payment_edit(callback: types.CallbackQuery, state: FSMConte
 # Обработчики для редактирования местоположения
 @admin_edit_router.callback_query(AdminEditProfileStates.COUNTRY, F.data.startswith("adminProfile_edit_country_"))
 async def admin_process_country_selection(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
@@ -201,7 +196,7 @@ async def admin_process_country_selection(callback: types.CallbackQuery, state: 
         await state.clear()
         return
     
-    users = load_users()
+    users = await storage.load_users()
     current_city = users[user_id].get('city', '') if user_id in users else ''
     
     await admin_ask_for_city(callback.message, state, country, current_city)
@@ -209,7 +204,7 @@ async def admin_process_country_selection(callback: types.CallbackQuery, state: 
 
 @admin_edit_router.callback_query(AdminEditProfileStates.COUNTRY, F.data == "adminProfile_edit_other_country")
 async def admin_process_other_country(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
@@ -219,7 +214,7 @@ async def admin_process_other_country(callback: types.CallbackQuery, state: FSMC
 
 @admin_edit_router.message(AdminEditProfileStates.COUNTRY_INPUT, F.text)
 async def admin_process_country_input(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         await message.answer("❌ Нет прав администратора")
         await state.clear()
         return
@@ -234,7 +229,7 @@ async def admin_process_country_input(message: types.Message, state: FSMContext)
         await state.clear()
         return
     
-    users = load_users()
+    users = await storage.load_users()
     current_city = users[user_id].get('city', '') if user_id in users else ''
     
     data = await state.get_data()
@@ -262,7 +257,7 @@ async def admin_ask_for_city(message: types.Message, state: FSMContext, country:
 
 @admin_edit_router.callback_query(AdminEditProfileStates.CITY, F.data.startswith("adminProfile_edit_city_"))
 async def admin_process_city_selection(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
@@ -281,7 +276,7 @@ async def admin_process_city_selection(callback: types.CallbackQuery, state: FSM
 
 @admin_edit_router.callback_query(AdminEditProfileStates.CITY, F.data.startswith("adminProfile_edit_district_"))
 async def admin_process_district_selection(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
@@ -291,7 +286,7 @@ async def admin_process_district_selection(callback: types.CallbackQuery, state:
 
 @admin_edit_router.callback_query(AdminEditProfileStates.CITY, F.data == "adminProfile_edit_other_city")
 async def admin_process_other_city(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
@@ -301,7 +296,7 @@ async def admin_process_other_city(callback: types.CallbackQuery, state: FSMCont
 
 @admin_edit_router.message(AdminEditProfileStates.CITY_INPUT, F.text)
 async def admin_process_city_input(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         await message.answer("❌ Нет прав администратора")
         await state.clear()
         return
@@ -318,7 +313,7 @@ async def admin_save_location(callback: types.CallbackQuery, city: str, state: F
         await state.clear()
         return
     
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id in users:
         data = await state.get_data()
@@ -326,7 +321,7 @@ async def admin_save_location(callback: types.CallbackQuery, city: str, state: F
         
         users[user_id]['country'] = country
         users[user_id]['city'] = city
-        write_users(users)
+        await storage.save_users(users)
         
         try:
             await callback.message.delete()
@@ -349,7 +344,7 @@ async def admin_save_location_message(message: types.Message, city: str, state: 
         await state.clear()
         return
     
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id in users:
         data = await state.get_data()
@@ -357,7 +352,7 @@ async def admin_save_location_message(message: types.Message, city: str, state: 
         
         users[user_id]['country'] = country
         users[user_id]['city'] = city
-        write_users(users)
+        await storage.save_users(users)
         
         await message.answer("✅ Страна и город обновлены!")
         await show_profile(message, users[user_id])
@@ -369,7 +364,7 @@ async def admin_save_location_message(message: types.Message, city: str, state: 
 # Обработчики для редактирования фото
 @admin_edit_router.callback_query(F.data.startswith("adminProfile_edit_photo_"))
 async def admin_edit_photo_handler(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
@@ -381,7 +376,7 @@ async def admin_edit_photo_handler(callback: types.CallbackQuery, state: FSMCont
         await callback.message.answer("❌ Пользователь не выбран")
         return
     
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id not in users:
         await callback.answer("❌ Профиль не найден")
@@ -397,11 +392,10 @@ async def admin_edit_photo_handler(callback: types.CallbackQuery, state: FSMCont
         await state.set_state(AdminEditProfileStates.PHOTO_UPLOAD)
     elif action == "none":
         users[user_id]['photo_path'] = None
-        write_users(users)
+        await storage.save_users(users)
         await callback.message.answer("✅ Фото профиля удалено!")
         await show_profile(callback.message, users[user_id])
     elif action == "profile":
-        # Логика для установки фото из профиля Telegram
         try:
             photos = await callback.message.bot.get_user_profile_photos(int(user_id), limit=1)
             if photos.total_count > 0:
@@ -413,7 +407,7 @@ async def admin_edit_photo_handler(callback: types.CallbackQuery, state: FSMCont
                 if ok:
                     rel_path = dest_path.relative_to(BASE_DIR).as_posix()
                     users[user_id]['photo_path'] = rel_path
-                    write_users(users)
+                    await storage.save_users(users)
                     await callback.message.answer("✅ Фото из профиля установлено!")
                     await show_profile(callback.message, users[user_id])
                 else:
@@ -422,14 +416,13 @@ async def admin_edit_photo_handler(callback: types.CallbackQuery, state: FSMCont
                 await callback.message.answer("❌ В профиле пользователя нет фото")
         except Exception as e:
             await callback.message.answer("❌ Ошибка при получении фото из профиля")
-            print(e)
     
     await callback.answer()
 
 # Обработчик для загрузки нового фото
 @admin_edit_router.message(AdminEditProfileStates.PHOTO_UPLOAD, F.photo)
 async def admin_save_photo_upload(message: types.Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
+    if not await is_admin(message.from_user.id):
         await message.answer("❌ Нет прав администратора")
         await state.clear()
         return
@@ -442,7 +435,7 @@ async def admin_save_photo_upload(message: types.Message, state: FSMContext):
         await state.clear()
         return
     
-    users = load_users()
+    users = await storage.load_users()
     
     if user_id not in users:
         await message.answer("❌ Профиль не найден")
@@ -459,7 +452,7 @@ async def admin_save_photo_upload(message: types.Message, state: FSMContext):
         if ok:
             rel_path = dest_path.relative_to(BASE_DIR).as_posix()
             users[user_id]['photo_path'] = rel_path
-            write_users(users)
+            await storage.save_users(users)
             await message.answer("✅ Фото профиля обновлено!")
             await show_profile(message, users[user_id])
         else:
@@ -472,7 +465,7 @@ async def admin_save_photo_upload(message: types.Message, state: FSMContext):
 # Обработчик отмены
 @admin_edit_router.callback_query(F.data == "admin_cancel")
 async def admin_cancel_handler(callback: types.CallbackQuery, state: FSMContext):
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     

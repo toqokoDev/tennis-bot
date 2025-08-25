@@ -1,6 +1,5 @@
 from config.paths import BASE_DIR
 from utils.admin import is_admin
-from utils.ssesion import save_session
 from aiogram import types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -9,6 +8,7 @@ from aiogram.types import (
     InlineKeyboardButton
 )
 from utils.utils import calculate_age
+from services.storage import storage
 
 # ---------- Вспомогательная отправка единого "текущего" сообщения ----------
 async def show_current_data(message: types.Message, state: FSMContext, text: str,
@@ -26,7 +26,7 @@ async def show_current_data(message: types.Message, state: FSMContext, text: str
         msg = await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
 
     await state.update_data(prev_msg_id=msg.message_id)
-    save_session(message.from_user.id, await state.get_data())
+    await storage.save_session(message.from_user.id, await state.get_data())
 
 async def show_profile(message: types.Message, profile: dict):
     caption_lines = []
@@ -36,7 +36,7 @@ async def show_profile(message: types.Message, profile: dict):
     caption_lines.append(f"\n<b>👤 {profile.get('first_name', '')} {profile.get('last_name', '')}</b> ({username})")
     
     if profile.get('birth_date'):
-        age = calculate_age(profile['birth_date'])
+        age = await calculate_age(profile['birth_date'])
         if age > 0:
             caption_lines.append(f"🎂 Возраст: {age} лет")
     
@@ -84,7 +84,7 @@ async def show_profile(message: types.Message, profile: dict):
     caption = "\n".join(caption_lines) if caption_lines else "Анкета недоступна."
 
     # Проверяем, является ли текущий пользователь админом
-    is_user_admin = is_admin(message.chat.id)
+    is_user_admin = await is_admin(message.chat.id)
     profile_user_id = profile.get('telegram_id')
 
     admin_buttons = [

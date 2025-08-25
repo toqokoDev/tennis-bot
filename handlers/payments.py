@@ -2,17 +2,13 @@ from yookassa import Configuration, Payment
 from datetime import datetime, timedelta
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
-from aiogram.types import (
-    ReplyKeyboardMarkup,
-    KeyboardButton
-)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config.config import SECRET_KEY, SHOP_ID, SUBSCRIPTION_PRICE
 from config.profile import base_keyboard
 from models.states import PaymentStates
-from utils.json_data import load_users, write_users
-from utils.payment import create_payment
+from services.payments import create_payment
+from services.storage import storage
 
 router = Router()
 
@@ -20,7 +16,7 @@ router = Router()
 async def handle_payments(message: types.Message, state: FSMContext):
     # Проверяем наличие активной подписки
     user_id = message.from_user.id
-    users = load_users()
+    users = await storage.load_users()
     
     if str(user_id) in users and users[str(user_id)].get('subscription', {}).get('active', False):
         subscription_until = users[str(user_id)]['subscription'].get('until')
@@ -35,7 +31,6 @@ async def handle_payments(message: types.Message, state: FSMContext):
                     )
                     return
             except ValueError:
-                # Если формат даты некорректный, продолжаем показ предложения
                 pass
 
     text = (
@@ -63,7 +58,7 @@ async def handle_payments(message: types.Message, state: FSMContext):
 async def start_payment_process(callback: types.CallbackQuery, state: FSMContext):
     # Проверяем наличие активной подписки перед началом оплаты
     user_id = callback.message.chat.id
-    users = load_users()
+    users = await storage.load_users()
     
     if str(user_id) in users and users[str(user_id)].get('subscription', {}).get('active', False):
         subscription_until = users[str(user_id)]['subscription'].get('until')
@@ -85,7 +80,7 @@ async def start_payment_process(callback: types.CallbackQuery, state: FSMContext
     Configuration.account_id = SHOP_ID
     Configuration.secret_key = SECRET_KEY
     
-    payment_link, payment_id = create_payment(callback.message.chat.id, SUBSCRIPTION_PRICE, "Оплата подписки для расширенего функционала")
+    payment_link, payment_id = await create_payment(callback.message.chat.id, SUBSCRIPTION_PRICE, "Оплата подписки для расширенего функционала")
 
     await state.update_data(payment_id=payment_id)
     
@@ -124,7 +119,7 @@ async def confirm_payment(callback: types.CallbackQuery, state: FSMContext):
     if payment.status == "succeeded":
         # Дополнительная проверка перед активацией подписки
         user_id = callback.message.chat.id
-        users = load_users()
+        users = await storage.load_users()
         
         if str(user_id) in users and users[str(user_id)].get('subscription', {}).get('active', False):
             subscription_until = users[str(user_id)]['subscription'].get('until')
@@ -153,7 +148,7 @@ async def confirm_payment(callback: types.CallbackQuery, state: FSMContext):
         
         # Сохраняем информацию о подписке в базе данных
         user_id = callback.message.chat.id
-        users = load_users()
+        users = await storage.load_users()
         if str(user_id) not in users:
             users[str(user_id)] = {}
         
@@ -162,7 +157,7 @@ async def confirm_payment(callback: types.CallbackQuery, state: FSMContext):
             'until': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
             'activated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
-        write_users(users)
+        await storage.save_users(users)
     else:
         await callback.message.answer(
             "❌ Оплата не завершена, попробуйте снова",

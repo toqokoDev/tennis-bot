@@ -1,6 +1,5 @@
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import copy
@@ -9,10 +8,11 @@ import glob
 from typing import List, Optional, Union
 from datetime import datetime
 
-from config.config import BOT_USERNAME, SUBSCRIPTION_PRICE
+from config.config import SUBSCRIPTION_PRICE
+from config.paths import GAMES_PHOTOS_DIR
 from models.states import AddScoreState
+from services.storage import storage
 from utils.admin import is_admin
-from utils.json_data import load_games, load_users, save_games, save_users
 from utils.media import save_media_file
 from utils.notifications import send_game_notification_to_channel
 from utils.utils import calculate_new_ratings, create_user_profile_link, search_users
@@ -203,9 +203,9 @@ async def edit_media_message(callback: types.CallbackQuery, text: str, keyboard:
 async def handle_add_score(message: types.Message, state: FSMContext):
     # Проверяем наличие активной подписки
     user_id = message.chat.id
-    users = load_users()
+    users = await storage.load_users()
     
-    if not is_admin(user_id):
+    if not await is_admin(user_id):
         if not users[str(user_id)].get('subscription', {}).get('active', False):
             # Показываем сообщение о необходимости подписки
             text = (
@@ -260,7 +260,7 @@ async def handle_opponent_search(message: types.Message, state: FSMContext):
     current_user_id = str(message.chat.id)
     
     
-    matching_users = search_users(search_query, exclude_ids=[current_user_id])
+    matching_users = await search_users(search_query, exclude_ids=[current_user_id])
     
     if not matching_users:
         keyboard = InlineKeyboardMarkup(
@@ -285,7 +285,7 @@ async def handle_partner_search(message: types.Message, state: FSMContext):
     search_query = message.text
     current_user_id = str(message.chat.id)
     
-    matching_users = search_users(search_query, exclude_ids=[current_user_id])
+    matching_users = await search_users(search_query, exclude_ids=[current_user_id])
     
     if not matching_users:
         keyboard = InlineKeyboardMarkup(
@@ -308,7 +308,7 @@ async def handle_partner_search(message: types.Message, state: FSMContext):
 @router.callback_query(F.data.startswith("select_partner:"))
 async def handle_partner_selection(callback: types.CallbackQuery, state: FSMContext):
     partner_id = callback.data.split(":")[1]
-    users = load_users()
+    users = await storage.load_users()
     
     if partner_id not in users:
         await callback.answer("Пользователь не найден")
@@ -335,7 +335,7 @@ async def handle_opponent1_search(message: types.Message, state: FSMContext):
     data = await state.get_data()
     partner_id = data.get('partner', {}).get('telegram_id')
     
-    matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id])
+    matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id])
     
     if not matching_users:
         keyboard = InlineKeyboardMarkup(
@@ -358,7 +358,7 @@ async def handle_opponent1_search(message: types.Message, state: FSMContext):
 @router.callback_query(F.data.startswith("select_opponent1:"))
 async def handle_opponent1_selection(callback: types.CallbackQuery, state: FSMContext):
     opponent_id = callback.data.split(":")[1]
-    users = load_users()
+    users = await storage.load_users()
     
     if opponent_id not in users:
         await callback.answer("Соперник не найден")
@@ -386,7 +386,7 @@ async def handle_opponent2_search(message: types.Message, state: FSMContext):
     partner_id = data.get('partner', {}).get('telegram_id')
     opponent1_id = data.get('opponent1', {}).get('telegram_id')
     
-    matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
+    matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
     
     if not matching_users:
         keyboard = InlineKeyboardMarkup(
@@ -409,7 +409,7 @@ async def handle_opponent2_search(message: types.Message, state: FSMContext):
 @router.callback_query(F.data.startswith("select_opponent2:"))
 async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMContext):
     opponent_id = callback.data.split(":")[1]
-    users = load_users()
+    users = await storage.load_users()
     
     if opponent_id not in users:
         await callback.answer("Соперник не найден")
@@ -435,12 +435,12 @@ async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMCo
     await callback.message.edit_text(
         f"Команды сформированы:\n\n"
         f"Команда 1 (ваша):\n"
-        f"• {create_user_profile_link(current_user, current_user.get('telegram_id'))}\n" 
-        f"• {create_user_profile_link(partner, partner.get('telegram_id'))}\n"
+        f"• {await create_user_profile_link(current_user, current_user.get('telegram_id'))}\n" 
+        f"• {await create_user_profile_link(partner, partner.get('telegram_id'))}\n"
         f"Средний рейтинг: {team1_avg:.0f}\n\n"
         f"Команда 2:\n"
-        f"• {create_user_profile_link(opponent1, opponent1.get('telegram_id'))}\n"
-        f"• {create_user_profile_link(opponent2, opponent2.get('telegram_id'))}\n"
+        f"• {await create_user_profile_link(opponent1, opponent1.get('telegram_id'))}\n"
+        f"• {await create_user_profile_link(opponent2, opponent2.get('telegram_id'))}\n"
         f"Средний рейтинг: {team2_avg:.0f}\n\n"
         f"Выберите счет 1-го сета:",
         reply_markup=keyboard, 
@@ -451,7 +451,7 @@ async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMCo
 @router.callback_query(F.data.startswith("select_opponent:"))
 async def handle_single_opponent_selection(callback: types.CallbackQuery, state: FSMContext):
     opponent_id = callback.data.split(":")[1]
-    users = load_users()
+    users = await storage.load_users()
     
     if opponent_id not in users:
         await callback.answer("Соперник не найден")
@@ -470,7 +470,7 @@ async def handle_single_opponent_selection(callback: types.CallbackQuery, state:
     
     await callback.message.edit_text(
         f"Вы выбрали соперника:\n"
-        f"👤 {create_user_profile_link(opponent, opponent.get('telegram_id', ''))}\n\n"
+        f"👤 {await create_user_profile_link(opponent, opponent.get('telegram_id', ''))}\n\n"
         f"Ваш рейтинг: {current_user.get('rating_points', 0)}\n\n"
         f"Выберите счет 1-го сета:",
         reply_markup=keyboard, 
@@ -674,7 +674,7 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
     winner_side = data.get('winner_side')             # 'team1' | 'team2'
 
     # Загрузка пользователей и текущего
-    users = load_users()
+    users = await storage.load_users()
     current_id = str(message.chat.id)
     current_user = copy.deepcopy(users.get(current_id, {}))
 
@@ -770,7 +770,7 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             loser_old = curr_old
 
         # Пересчёт рейтингов
-        new_winner_points, new_loser_points = calculate_new_ratings(
+        new_winner_points, new_loser_points = await calculate_new_ratings(
             winner_old, loser_old, game_diff
         )
 
@@ -806,8 +806,8 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
 
         # Текст результата
         # Показываем сверху победителя
-        winner_name_link = create_user_profile_link(winner_user, pid(winner_user) or "")
-        loser_name_link = create_user_profile_link(loser_user, pid(loser_user) or "")
+        winner_name_link = await create_user_profile_link(winner_user, pid(winner_user) or "")
+        loser_name_link = await create_user_profile_link(loser_user, pid(loser_user) or "")
 
         result_text = (
             f"🎯 Одиночная игра\n\n"
@@ -855,7 +855,7 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             loser_old_avg = team1_old_avg
 
         # Пересчёт рейтингов для средних значений
-        new_winner_avg, new_loser_avg = calculate_new_ratings(
+        new_winner_avg, new_loser_avg = await calculate_new_ratings(
             winner_old_avg, loser_old_avg, game_diff
         )
 
@@ -885,9 +885,9 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             rating_changes_for_game[_id] = float(d)
 
         # Готовим текст результата
-        def line_player(player_dict: dict) -> str:
+        async def line_player(player_dict: dict) -> str:
             _id = pid(player_dict) or ""
-            name_link = create_user_profile_link(player_dict, _id)
+            name_link = await create_user_profile_link(player_dict, _id)
             old_val = old_ratings.get(_id, rating_of(player_dict))
             delta = rating_changes_for_game.get(_id, 0.0)
             new_val = old_val + delta
@@ -897,11 +897,11 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         result_text = (
             f"👥 Парная игра\n\n"
             f"Команда 1:\n"
-            f"• {create_user_profile_link(current_user, current_id)}\n"
-            f"• {create_user_profile_link(partner, pid_partner)}\n\n"
+            f"• {await create_user_profile_link(current_user, current_id)}\n"
+            f"• {await create_user_profile_link(partner, pid_partner)}\n\n"
             f"Команда 2:\n"
-            f"• {create_user_profile_link(opponent1, pid_op1)}\n"
-            f"• {create_user_profile_link(opponent2, pid_op2)}\n\n"
+            f"• {await create_user_profile_link(opponent1, pid_op1)}\n"
+            f"• {await create_user_profile_link(opponent2, pid_op2)}\n\n"
             f"📊 Счёт: {score}\n\n"
             f"📈 Изменение рейтинга:\n"
         )
@@ -932,12 +932,12 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         'rating_changes': rating_changes_for_game
     }
 
-    games = load_games()
+    games = await storage.load_games()
     games.append(game_data)
 
     # Сохраняем игры и пользователей
-    save_games(games)
-    save_users(users)
+    await storage.save_games(games)
+    await storage.save_users(users)
 
     # Обновляем state — пригодится на экране подтверждения
     await state.update_data(result_text=result_text, game_id=game_id)
@@ -985,7 +985,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         result_text = data.get('result_text', '')
         
         # Загружаем пользователей для обновления статистики
-        users = load_users()
+        users = await storage.load_users()
         game_type = data.get('game_type')
         winner_side = data.get('winner_side')
         
@@ -1035,7 +1035,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
                         users[player_id]['games_wins'] = users[player_id].get('games_wins', 0) + 1
         
         # Сохраняем обновленную статистику
-        save_users(users)
+        await storage.save_users(users)
         
         # Отправляем уведомления другим игрокам с ссылками на профили
         if game_type == 'single':
@@ -1045,7 +1045,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
                     opponent_user = users[opponent_id]
                     current_user = users[current_user_id]
                     
-                    opponent_link = create_user_profile_link(current_user, current_user_id)
+                    opponent_link = await create_user_profile_link(current_user, current_user_id)
                     result_msg = (
                         f"📢 Вам засчитано поражение в игре против {opponent_link}\n"
                         f"Счет: {data.get('score')}\n"
@@ -1068,13 +1068,13 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
             ]
             
             current_user = users[current_user_id]
-            current_user_link = create_user_profile_link(current_user, current_user_id)
+            current_user_link = await create_user_profile_link(current_user, current_user_id)
             
             for player_id, role in players_to_notify:
                 if player_id in users:
                     try:
                         player_user = users[player_id]
-                        player_link = create_user_profile_link(player_user, player_id)
+                        player_link = await create_user_profile_link(player_user, player_id)
                         
                         # Формируем список всех игроков со ссылками
                         all_players = []
@@ -1084,7 +1084,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
                                     data.get('opponent2', {}).get('telegram_id')]:
                             if p_id in users:
                                 p_user = users[p_id]
-                                all_players.append(create_user_profile_link(p_user, p_id))
+                                all_players.append(await create_user_profile_link(p_user, p_id))
                         
                         players_list = "\n".join(all_players)
                         
@@ -1140,7 +1140,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         
     elif action == "no":
         # Откатываем изменения рейтинга и статистики
-        users = load_users()
+        users = await storage.load_users()
         data = await state.get_data()
         game_type = data.get('game_type')
         winner_side = data.get('winner_side')
@@ -1203,7 +1203,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
                     if player_id in users:
                         users[player_id]['games_wins'] = max(0, users[player_id].get('games_wins', 0) - 1)
         
-        save_users(users)
+        await storage.save_users(users)
         
         # Удаляем сохраненный медиафайл, если есть
         game_id = data.get('game_id')
@@ -1273,7 +1273,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         search_query = data.get('partner_search', '')
         current_user_id = str(callback.message.chat.id)
         
-        matching_users = search_users(search_query, exclude_ids=[current_user_id])
+        matching_users = await search_users(search_query, exclude_ids=[current_user_id])
         
         if matching_users:
             keyboard = create_users_inline_keyboard(matching_users, "select_partner")
@@ -1302,7 +1302,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         current_user_id = str(callback.message.chat.id)
         partner_id = data.get('partner', {}).get('telegram_id')
         
-        matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id])
+        matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id])
         
         if matching_users:
             keyboard = create_users_inline_keyboard(matching_users, "select_opponent1")
@@ -1334,7 +1334,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
             search_query = data.get('opponent_search', '')
             current_user_id = str(callback.message.chat.id)
             
-            matching_users = search_users(search_query, exclude_ids=[current_user_id])
+            matching_users = await search_users(search_query, exclude_ids=[current_user_id])
             
             if matching_users:
                 keyboard = create_users_inline_keyboard(matching_users, "select_opponent")
@@ -1359,7 +1359,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
                 partner_id = data.get('partner', {}).get('telegram_id')
                 opponent1_id = data.get('opponent1', {}).get('telegram_id')
                 
-                matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
+                matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
                 
                 if matching_users:
                     keyboard = create_users_inline_keyboard(matching_users, "select_opponent2")
@@ -1380,7 +1380,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
                 current_user_id = str(callback.message.chat.id)
                 partner_id = data.get('partner', {}).get('telegram_id')
                 
-                matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id])
+                matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id])
                 
                 if matching_users:
                     keyboard = create_users_inline_keyboard(matching_users, "select_opponent1")
@@ -1416,13 +1416,13 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
     _, action, page_str = callback.data.split(":")
     page = int(page_str)
     
-    users = load_users()
+    users = await storage.load_users()
     current_user_id = str(callback.message.chat.id)
     
     if action == "select_opponent":
         data = await state.get_data()
         search_query = data.get('opponent_search', '')
-        matching_users = search_users(search_query, exclude_ids=[current_user_id])
+        matching_users = await search_users(search_query, exclude_ids=[current_user_id])
         
         has_more = len(matching_users) > (page + 1) * 8
         keyboard = create_users_inline_keyboard(matching_users, action, page, has_more)
@@ -1431,7 +1431,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
     elif action == "select_partner":
         data = await state.get_data()
         search_query = data.get('partner_search', '')
-        matching_users = search_users(search_query, exclude_ids=[current_user_id])
+        matching_users = await search_users(search_query, exclude_ids=[current_user_id])
         
         has_more = len(matching_users) > (page + 1) * 8
         keyboard = create_users_inline_keyboard(matching_users, action, page, has_more)
@@ -1441,7 +1441,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
         data = await state.get_data()
         search_query = data.get('opponent1_search', '')
         partner_id = data.get('partner', {}).get('telegram_id')
-        matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id])
+        matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id])
         
         has_more = len(matching_users) > (page + 1) * 8
         keyboard = create_users_inline_keyboard(matching_users, action, page, has_more)
@@ -1452,7 +1452,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
         search_query = data.get('opponent2_search', '')
         partner_id = data.get('partner', {}).get('telegram_id')
         opponent1_id = data.get('opponent1', {}).get('telegram_id')
-        matching_users = search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
+        matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
         
         has_more = len(matching_users) > (page + 1) * 8
         keyboard = create_users_inline_keyboard(matching_users, action, page, has_more)
@@ -1469,9 +1469,9 @@ async def handle_history_request(callback: types.CallbackQuery):
         current_user_id = str(callback.message.chat.id)
         
         # Проверяем права доступа для просмотра чужой истории
-        if not is_admin(callback.message.chat.id):
+        if not await is_admin(callback.message.chat.id):
             if current_user_id != target_user_id:
-                users = load_users()
+                users = await storage.load_users()
                 if not users.get(current_user_id, {}).get('subscription', {}).get('active', False):
                     text = (
                         "🔒 <b>Доступ закрыт</b>\n\n"
@@ -1509,8 +1509,8 @@ async def handle_history_navigation(callback: types.CallbackQuery):
 async def show_single_game_history(callback: types.CallbackQuery, target_user_id: str, game_index: int):
     """Показывает одну игру из истории с навигацией"""
     # Загружаем игры и пользователей
-    games = load_games()
-    users = load_users()
+    games = await storage.load_games()
+    users = await storage.load_users()
     
     # Получаем информацию о целевом пользователе
     target_user = users.get(target_user_id)
@@ -1586,7 +1586,7 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
         history_text += f"👤 Игрок:\n"
         history_text += f"• {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n" 
         history_text += f"👤 Соперник:\n"
-        history_text += f"• {create_user_profile_link(opponent, opponent.get('telegram_id'))}\n\n"
+        history_text += f"• {await create_user_profile_link(opponent, opponent.get('telegram_id'))}\n\n"
         
     else:
         # Для парной игры
@@ -1601,12 +1601,12 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
         opponent1 = users.get(opponents[0], {})
         opponent2 = users.get(opponents[1], {})
         
-        teammate_name = create_user_profile_link(teammate, teammate_id)
-        opponent1_name = create_user_profile_link(opponent1, opponents[0])
-        opponent2_name = create_user_profile_link(opponent2, opponents[1])
+        teammate_name = await create_user_profile_link(teammate, teammate_id)
+        opponent1_name = await create_user_profile_link(opponent1, opponents[0])
+        opponent2_name = await create_user_profile_link(opponent2, opponents[1])
         
         history_text += f"👥 Команда 1:\n"
-        history_text += f"• {create_user_profile_link(target_user, target_user.get('telegram_id', ''))}\n"
+        history_text += f"• {await create_user_profile_link(target_user, target_user.get('telegram_id', ''))}\n"
         history_text += f"• {teammate_name}\n\n"
         history_text += f"👥 Команда 2:\n"
         history_text += f"• {opponent1_name}\n"
@@ -1619,7 +1619,7 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
     history_text += f"📈 Изменение рейтинга: {rating_change_str}\n"
     
     # Добавляем ID игры для админа
-    if is_admin(callback.message.chat.id):
+    if await is_admin(callback.message.chat.id):
         history_text += f"\n🆔 ID игры: `{game_id}`"
     
     # Создаем клавиатуру с навигацией
@@ -1650,7 +1650,7 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
     ])
     
     # Кнопка удаления игры для админа (если это не свой профиль или админ смотрит чужую игру)
-    if (is_admin(callback.message.chat.id)):
+    if (await is_admin(callback.message.chat.id)):
         keyboard_buttons.append([
             InlineKeyboardButton(
                 text="🗑️ Удалить игру", 
@@ -1662,7 +1662,7 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
     
     # Проверяем, есть ли медиафайл
     if game.get('media_filename'):
-        media_path = f"data/games_photo/{game['media_filename']}"
+        media_path = f"{GAMES_PHOTOS_DIR}/{game['media_filename']}"
         if os.path.exists(media_path):
             # Определяем тип медиа
             if game['media_filename'].endswith(('.jpg', '.jpeg', '.png')):
