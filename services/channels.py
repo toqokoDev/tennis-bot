@@ -73,8 +73,8 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             player1 = users.get(player1_id, {})
             player2 = users.get(player2_id, {})
             
-            player1_link = create_user_profile_link(player1, player1_id)
-            player2_link = create_user_profile_link(player2, player2_id)
+            player1_link = await create_user_profile_link(player1, player1_id)
+            player2_link = await create_user_profile_link(player2, player2_id)
             
             winner_side = data.get('winner_side')
             if winner_side == "team1":
@@ -104,10 +104,10 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             team2_player1 = users.get(team2_player1_id, {})
             team2_player2 = users.get(team2_player2_id, {})
             
-            team1_player1_link = create_user_profile_link(team1_player1, team1_player1_id)
-            team1_player2_link = create_user_profile_link(team1_player2, team1_player2_id)
-            team2_player1_link = create_user_profile_link(team2_player1, team2_player1_id)
-            team2_player2_link = create_user_profile_link(team2_player2, team2_player2_id)
+            team1_player1_link = await create_user_profile_link(team1_player1, team1_player1_id)
+            team1_player2_link = await create_user_profile_link(team1_player2, team1_player2_id)
+            team2_player1_link = await create_user_profile_link(team2_player1, team2_player1_id)
+            team2_player2_link = await create_user_profile_link(team2_player2, team2_player2_id)
             
             winner_side = data.get('winner_side')
             if winner_side == "team1":
