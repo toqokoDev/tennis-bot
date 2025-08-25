@@ -11,10 +11,10 @@ from datetime import datetime
 from config.config import SUBSCRIPTION_PRICE
 from config.paths import GAMES_PHOTOS_DIR
 from models.states import AddScoreState
+from services.channels import send_game_notification_to_channel
 from services.storage import storage
 from utils.admin import is_admin
 from utils.media import save_media_file
-from utils.notifications import send_game_notification_to_channel
 from utils.utils import calculate_new_ratings, create_user_profile_link, search_users
 
 router = Router()

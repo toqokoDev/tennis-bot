@@ -100,6 +100,7 @@ class RespondToOfferStates(StatesGroup):
 class BrowseToursStates(StatesGroup):
     SELECT_COUNTRY = State()
     SELECT_CITY = State()
+    SELECT_SPORT = State()
 
 class CreateTourStates(StatesGroup):
     ENTER_START_DATE = State()

@@ -1,8 +1,6 @@
 from aiogram import Bot
 from datetime import datetime
-from config.config import CHANNEL_ID
 from services.storage import storage
-from utils.utils import create_user_profile_link
 
 async def send_subscription_reminders(bot: Bot):
     """Отправка напоминаний о скором истечении подписки"""
@@ -41,86 +39,3 @@ async def send_subscription_reminders(bot: Bot):
                             
                 except ValueError:
                     continue
-
-async def send_game_notification_to_channel(bot, data, users):
-    """Отправляет уведомление о завершенной игре в канал"""
-    try:
-        game_type = data.get('game_type')
-        score = data.get('score')
-
-        if game_type == 'single':
-            # Одиночная игра
-            player1_id = data.get('current_user_id')
-            player2_id = data.get('opponent1', {}).get('telegram_id')
-            
-            player1 = users.get(player1_id, {})
-            player2 = users.get(player2_id, {})
-            
-            player1_link = create_user_profile_link(player1, player1_id)
-            player2_link = create_user_profile_link(player2, player2_id)
-            
-            winner_side = data.get('winner_side')
-            if winner_side == "team1":
-                winner_link = player1_link
-                loser_link = player2_link
-            else:
-                winner_link = player2_link
-                loser_link = player1_link
-            
-            game_text = (
-                "🎾 *Завершена одиночная игра!*\n\n"
-                f"🏆 Победитель: {winner_link}\n"
-                f"🥈 Проигравший: {loser_link}\n"
-                f"📊 Счет: {score}\n\n"
-                f"#игра #одиночная"
-            )
-            
-        else:
-            # Парная игра
-            team1_player1_id = str(data.get('current_user_id'))
-            team1_player2_id = data.get('partner', {}).get('telegram_id')
-            team2_player1_id = data.get('opponent1', {}).get('telegram_id')
-            team2_player2_id = data.get('opponent2', {}).get('telegram_id')
-            
-            team1_player1 = users.get(team1_player1_id, {})
-            team1_player2 = users.get(team1_player2_id, {})
-            team2_player1 = users.get(team2_player1_id, {})
-            team2_player2 = users.get(team2_player2_id, {})
-            
-            team1_player1_link = create_user_profile_link(team1_player1, team1_player1_id)
-            team1_player2_link = create_user_profile_link(team1_player2, team1_player2_id)
-            team2_player1_link = create_user_profile_link(team2_player1, team2_player1_id)
-            team2_player2_link = create_user_profile_link(team2_player2, team2_player2_id)
-            
-            winner_side = data.get('winner_side')
-            if winner_side == "team1":
-                winner_team = f"{team1_player1_link} & {team1_player2_link}"
-                loser_team = f"{team2_player1_link} & {team2_player2_link}"
-            else:
-                winner_team = f"{team2_player1_link} & {team2_player2_link}"
-                loser_team = f"{team1_player1_link} & {team1_player2_link}"
-            
-            game_text = (
-                "🎾 *Завершена парная игра!*\n\n"
-                f"🏆 Победители: {winner_team}\n"
-                f"🥈 Проигравшие: {loser_team}\n"
-                f"📊 Счет: {score}\n\n"
-                f"#игра #парная"
-            )
-        
-        if data.get('photo_id'):
-            await bot.send_photo(
-                chat_id=CHANNEL_ID,
-                photo=data['photo_id'],
-                caption=game_text,
-                parse_mode="Markdown"
-            )
-        else:
-            await bot.send_message(
-                chat_id=CHANNEL_ID,
-                text=game_text,
-                parse_mode="Markdown"
-            )
-        
-    except:
-        pass

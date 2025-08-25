@@ -6,6 +6,7 @@ from aiogram.types import (
 )
 from datetime import datetime, timedelta
 from config.config import SUBSCRIPTION_PRICE
+from services.channels import send_game_offer_to_channel
 from services.storage import storage
 from models.states import GameOfferStates
 from utils.admin import is_admin
@@ -577,6 +578,7 @@ async def process_game_comment(message: types.Message, state: FSMContext):
         response.append(f"\n📊 Бесплатных предложений осталось: {remaining_offers}/2")
         response.append("💳 Оформите подписку для неограниченного создания предложений!")
     
+    await send_game_offer_to_channel(message.bot, game_data, str(message.chat.id), user_data)
     await message.answer("\n".join(response), reply_markup=base_keyboard)
 
 @router.message(F.text == "📋 Мои предложения")
