@@ -627,6 +627,7 @@ async def handle_photo(message: types.Message, state: FSMContext):
     # Удаляем сообщение с просьбой отправить фото
     try:
         await message.delete()
+        await message.answer("Загрузка фото...")
     except:
         pass
     
@@ -641,6 +642,7 @@ async def handle_video(message: types.Message, state: FSMContext):
     # Удаляем сообщение с просьбой отправить видео
     try:
         await message.delete()
+        await message.answer("Загрузка видео...")
     except:
         pass
     
@@ -956,6 +958,10 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
     if callback:
         await edit_media_message(callback, result_text, keyboard, media_data)
     else:
+        try:
+            await message.delete()
+        except:
+            pass
         if 'photo_id' in data:
             await message.answer_photo(
                 data['photo_id'],
@@ -1105,7 +1111,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         
         # Отправляем уведомление в канал о завершенной игре
         try:
-            await send_game_notification_to_channel(callback.bot, data, users)
+            await send_game_notification_to_channel(callback.bot, data, users, current_user_id)
         except Exception as e:
             print(f"Ошибка при отправке уведомления в канал: {e}")
         

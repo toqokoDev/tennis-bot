@@ -11,7 +11,7 @@ from config.profile import sport_type
 from services.storage import storage
 from utils.admin import is_admin
 from models.states import BrowseOffersStates, RespondToOfferStates
-from utils.utils import create_user_profile_link, get_weekday_short
+from utils.utils import create_user_profile_link, get_sort_key, get_weekday_short
 
 router = Router()
 
@@ -115,7 +115,7 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
             city = user_data.get('city', '')
             if city:
                 active_games = [game for game in user_data['games'] 
-                               if game.get('active', True) and user_data.get('sport') == sport_type_selected]
+                               if game.get('active', True) and user_data.get('sport') == sport_type_selected and user_id != callback.message.chat.id]
                 if active_games:
                     city_stats[city] = city_stats.get(city, 0) + len(active_games)
     
@@ -169,9 +169,10 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
     for user_id, user_data in users.items():
         if (user_data.get('country') == country and 
             user_data.get('city') == city and 
-            user_data.get('games')):
+            user_data.get('games') and
+            user_id != callback.message.chat.id):
             
-            user_name = f"{user_data.get('first_name', 'Неизвестно')[:1]}. {user_data.get('last_name', '')}".strip()
+            user_name = f"{user_data.get('first_name', 'Неизвестно')[:1]}.{user_data.get('last_name', '')}".strip()
             
             for game in user_data['games']:
                 if (game.get('active', True) and 
@@ -182,6 +183,7 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
                         'user_name': user_name,
                         'player_level': user_data.get('player_level'),
                         'gender': user_data.get('gender'),
+                        'district': user_data.get('district'),
                         'game_id': game.get('id'),
                         'city': game.get('city'),
                         'date': game.get('date'),
@@ -203,6 +205,8 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
             ])
         )
         return
+    
+    all_offers.sort(key=get_sort_key)
     
     # Сохраняем все предложения в state
     await state.update_data(all_offers=all_offers, current_page=0)
@@ -239,11 +243,11 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         # Определяем стикер пола
         gender_icon = "👨" if offer.get('gender', 'male') == 'Мужской' else "👩"
         
-        # Уровень
-        level = offer.get('player_level', '-')
-        
         # Имя + уровень
-        user_info = f"{offer['user_name']} ({level} lvl)"
+        if offer.get('player_level', '-'):
+            user_info = f"{offer['user_name']} ({offer.get('player_level', '-')} lvl)"
+        else:
+            user_info = f"{offer['user_name']} (Тренер)"
         
         # Дата → только число
         raw_date = offer.get('date')
@@ -251,16 +255,16 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         if raw_date:
             try:
                 dt = datetime.strptime(raw_date, "%Y-%m-%d")
-                day_str = f"{dt.day}-ое"
+                day_str = f"{dt.day}е"
             except ValueError:
-                day_str = raw_date[:2] + "-ое"
+                day_str = raw_date[:2] + "е"
         
         # Время
         time = offer.get('time', '-')
-        week_day = await get_weekday_short(raw_date)
+        district = offer.get('district', '')
         
         # Итоговая строка
-        short_info = f"{day_str} ({week_day}) {time} | {gender_icon} {user_info} "
+        short_info = f"{day_str} {time} {district} {gender_icon} {user_info} "
         
         builder.row(InlineKeyboardButton(
             text=short_info,

@@ -131,11 +131,21 @@ async def get_weekday_short(date_str: str) -> str:
     except ValueError:
         return "?"
 
-async def create_user_profile_link(user_data: dict, user_id: str) -> str:
+async def create_user_profile_link(user_data: dict, user_id: str, additional=True) -> str:
     first_name = user_data.get('first_name', '')
     last_name = user_data.get('last_name', '')
-    rating = user_data.get('rating_points', 0)
-    return f"[{first_name} {last_name} ({rating})](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
+    
+    if user_data.get('player_level'):
+        level = user_data.get('player_level')
+        rating = user_data.get('rating_points')
+    else:
+        level = ""
+        rating = "Тренер"
+
+    if additional:
+        return f"[{first_name} {last_name} {level}({rating})](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
+    else:
+        return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
 
 async def format_tour_date(date_str):
     if not date_str or date_str == '-':
@@ -153,3 +163,15 @@ async def format_tour_date(date_str):
     except:
         return date_str
             
+def get_sort_key(offer):
+    try:
+        date = datetime.strptime(offer['date'], '%d.%m.%Y') if isinstance(offer['date'], str) else offer['date']
+    except (ValueError, TypeError):
+        date = datetime.min  # Если дата некорректна, ставим минимальную дату
+        
+    try:
+        time = datetime.strptime(offer['time'], '%H:%M') if isinstance(offer['time'], str) else offer['time']
+    except (ValueError, TypeError):
+        time = datetime.min.time()  # Если время некорректно, ставим минимальное время
+        
+    return (date, time)
