@@ -764,7 +764,7 @@ async def send_registration_notification(message: types.Message, profile: dict):
                 f"💰 Стоимость: {profile.get('price', 0)} руб./тренировка\n"
                 f"📍 {city} ({profile.get('country', '')})\n"
                 f"{username_text}"
-                f"#тренер #анкета_тренера"
+                f"#тренер"
             )
         else:
             registration_text = (
