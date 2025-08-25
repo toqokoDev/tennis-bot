@@ -38,6 +38,9 @@ async def edit_profile_handler(callback: types.CallbackQuery, state: FSMContext)
                 InlineKeyboardButton(text="🌍 Страна/Город", callback_data="1edit_location")
             ],
             [
+                InlineKeyboardButton(text="🗑️ Удалить профиль", callback_data="1delete_profile")
+            ],
+            [
                 InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{user_id}")
             ]
         ]
@@ -60,6 +63,110 @@ async def back_to_profile_handler(callback: types.CallbackQuery):
         await show_profile(callback.message, profile)
     else:
         await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+    
+    await callback.answer()
+
+# Обработчик для удаления профиля
+@router.callback_query(F.data == "1delete_profile")
+async def delete_profile_handler(callback: types.CallbackQuery):
+    # Создаем клавиатуру с подтверждением удаления
+    confirm_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Да, удалить", callback_data="confirm_delete"),
+                InlineKeyboardButton(text="❌ Нет, отмена", callback_data="cancel_delete")
+            ]
+        ]
+    )
+    try:
+        await callback.message.edit_text(
+            "⚠️ Вы уверены, что хотите удалить свой профиль? Это действие нельзя отменить!",
+            reply_markup=confirm_keyboard
+        )
+    except:
+        try:
+            await callback.message.delete()
+        except:
+            await callback.message.edit_text(
+                "⚠️ Вы уверены, что хотите удалить свой профиль? Это действие нельзя отменить!",
+                reply_markup=confirm_keyboard
+            )
+    
+    await callback.answer()
+
+@router.callback_query(F.data == "confirm_delete")
+async def confirm_delete_handler(callback: types.CallbackQuery):
+    user_id = callback.message.chat.id
+    users = await storage.load_users()
+    user_key = str(user_id)
+    
+    main_inline_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+        ]
+    )
+    
+    if user_key in users:
+        # Удаляем фото профиля, если оно есть
+        if 'photo_path' in users[user_key] and users[user_key]['photo_path']:
+            try:
+                photo_path = BASE_DIR / users[user_key]['photo_path']
+                if photo_path.exists():
+                    photo_path.unlink()
+            except:
+                pass
+        
+        # Удаляем пользователя из хранилища
+        del users[user_key]
+        await storage.save_users(users)
+        
+        await callback.message.edit_text(
+            "🗑️ Ваш профиль был успешно удален!",
+            reply_markup=main_inline_keyboard
+        )
+    else:
+        await callback.message.edit_text(
+            "❌ Профиль не найден",
+            reply_markup=main_inline_keyboard
+        )
+    
+    await callback.answer()
+
+@router.callback_query(F.data == "cancel_delete")
+async def cancel_delete_handler(callback: types.CallbackQuery):
+    user_id = callback.message.chat.id
+    profile = await storage.get_user(user_id)
+    
+    if profile:
+        # Возвращаемся к меню редактирования
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="💬 О себе", callback_data="1edit_comment"),
+                    InlineKeyboardButton(text="💳 Оплата", callback_data="1edit_payment")
+                ],
+                [
+                    InlineKeyboardButton(text="📷 Фото", callback_data="1edit_photo"),
+                    InlineKeyboardButton(text="🌍 Страна/Город", callback_data="1edit_location")
+                ],
+                [
+                    InlineKeyboardButton(text="🗑️ Удалить профиль", callback_data="1delete_profile")
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{user_id}")
+                ]
+            ]
+        )
+        
+        await callback.message.edit_text(
+            "✏️ Выберите, что хотите изменить:",
+            reply_markup=keyboard
+        )
+    else:
+        await callback.message.edit_text(
+            "❌ Профиль не найден",
+            reply_markup=base_keyboard
+        )
     
     await callback.answer()
 

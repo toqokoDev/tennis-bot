@@ -54,7 +54,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 profile_user_id = start_param.replace('profile_', '')
                 
                 # Проверяем, не забанен ли целевой пользователь
-                if is_user_banned(profile_user_id):
+                if await is_user_banned(profile_user_id):
                     await message.answer("⛔ Этот профиль недоступен.")
                     return
                 
@@ -630,7 +630,7 @@ async def ask_for_create_game(message: types.Message, state: FSMContext):
     ]
     await show_current_data(
         message, state,
-        "🎾 Хотите сразу создать предложение об игре?",
+        "🎾 Хотите сразу создать предложение об игре на конкретный день и время?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.CREATE_GAME_OFFER)
@@ -745,22 +745,36 @@ async def send_registration_notification(message: types.Message, profile: dict):
     """Отправляет уведомление о новой регистрации в канал"""
     try:
         city = profile.get('city', '—')
-        district = profile.get('district', None)
+        district = profile.get('district', '')
         if district:
             city = f"{city} - {district}"
             
         username_text = "\n"
         if profile.get('username'):
             username_text = f"✉️ @{profile.get('username')}\n\n"
-
-        registration_text = (
-            "🎾 *Новый участник присоединился к сообществу!*\n\n"
-            f"👤 {await create_user_profile_link(profile, profile.get('telegram_id'))}\n" 
-            f"🏸 {profile.get('sport', 'Не указан')} ({profile.get('player_level', 'Не указан')} Лвл)\n"
-            f"📍 {city} ({profile.get('country', '')})\n"
-            f"{username_text}"
-            f"#анкета"
-        )
+        
+        role = profile.get('role', 'Игрок')
+        
+        # Разное оформление для тренеров и игроков
+        if role == "Тренер":
+            registration_text = (
+                "👨‍🏫 *Новый тренер присоединился к платформе!*\n\n"
+                f"🏆 {await create_user_profile_link(profile, profile.get('telegram_id'))}\n"
+                f"🎾 Специализация: {profile.get('sport', 'Не указана')}\n"
+                f"💰 Стоимость: {profile.get('price', 0)} руб./тренировка\n"
+                f"📍 {city} ({profile.get('country', '')})\n"
+                f"{username_text}"
+                f"#тренер #анкета_тренера"
+            )
+        else:
+            registration_text = (
+                "🎾 *Новый игрок присоединился к сообществу!*\n\n"
+                f"👤 {await create_user_profile_link(profile, profile.get('telegram_id'))}\n" 
+                f"🏸 {profile.get('sport', 'Не указан')} ({profile.get('player_level', 'Не указан')} Лвл)\n"
+                f"📍 {city} ({profile.get('country', '')})\n"
+                f"{username_text}"
+                f"#анкета"
+            )
         
         if profile.get('photo_path'):
             await message.bot.send_photo(
@@ -775,5 +789,5 @@ async def send_registration_notification(message: types.Message, profile: dict):
                 text=registration_text,
                 parse_mode="Markdown"
             )
-    except:
-        pass
+    except Exception as e:
+        print(f"Ошибка отправки уведомления: {e}")

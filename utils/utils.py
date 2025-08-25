@@ -4,12 +4,16 @@ from typing import List
 from config.config import BOT_USERNAME
 from services.storage import storage
 
-async def count_users_by_location(search_type=None, country=None, city=None):
+async def count_users_by_location(search_type=None, country=None, city=None, sport_type=None, exclude_user_id=None):
     """Подсчет пользователей по локации"""
     users = await storage.load_users()
     count = 0
     
     for user_id, profile in users.items():
+        # Исключаем текущего пользователя
+        if exclude_user_id and str(user_id) == str(exclude_user_id):
+            continue
+            
         if not profile.get('show_in_search', True):
             continue
             
@@ -18,6 +22,8 @@ async def count_users_by_location(search_type=None, country=None, city=None):
             continue
         elif search_type == "players" and profile.get('role') != "Игрок":
             continue
+        elif search_type == "partner" and profile.get('role') != "Игрок":
+            continue
             
         # Фильтр по стране
         if country and profile.get('country') != country:
@@ -25,6 +31,10 @@ async def count_users_by_location(search_type=None, country=None, city=None):
             
         # Фильтр по городу
         if city and profile.get('city') != city:
+            continue
+            
+        # Фильтр по виду спорта (только для партнера)
+        if search_type == "partner" and sport_type and profile.get('sport') != sport_type:
             continue
             
         count += 1
