@@ -1,10 +1,34 @@
 import asyncio
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher
+from aiogram.types import Message
+from aiogram.filters import Filter
 from handlers import game_offers_menu, registration, game_offers, more, payments, profile, enter_invoice, search_partner, tours, admin, admin_edit
 from config.config import TOKEN
+from utils.admin import is_user_banned
 from utils.notifications import send_subscription_reminders
 from services.storage import storage
+
+class BannedUserFilter(Filter):
+    async def __call__(self, message: Message) -> bool:
+        """Фильтр для проверки забаненных пользователей"""
+        user_id = str(message.from_user.id)
+        banned_users = await storage.load_banned_users()
+        return user_id in banned_users
+
+async def ban_check_handler(message: Message):
+    """Обработчик для забаненных пользователей"""
+    user_id = str(message.from_user.id)
+    
+    # Дополнительная проверка на случай, если фильтр не сработал
+    if await is_user_banned(user_id):
+        await message.answer(
+            "🚫 Ваш аккаунт заблокирован.\n\n"
+            "Вы не можете использовать функции бота.\n"
+            "По вопросам разблокировки обратитесь к администратору."
+        )
+        return True
+    return False
 
 async def check_subscriptions(bot: Bot):
     """Ежедневная проверка и обновление статуса подписок"""
@@ -16,6 +40,10 @@ async def check_subscriptions(bot: Bot):
             
             # Проверка истечения подписок
             for user_id, user_data in users.items():
+                # Пропускаем забаненных пользователей
+                if await is_user_banned(user_id):
+                    continue
+                    
                 if 'subscription' in user_data and user_data['subscription'].get('active', False):
                     subscription_until = user_data['subscription'].get('until')
                     if subscription_until:
@@ -49,7 +77,7 @@ async def check_subscriptions(bot: Bot):
             else:
                 print(f"[{datetime.now()}] Проверка подписок завершена, изменений нет")
                 
-            # Отправка напоминаний
+            # Отправка напоминаний (только для незабаненных пользователей)
             await send_subscription_reminders(bot)
                 
         except Exception as e:
@@ -68,6 +96,10 @@ async def check_repeating_games(bot: Bot):
             games_updated = 0
             
             for user_id, user_data in users.items():
+                # Пропускаем забаненных пользователей
+                if await is_user_banned(user_id):
+                    continue
+                    
                 if 'games' in user_data and user_data['games']:
                     for game in user_data['games']:
                         if game.get('repeat') and game.get('active', True):
@@ -116,6 +148,9 @@ async def main():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
 
+    # Добавляем обработчик для забаненных пользователей в самом начале
+    dp.message.register(ban_check_handler, BannedUserFilter())
+    
     # Подключаем роутеры       
     dp.include_router(admin.admin_router)    
     dp.include_router(admin_edit.admin_edit_router) 

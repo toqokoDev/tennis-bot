@@ -574,8 +574,8 @@ async def process_game_comment(message: types.Message, state: FSMContext):
     
     if not subscription_active:
         free_offers_used = user_data.get('free_offers_used', 0)
-        remaining_offers = max(0, 2 - free_offers_used)
-        response.append(f"\n📊 Бесплатных предложений осталось: {remaining_offers}/2")
+        remaining_offers = max(0, 1 - free_offers_used)
+        response.append(f"\n📊 Бесплатных предложений осталось: {remaining_offers}/1")
         response.append("💳 Оформите подписку для неограниченного создания предложений!")
     
     await send_game_offer_to_channel(message.bot, game_data, str(message.chat.id), user_data)

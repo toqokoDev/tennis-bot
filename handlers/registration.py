@@ -106,6 +106,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "• Находить тренеров по теннису.\n"
         "• Отслеживать свой рейтинг.\n\n"
         "Для начала пройдите краткую регистрацию.\n\n"
+        "<b>Начиная регистрацию, Вы соглашаетесь с <a href='https://tennis-play.com/privacy/'>политикой обработки персональных данных</a></b>\n\n"
         "<b>Пожалуйста, отправьте номер телефона:</b>"
     )
     
@@ -535,7 +536,7 @@ async def ask_for_vacation_tennis(message: types.Message, state: FSMContext):
     ]
     await show_current_data(
         message, state,
-        "✈️ Хотите найти партнёра по теннису на время отдыха?",
+        "✈️ Хотите найти партнёра на время отдыха?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.VACATION_TENNIS)
