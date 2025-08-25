@@ -4,7 +4,6 @@ from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    FSInputFile,
     Message,
     ReplyKeyboardMarkup,
     KeyboardButton,
@@ -13,12 +12,12 @@ from aiogram.types import (
     InlineKeyboardButton
 )
 
-from config.config import CHANNEL_ID
 from config.paths import BASE_DIR, PHOTOS_DIR
 from config.profile import moscow_districts, player_levels, base_keyboard, cities_data, sport_type, countries
 
 from models.states import RegistrationStates
 
+from services.channels import send_registration_notification
 from utils.admin import is_user_banned
 from utils.utils import calculate_age, create_user_profile_link
 from utils.media import download_photo_to_path
@@ -740,54 +739,3 @@ async def process_skip_game_offer(callback: types.CallbackQuery, state: FSMConte
     # Показываем профиль пользователя
     await show_profile(callback.message, profile)
     await callback.answer()
-
-async def send_registration_notification(message: types.Message, profile: dict):
-    """Отправляет уведомление о новой регистрации в канал"""
-    try:
-        city = profile.get('city', '—')
-        district = profile.get('district', '')
-        if district:
-            city = f"{city} - {district}"
-            
-        username_text = "\n"
-        if profile.get('username'):
-            username_text = f"✉️ @{profile.get('username')}\n\n"
-        
-        role = profile.get('role', 'Игрок')
-        
-        # Разное оформление для тренеров и игроков
-        if role == "Тренер":
-            registration_text = (
-                "👨‍🏫 *Новый тренер присоединился к платформе!*\n\n"
-                f"🏆 {await create_user_profile_link(profile, profile.get('telegram_id'))}\n"
-                f"🎾 Специализация: {profile.get('sport', 'Не указана')}\n"
-                f"💰 Стоимость: {profile.get('price', 0)} руб./тренировка\n"
-                f"📍 {city} ({profile.get('country', '')})\n"
-                f"{username_text}"
-                f"#тренер"
-            )
-        else:
-            registration_text = (
-                "🎾 *Новый игрок присоединился к сообществу!*\n\n"
-                f"👤 {await create_user_profile_link(profile, profile.get('telegram_id'))}\n" 
-                f"🏸 {profile.get('sport', 'Не указан')} ({profile.get('player_level', 'Не указан')} Лвл)\n"
-                f"📍 {city} ({profile.get('country', '')})\n"
-                f"{username_text}"
-                f"#анкета"
-            )
-        
-        if profile.get('photo_path'):
-            await message.bot.send_photo(
-                chat_id=CHANNEL_ID,
-                photo=FSInputFile(BASE_DIR / profile.get('photo_path')),
-                caption=registration_text,
-                parse_mode="Markdown"
-            )
-        else:
-            await message.bot.send_message(
-                chat_id=CHANNEL_ID,
-                text=registration_text,
-                parse_mode="Markdown"
-            )
-    except Exception as e:
-        print(f"Ошибка отправки уведомления: {e}")

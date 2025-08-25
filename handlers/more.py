@@ -364,19 +364,18 @@ async def show_sport_types(message: Union[types.Message, types.CallbackQuery], s
     
     builder = InlineKeyboardBuilder()
     
+    builder.row(InlineKeyboardButton(
+        text="🏆 Любой вид спорта",
+        callback_data="sport_any"
+    ))
+
     for sport in sport_type:
         builder.add(InlineKeyboardButton(
             text=sport,
             callback_data=f"sport_{sport}"
         ))
     
-    builder.adjust(2)
-    
-    # Кнопка "Любой вид спорта"
-    builder.row(InlineKeyboardButton(
-        text="🏆 Любой вид спорта",
-        callback_data="sport_any"
-    ))
+    builder.adjust(1, 2)
     
     # Кнопка возврата
     builder.row(InlineKeyboardButton(
@@ -439,19 +438,18 @@ async def show_price_ranges(message: Union[types.Message, types.CallbackQuery], 
     
     builder = InlineKeyboardBuilder()
     
+    builder.row(InlineKeyboardButton(
+        text="💵 Любая цена",
+        callback_data="price_range_any"
+    ))
+
     for price_range in PRICE_RANGES:
         builder.add(InlineKeyboardButton(
             text=price_range["label"],
             callback_data=f"price_range_{price_range['min']}_{price_range['max']}"
         ))
     
-    builder.adjust(2)
-    
-    # Кнопка "Любая цена"
-    builder.row(InlineKeyboardButton(
-        text="💵 Любая цена",
-        callback_data="price_range_any"
-    ))
+    builder.adjust(1, 2)
     
     # Кнопка возврата
     builder.row(InlineKeyboardButton(
