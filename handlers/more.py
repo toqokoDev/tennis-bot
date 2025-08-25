@@ -9,21 +9,14 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config.config import SUBSCRIPTION_PRICE
-from config.profile import PRICE_RANGES
+from config.profile import PRICE_RANGES, cities_data, sport_type, countries
 from models.states import SearchStates
+from services.storage import storage
 from utils.admin import is_admin
 from utils.bot import show_profile
-from utils.json_data import get_user_profile_from_storage, is_user_registered, load_json, load_users
-from utils.ssesion import save_session
 from utils.utils import count_users_by_location
 
 router = Router()
-
-cities_data = load_json("cities.json")
-sport_type = load_json("sports.json")
-countries = list(cities_data.keys())
-
-# Интервалы стоимости уроков тренера
 
 @router.message(F.text == "🔍 Еще")
 async def handle_more(message: types.Message):
@@ -77,9 +70,9 @@ async def handle_all_players(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(search_type="players")
     
     user_id = callback.message.chat.id
-    users = load_users()
+    users = await storage.load_users()
 
-    if not is_admin(user_id):
+    if not await is_admin(user_id):
         if not users[str(user_id)].get('subscription', {}).get('active', False):
             text = (
                 "🔒 <b>Доступ закрыт</b>\n\n"
@@ -98,13 +91,13 @@ async def handle_all_players(callback: types.CallbackQuery, state: FSMContext):
     
     buttons = []
     for country in countries[:5]:
-        count = count_users_by_location("players", country)
+        count = await count_users_by_location("players", country)
         buttons.append([InlineKeyboardButton(
             text=f"{country} ({count})", 
             callback_data=f"search_country_{country}"
         )])
     
-    count_other = count_users_by_location("players") - sum(count_users_by_location("players", c) for c in countries[:5])
+    count_other = await count_users_by_location("players") - sum(await count_users_by_location("players", c) for c in countries[:5])
     buttons.append([InlineKeyboardButton(
         text=f"🌎 Другие страны ({count_other})", 
         callback_data="search_other_country"
@@ -129,13 +122,13 @@ async def handle_find_coach(callback: types.CallbackQuery, state: FSMContext):
     
     buttons = []
     for country in countries[:5]:
-        count = count_users_by_location("coaches", country)
+        count = await count_users_by_location("coaches", country)
         buttons.append([InlineKeyboardButton(
             text=f"{country} ({count})", 
             callback_data=f"search_country_{country}"
         )])
     
-    count_other = count_users_by_location("coaches") - sum(count_users_by_location("coaches", c) for c in countries[:5])
+    count_other = await count_users_by_location("coaches") - sum(await count_users_by_location("coaches", c) for c in countries[:5])
     buttons.append([InlineKeyboardButton(
         text=f"🌎 Другие страны ({count_other})", 
         callback_data="search_other_country"
@@ -165,13 +158,13 @@ async def process_search_country(callback: types.CallbackQuery, state: FSMContex
         main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринburg", "Казань"]
         buttons = []
         for city in main_russian_cities:
-            count = count_users_by_location(search_type, country, city)
+            count = await count_users_by_location(search_type, country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"{city} ({count})", 
                 callback_data=f"search_city_{city}"
             )])
         
-        count_other = count_users_by_location(search_type, country) - sum(count_users_by_location(search_type, country, c) for c in main_russian_cities)
+        count_other = await count_users_by_location(search_type, country) - sum(await count_users_by_location(search_type, country, c) for c in main_russian_cities)
         buttons.append([InlineKeyboardButton(
             text=f"🏙 Другие города ({count_other})", 
             callback_data="search_other_city"
@@ -180,13 +173,13 @@ async def process_search_country(callback: types.CallbackQuery, state: FSMContex
         cities = cities_data.get(country, [])
         buttons = []
         for city in cities[:5]:
-            count = count_users_by_location(search_type, country, city)
+            count = await count_users_by_location(search_type, country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"{city} ({count})", 
                 callback_data=f"search_city_{city}"
             )])
         
-        count_other = count_users_by_location(search_type, country) - sum(count_users_by_location(search_type, country, c) for c in cities[:5])
+        count_other = await count_users_by_location(search_type, country) - sum(await count_users_by_location(search_type, country, c) for c in cities[:5])
         buttons.append([InlineKeyboardButton(
             text=f"🏙 Другие города ({count_other})", 
             callback_data="search_other_city"
@@ -265,7 +258,7 @@ async def process_search_country_input(message: Message, state: FSMContext):
         ]])
     )
     await state.set_state(SearchStates.SEARCH_CITY_INPUT)
-    save_session(message.from_user.id, await state.get_data())
+    await storage.save_session(message.from_user.id, await state.get_data())
 
 @router.callback_query(SearchStates.SEARCH_CITY, F.data.startswith("search_city_"))
 async def process_search_city(callback: types.CallbackQuery, state: FSMContext):
@@ -304,13 +297,13 @@ async def back_to_countries(callback: types.CallbackQuery, state: FSMContext):
     
     buttons = []
     for country in countries[:5]:
-        count = count_users_by_location(search_type, country)
+        count = await count_users_by_location(search_type, country)
         buttons.append([InlineKeyboardButton(
             text=f"{country} ({count})", 
             callback_data=f"search_country_{country}"
         )])
     
-    count_other = count_users_by_location(search_type) - sum(count_users_by_location(search_type, c) for c in countries[:5])
+    count_other = await count_users_by_location(search_type) - sum(await count_users_by_location(search_type, c) for c in countries[:5])
     buttons.append([InlineKeyboardButton(
         text=f"🌎 Другие страны ({count_other})", 
         callback_data="search_other_country"
@@ -342,7 +335,7 @@ async def process_search_city_input(message: Message, state: FSMContext):
         await show_sport_types(message, state)
     else:
         await perform_search(message, state)
-    save_session(message.from_user.id, await state.get_data())
+    await storage.save_session(message.from_user.id, await state.get_data())
 
 @router.callback_query(SearchStates.SEARCH_CITY_INPUT, F.data == "back_to_countries")
 async def back_to_countries_from_input(callback: types.CallbackQuery, state: FSMContext):
@@ -351,13 +344,13 @@ async def back_to_countries_from_input(callback: types.CallbackQuery, state: FSM
     
     buttons = []
     for country in countries[:5]:
-        count = count_users_by_location(search_type, country)
+        count = await count_users_by_location(search_type, country)
         buttons.append([InlineKeyboardButton(
             text=f"{country} ({count})", 
             callback_data=f"search_country_{country}"
         )])
     
-    count_other = count_users_by_location(search_type) - sum(count_users_by_location(search_type, c) for c in countries[:5])
+    count_other = await count_users_by_location(search_type) - sum(await count_users_by_location(search_type, c) for c in countries[:5])
     buttons.append([InlineKeyboardButton(
         text=f"🌎 Другие страны ({count_other})", 
         callback_data="search_other_country"
@@ -430,13 +423,13 @@ async def back_to_cities_from_sport(callback: types.CallbackQuery, state: FSMCon
         main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
         buttons = []
         for city in main_russian_cities:
-            count = count_users_by_location(search_type, country, city)
+            count = await count_users_by_location(search_type, country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"🏙 {city} ({count})", 
                 callback_data=f"search_city_{city}"
             )])
         
-        count_other = count_users_by_location(search_type, country) - sum(count_users_by_location(search_type, country, c) for c in main_russian_cities)
+        count_other = await count_users_by_location(search_type, country) - sum(await count_users_by_location(search_type, country, c) for c in main_russian_cities)
         buttons.append([InlineKeyboardButton(
             text=f"🏙 Другие города ({count_other})", 
             callback_data="search_other_city"
@@ -445,13 +438,13 @@ async def back_to_cities_from_sport(callback: types.CallbackQuery, state: FSMCon
         cities = cities_data.get(country, [])
         buttons = []
         for city in cities[:5]:
-            count = count_users_by_location(search_type, country, city)
+            count = await count_users_by_location(search_type, country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"🏙 {city} ({count})", 
                 callback_data=f"search_city_{city}"
             )])
         
-        count_other = count_users_by_location(search_type, country) - sum(count_users_by_location(search_type, country, c) for c in cities[:5])
+        count_other = await count_users_by_location(search_type, country) - sum(await count_users_by_location(search_type, country, c) for c in cities[:5])
         buttons.append([InlineKeyboardButton(
             text=f"🏙 Другие города ({count_other})", 
             callback_data="search_other_city"
@@ -531,7 +524,7 @@ async def perform_search(message: Union[types.Message, types.CallbackQuery], sta
     price_min = data.get('price_min')
     price_max = data.get('price_max')
     
-    users = load_users()
+    users = await storage.load_users()
     results = []
     
     for user_id, profile in users.items():
@@ -681,7 +674,7 @@ async def handle_show_profile(callback: types.CallbackQuery, state: FSMContext):
     user_id = int(callback.data.split("_")[2])
     
     # Получаем профиль пользователя
-    profile = get_user_profile_from_storage(user_id)
+    profile = await storage.get_user(user_id)
     if not profile:
         await callback.answer("❌ Профиль не найден")
         return
@@ -711,13 +704,13 @@ async def handle_back_to_cities(callback: types.CallbackQuery, state: FSMContext
         main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
         buttons = []
         for city in main_russian_cities:
-            count = count_users_by_location(search_type, country, city)
+            count = await count_users_by_location(search_type, country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"🏙 {city} ({count})", 
                 callback_data=f"search_city_{city}"
             )])
         
-        count_other = count_users_by_location(search_type, country) - sum(count_users_by_location(search_type, country, c) for c in main_russian_cities)
+        count_other = await count_users_by_location(search_type, country) - sum(await count_users_by_location(search_type, country, c) for c in main_russian_cities)
         buttons.append([InlineKeyboardButton(
             text=f"🏙 Другие города ({count_other})", 
             callback_data="search_other_city"
@@ -726,13 +719,13 @@ async def handle_back_to_cities(callback: types.CallbackQuery, state: FSMContext
         cities = cities_data.get(country, [])
         buttons = []
         for city in cities[:5]:
-            count = count_users_by_location(search_type, country, city)
+            count = await count_users_by_location(search_type, country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"🏙 {city} ({count})", 
                 callback_data=f"search_city_{city}"
             )])
         
-        count_other = count_users_by_location(search_type, country) - sum(count_users_by_location(search_type, country, c) for c in cities[:5])
+        count_other = await count_users_by_location(search_type, country) - sum(await count_users_by_location(search_type, country, c) for c in cities[:5])
         buttons.append([InlineKeyboardButton(
             text=f"🏙 Другие города ({count_other})", 
             callback_data="search_other_city"
@@ -765,10 +758,10 @@ async def handle_back_to_sport(callback: types.CallbackQuery, state: FSMContext)
 @router.callback_query(F.data == "profile")
 async def handle_my_profile(callback: types.CallbackQuery):
     user_id = callback.message.chat.id
-    if not is_user_registered(user_id):
+    if not await storage.is_user_registered(user_id):
         await callback.answer("❌ Вы еще не зарегистрированы. Введите /start для регистрации.")
         return
     
-    profile = get_user_profile_from_storage(user_id) or {}
+    profile = await storage.get_user(user_id)
     await show_profile(callback.message, profile)
     await callback.answer()

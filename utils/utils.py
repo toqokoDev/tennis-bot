@@ -2,12 +2,11 @@ from datetime import datetime
 from typing import List
 
 from config.config import BOT_USERNAME
-from utils.admin import load_banned_users
-from utils.json_data import load_users
+from services.storage import storage
 
-def count_users_by_location(search_type=None, country=None, city=None):
+async def count_users_by_location(search_type=None, country=None, city=None):
     """Подсчет пользователей по локации"""
-    users = load_users()
+    users = await storage.load_users()
     count = 0
     
     for user_id, profile in users.items():
@@ -32,7 +31,7 @@ def count_users_by_location(search_type=None, country=None, city=None):
     
     return count
 
-def calculate_age(birth_date_str: str) -> int:
+async def calculate_age(birth_date_str: str) -> int:
     try:
         birth_date = datetime.strptime(birth_date_str, "%d.%m.%Y")
         today = datetime.now()
@@ -41,7 +40,7 @@ def calculate_age(birth_date_str: str) -> int:
     except:
         return 0
 
-def level_to_points(level: str) -> int:
+async def level_to_points(level: str) -> int:
     level_points = {
         "0.0": 0, "0.5": 300, "1.0": 500, "1.5": 700,
         "2.0": 900, "2.5": 1100, "3.0": 1200, "3.5": 1400,
@@ -50,14 +49,14 @@ def level_to_points(level: str) -> int:
     }
     return level_points.get(level, 0)
 
-def calculate_new_ratings(winner_points: int, loser_points: int, game_difference: int) -> tuple:
+async def calculate_new_ratings(winner_points: int, loser_points: int, game_difference: int) -> tuple:
     points_change = game_difference * 0.004
     winner_new = winner_points + (loser_points * points_change)
     loser_new = loser_points - (winner_points * points_change)
     return round(winner_new), round(loser_new)
 
-def search_users(query: str, exclude_ids: List[str] = None) -> List[tuple]:
-    users = load_users()
+async def search_users(query: str, exclude_ids: List[str] = None) -> List[tuple]:
+    users = await storage.load_users()
     results = []
     query = query.lower().strip()
     
@@ -77,11 +76,11 @@ def search_users(query: str, exclude_ids: List[str] = None) -> List[tuple]:
     
     return results
 
-def count_users_by_filters(search_type, country=None, city=None, sport=None, gender=None, level=None):
+async def count_users_by_filters(search_type, country=None, city=None, sport=None, gender=None, level=None):
     """
     Подсчет пользователей по заданным фильтрам
     """
-    users = load_users()
+    users = await storage.load_users()
     count = 0
     
     for user_id, profile in users.items():
@@ -110,7 +109,7 @@ def count_users_by_filters(search_type, country=None, city=None, sport=None, gen
     
     return count
 
-def get_weekday_short(date_str: str) -> str:
+async def get_weekday_short(date_str: str) -> str:
     """
     Возвращает день недели (сокращенно: Пн, Вт, Ср, Чт, Пт, Сб, Вс)
     по дате в формате YYYY-MM-DD.
@@ -122,29 +121,25 @@ def get_weekday_short(date_str: str) -> str:
     except ValueError:
         return "?"
 
-def create_user_profile_link(user_data: dict, user_id: str) -> str:
+async def create_user_profile_link(user_data: dict, user_id: str) -> str:
     first_name = user_data.get('first_name', '')
     last_name = user_data.get('last_name', '')
     rating = user_data.get('rating_points', 0)
     return f"[{first_name} {last_name} ({rating})](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
 
-def format_tour_date(date_str):
-            if not date_str or date_str == '-':
-                return '-'
+async def format_tour_date(date_str):
+    if not date_str or date_str == '-':
+        return '-'
+    try:
+        # Пробуем разные форматы дат
+        for fmt in ["%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y"]:
             try:
-                # Пробуем разные форматы дат
-                for fmt in ["%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y"]:
-                    try:
-                        dt = datetime.strptime(date_str, fmt)
-                        return dt.strftime("%d.%m.%y")  # 25.08.25
-                    except ValueError:
-                        continue
-                # Если ни один формат не подошел, возвращаем как есть
-                return date_str
-            except:
-                return date_str
-
-def is_user_banned(user_id: str) -> bool:
-    banned_users = load_banned_users()
-    return user_id in banned_users
+                dt = datetime.strptime(date_str, fmt)
+                return dt.strftime("%d.%m.%y")  # 25.08.25
+            except ValueError:
+                continue
+        # Если ни один формат не подошел, возвращаем как есть
+        return date_str
+    except:
+        return date_str
             

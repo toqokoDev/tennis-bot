@@ -10,7 +10,7 @@ BOT_USERNAME = os.getenv('BOT_USERNAME')
 CHANNEL_ID = os.getenv('CHANNEL_ID')
 SHOP_ID = os.getenv('SHOP_ID')
 SECRET_KEY = os.getenv('SECRET_KEY')
-ITEMS_PER_PAGE = int(os.getenv('ITEMS_PER_PAGE', 5))
+ITEMS_PER_PAGE = 5
 
 required_vars = ['TOKEN', 'BOT_USERNAME', 'CHANNEL_ID', 'SHOP_ID', 'SECRET_KEY']
 for var in required_vars:

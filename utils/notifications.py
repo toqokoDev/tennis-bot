@@ -1,13 +1,12 @@
 from aiogram import Bot
 from datetime import datetime
 from config.config import CHANNEL_ID
-from config.paths import BASE_DIR
-from utils.json_data import load_users
+from services.storage import storage
 from utils.utils import create_user_profile_link
 
 async def send_subscription_reminders(bot: Bot):
     """Отправка напоминаний о скором истечении подписки"""
-    users = load_users()
+    users = await storage.load_users()
     current_time = datetime.now()
     
     for user_id, user_data in users.items():

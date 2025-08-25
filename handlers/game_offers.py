@@ -6,26 +6,23 @@ from aiogram.types import (
 )
 from datetime import datetime, timedelta
 from config.config import SUBSCRIPTION_PRICE
+from services.storage import storage
 from models.states import GameOfferStates
 from utils.admin import is_admin
 from utils.bot import show_current_data
 from utils.game import get_user_games, save_user_game
-from utils.json_data import get_user_profile_from_storage, load_json, load_users, write_users
-from utils.ssesion import delete_session, save_session
-from config.profile import moscow_districts, game_types, payment_types, base_keyboard
+
+from config.profile import moscow_districts, game_types, payment_types, base_keyboard, cities_data
 from utils.validate import validate_time, validate_date
 
 router = Router()
-
-# ---------- Первичные данные ----------
-cities_data = load_json("cities.json")
-
 
 # ---------- Обработчики предложений игры ----------
 @router.callback_query(F.data == "my_offers")
 async def my_offers_handler(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.message.chat.id
-    profile = get_user_profile_from_storage(user_id)
+    
+    profile = await storage.get_user(user_id)
     
     if not profile:
         await callback.answer("❌ Профиль не найден")
@@ -168,7 +165,7 @@ async def delete_yes_handler(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.message.chat.id
     
     # Загружаем пользователей
-    users = load_users()
+    users = await storage.load_users()
     user_data = users.get(str(user_id))
     
     if not user_data:
@@ -183,7 +180,7 @@ async def delete_yes_handler(callback: types.CallbackQuery, state: FSMContext):
     
     # Сохраняем изменения
     users[str(user_id)] = user_data
-    write_users(users)
+    await storage.save_users(users)
     
     # Обновляем данные в state
     user_data = await state.get_data()
@@ -218,8 +215,8 @@ async def delete_yes_handler(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "new_offer")
 async def new_offer_handler(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.message.chat.id
-    profile = get_user_profile_from_storage(user_id)
-    users = load_users()
+    profile = await storage.get_user(user_id)
+    users = await storage.load_users()
     
     if not profile:
         await callback.answer("❌ Сначала завершите регистрацию")
@@ -285,7 +282,7 @@ async def new_offer_handler(callback: types.CallbackQuery, state: FSMContext):
 @router.message(F.text == "🎾 Предложить игру")
 async def offer_game_command(message: types.Message, state: FSMContext):
     user_id = message.chat.id
-    users = load_users()
+    users = await storage.load_users()
     user_data = users.get(str(user_id), {})
     
     if not user_data:
@@ -338,7 +335,7 @@ async def offer_game_command(message: types.Message, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(GameOfferStates.GAME_CITY)
-    save_session(user_id, await state.get_data())
+    await storage.save_session(user_id, await state.get_data())
 
 @router.callback_query(GameOfferStates.GAME_CITY, F.data.startswith("gamecity_"))
 async def process_game_city(callback: types.CallbackQuery, state: FSMContext):
@@ -360,7 +357,7 @@ async def process_game_city(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(GameOfferStates.GAME_DATE)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(GameOfferStates.GAME_DATE, F.data.startswith("gamedate_"))
 async def process_game_date(callback: types.CallbackQuery, state: FSMContext):
@@ -393,14 +390,14 @@ async def process_game_date(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(GameOfferStates.GAME_TIME)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.message(GameOfferStates.GAME_DATE_MANUAL, F.text)
 async def process_game_date_manual(message: types.Message, state: FSMContext):
     date_text = message.text.strip()
     
     # Валидация даты
-    if not validate_date(date_text):
+    if not await validate_date(date_text):
         await message.answer("❌ Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ (например, 25.12.2025):")
         return
     
@@ -434,12 +431,12 @@ async def process_game_date_manual(message: types.Message, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(GameOfferStates.GAME_TIME)
-    save_session(message.chat.id, await state.get_data())
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.callback_query(GameOfferStates.GAME_TIME, F.data.startswith("gametime_"))
 async def process_game_time(callback: types.CallbackQuery, state: FSMContext):
     time = callback.data.split("_", maxsplit=1)[1]
-    if not validate_time(time):
+    if not await validate_time(time):
         await callback.answer("❌ Неверный формат времени")
         return
     
@@ -453,7 +450,7 @@ async def process_game_time(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(GameOfferStates.GAME_TYPE)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(GameOfferStates.GAME_TYPE, F.data.startswith("gametype_"))
 async def process_game_type(callback: types.CallbackQuery, state: FSMContext):
@@ -468,7 +465,7 @@ async def process_game_type(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(GameOfferStates.PAYMENT_TYPE)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(GameOfferStates.PAYMENT_TYPE, F.data.startswith("paytype_"))
 async def process_payment_type(callback: types.CallbackQuery, state: FSMContext):
@@ -486,7 +483,7 @@ async def process_payment_type(callback: types.CallbackQuery, state: FSMContext)
     )
     await state.set_state(GameOfferStates.GAME_COMPETITIVE)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(GameOfferStates.GAME_COMPETITIVE, F.data.startswith("gamecomp_"))
 async def process_game_competitive(callback: types.CallbackQuery, state: FSMContext):
@@ -504,7 +501,7 @@ async def process_game_competitive(callback: types.CallbackQuery, state: FSMCont
     )
     await state.set_state(GameOfferStates.GAME_REPEAT)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(GameOfferStates.GAME_REPEAT, F.data.startswith("gamerepeat_"))
 async def process_game_repeat(callback: types.CallbackQuery, state: FSMContext):
@@ -517,7 +514,7 @@ async def process_game_repeat(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.set_state(GameOfferStates.GAME_COMMENT)
     await callback.answer()
-    save_session(callback.message.chat.id, await state.get_data())
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.message(GameOfferStates.GAME_COMMENT, F.text)
 async def process_game_comment(message: types.Message, state: FSMContext):
@@ -538,20 +535,20 @@ async def process_game_comment(message: types.Message, state: FSMContext):
     }
     
     # Сохраняем игру
-    game_id = save_user_game(message.chat.id, game_data)
+    game_id = await save_user_game(message.chat.id, game_data)
     
     # Обновляем счетчик бесплатных предложений, если нет подписки
-    users = load_users()
+    users = await storage.load_users()
     user_id_str = str(message.chat.id)
     
     if user_id_str in users:
         if not users[user_id_str].get('subscription', {}).get('active', False):
             free_offers_used = users[user_id_str].get('free_offers_used', 0)
             users[user_id_str]['free_offers_used'] = free_offers_used + 1
-            write_users(users)
+            await storage.save_users(users)
     
     await state.clear()
-    delete_session(message.chat.id)
+    await storage.delete_session(message.chat.id)
     
     # Формируем информационное сообщение о созданной игре
     response = [
@@ -570,7 +567,7 @@ async def process_game_comment(message: types.Message, state: FSMContext):
         response.append(f"💬 Комментарий: {game_data['comment']}")
     
     # Добавляем информацию о статусе подписки
-    users = load_users()
+    users = await storage.load_users()
     user_data = users.get(str(message.chat.id), {})
     subscription_active = user_data.get('subscription', {}).get('active', False)
     
@@ -585,7 +582,7 @@ async def process_game_comment(message: types.Message, state: FSMContext):
 @router.message(F.text == "📋 Мои предложения")
 async def list_my_games(message: types.Message, state: FSMContext):
     user_id = message.chat.id
-    games = get_user_games(user_id)
+    games = await get_user_games(user_id)
     
     if not games:
         await message.answer("❌ У вас нет активных предложений игры.")
@@ -645,7 +642,7 @@ async def list_my_games(message: types.Message, state: FSMContext):
 @router.callback_query(F.data == "delete_offer")
 async def delete_offer_handler(callback: types.CallbackQuery):
     user_id = callback.message.chat.id
-    profile = get_user_profile_from_storage(user_id)
+    profile = await storage.get_user(user_id)
     
     if not profile:
         await callback.answer("❌ Профиль не найден")
@@ -689,7 +686,7 @@ async def confirm_delete_handler(callback: types.CallbackQuery):
     user_id = callback.message.chat.id
     
     # Загружаем пользователей
-    users = load_users()
+    users = await storage.load_users()
     user_data = users.get(str(user_id))
     
     if not user_data:
