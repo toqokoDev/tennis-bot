@@ -187,7 +187,7 @@ async def show_tours_page(message: types.Message, state: FSMContext):
         end_date = await format_tour_date(tour.get('vacation_end', '-'))
         
         # Итоговая строка
-        tour_info = f"{gender_icon} {user_name} ({level}) | {start_date}-{end_date}"
+        tour_info = f"{start_date}-{end_date} | {gender_icon} {user_name} ({level})"
         
         builder.row(InlineKeyboardButton(
             text=tour_info,

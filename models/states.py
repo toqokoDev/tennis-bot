@@ -92,6 +92,7 @@ class SearchPartnerStates(StatesGroup):
 class BrowseOffersStates(StatesGroup):
     SELECT_COUNTRY = State()
     SELECT_CITY = State()
+    SELECT_SPORT = State()
 
 class RespondToOfferStates(StatesGroup):
     ENTER_COMMENT = State()

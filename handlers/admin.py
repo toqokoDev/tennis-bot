@@ -43,60 +43,6 @@ async def safe_send_message(message: Message, text: str, reply_markup=None):
         logger.error(f"Не удалось отправить сообщение: {e}")
         return False
 
-# Команда удаления всех пользователей
-@admin_router.message(Command("delete_all_users"))
-async def delete_all_users_cmd(message: Message):
-    if not await is_admin(message.from_user.id):
-        await safe_send_message(message, "❌ У вас нет прав администратора")
-        return
-    
-    keyboard = await get_confirmation_keyboard("delete_all_users")
-    await safe_send_message(
-        message,
-        "⚠️ Вы уверены, что хотите удалить ВСЕХ пользователей?\n"
-        "Это действие удалит:\n"
-        "• Все аккаунты пользователей\n"
-        "• Все связанные игры\n"
-        "• Фотографии профилей\n"
-        "• Произведет откат рейтингов\n\n"
-        "Дейтие необратимо!",
-        keyboard
-    )
-
-# Команда удаления всех игр
-@admin_router.message(Command("delete_all_games"))
-async def delete_all_games_cmd(message: Message):
-    if not await is_admin(message.from_user.id):
-        await safe_send_message(message, "❌ У вас нет прав администратора")
-        return
-    
-    keyboard = await get_confirmation_keyboard("delete_all_games")
-    await safe_send_message(
-        message,
-        "⚠️ Вы уверены, что хотите удалить ВСЕ игры?\n"
-        "Это действие:\n"
-        "• Удалит все записи о играх\n"
-        "• Произведет откат рейтингов игроков\n\n"
-        "Действие необратимо!",
-        keyboard
-    )
-
-# Команда удаления всех предложений игр
-@admin_router.message(Command("delete_all_offers"))
-async def delete_all_offers_cmd(message: Message):
-    if not await is_admin(message.from_user.id):
-        await safe_send_message(message, "❌ У вас нет прав администратора")
-        return
-    
-    keyboard = await get_confirmation_keyboard("delete_all_offers")
-    await safe_send_message(
-        message,
-        "⚠️ Вы уверены, что хотите удалить ВСЕ предложения игр?\n"
-        "Это действие удалит все активные предложения игр у пользователей.\n\n"
-        "Действие необратимо!",
-        keyboard
-    )
-
 # Команда для просмотра забаненных пользователей
 @admin_router.message(Command("banned_users"))
 async def banned_users_cmd(message: Message):
@@ -156,84 +102,6 @@ async def show_unban_menu(message: Message):
         builder.as_markup()
     )
 
-# Обработка подтверждения удаления всех пользователей
-@admin_router.callback_query(F.data == "admin_confirm_delete_all_users")
-async def confirm_delete_all_users(callback: CallbackQuery):
-    if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав")
-        return
-    
-    users = await storage.load_users()
-    games = await storage.load_games()
-    
-    # Откат рейтингов и удаление фото
-    for user_id, user_data in users.items():
-        # Удаление фото профиля
-        if user_data.get('photo_path'):
-            try:
-                os.remove(user_data['photo_path'])
-            except:
-                pass
-    
-    # Удаление всех пользователей
-    users.clear()
-    await storage.save_users(users)
-    
-    # Удаление всех игр
-    games.clear()
-    await storage.save_games(games)
-    
-    await safe_edit_message(callback, "✅ Все пользователи и игры успешно удалены!")
-    await callback.answer()
-
-# Обработка подтверждения удаления всех игр
-@admin_router.callback_query(F.data == "admin_confirm_delete_all_games")
-async def confirm_delete_all_games(callback: CallbackQuery):
-    if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав")
-        return
-    
-    users = await storage.load_users()
-    games = await storage.load_games()
-    
-    # Откат рейтингов
-    for game in games:
-        for player_id, rating_change in game.get('rating_changes', {}).items():
-            if player_id in users:
-                users[player_id]['rating_points'] -= rating_change
-                # Обновляем статистику игр
-                users[player_id]['games_played'] = users[player_id].get('games_played', 0) - 1
-                # Обновляем статистику побед
-                if users[player_id].get('games_wins', 0) > 0:
-                    users[player_id]['games_wins'] -= 1
-    
-    # Удаление всех игр
-    games.clear()
-    await storage.save_users(users)
-    await storage.save_games(games)
-    
-    await safe_edit_message(callback, "✅ Все игры удалены, рейтинги откачены!")
-    await callback.answer()
-
-# Обработка подтверждения удаления всех предложений
-@admin_router.callback_query(F.data == "admin_confirm_delete_all_offers")
-async def confirm_delete_all_offers(callback: CallbackQuery):
-    if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав")
-        return
-    
-    users = await storage.load_users()
-    
-    # Удаление всех предложений игр у пользователей
-    for user_id, user_data in users.items():
-        if 'games' in user_data and user_data['games']:
-            user_data['games'] = []
-    
-    await storage.save_users(users)
-    
-    await safe_edit_message(callback, "✅ Все предложения игр успешно удалены!")
-    await callback.answer()
-
 # Отмена действия
 @admin_router.callback_query(F.data == "admin_cancel")
 async def cancel_action(callback: CallbackQuery):
@@ -243,9 +111,6 @@ async def cancel_action(callback: CallbackQuery):
 # Клавиатура админской панели
 def get_admin_keyboard():
     builder = InlineKeyboardBuilder()
-    builder.button(text="⚠️ Удалить ВСЕХ пользователей", callback_data="admin_delete_all_users")
-    builder.button(text="⚠️ Удалить ВСЕ игры", callback_data="admin_delete_all_games")
-    builder.button(text="⚠️ Удалить ВСЕ предложения", callback_data="admin_delete_all_offers")
     builder.button(text="🚫 Забаненные пользователи", callback_data="admin_banned_list")
     builder.adjust(1)
     return builder.as_markup()
@@ -874,49 +739,6 @@ async def confirm_delete_offer(callback: CallbackQuery):
     await storage.save_users(users)
     
     await safe_edit_message(callback, f"✅ Предложение {offer_id} пользователя {user_id} успешно удалено!")
-    await callback.answer()
-
-# Обработчики для кнопок массового удаления из админской панели
-@admin_router.callback_query(F.data == "admin_delete_all_users")
-async def delete_all_users_callback(callback: CallbackQuery):
-    keyboard = await get_confirmation_keyboard("delete_all_users")
-    await safe_edit_message(
-        callback,
-        "⚠️ Вы уверены, что хотите удалить ВСЕХ пользователей?\n"
-        "Это действие удалит:\n"
-        "• Все аккаунты пользователей\n"
-        "• Все связанные игры\n"
-        "• Фотографии профиля\n"
-        "• Произведет откат рейтингов\n\n"
-        "Действие необратимо!",
-        keyboard
-    )
-    await callback.answer()
-
-@admin_router.callback_query(F.data == "admin_delete_all_games")
-async def delete_all_games_callback(callback: CallbackQuery):
-    keyboard = await get_confirmation_keyboard("delete_all_games")
-    await safe_edit_message(
-        callback,
-        "⚠️ Вы уверены, что хотите удалить ВСЕ игры?\n"
-        "Это действие:\n"
-        "• Удалит все записи о играх\n"
-        "• Произведет откат рейтингов игроков\n\n"
-        "Действие необратимо!",
-        keyboard
-    )
-    await callback.answer()
-
-@admin_router.callback_query(F.data == "admin_delete_all_offers")
-async def delete_all_offers_callback(callback: CallbackQuery):
-    keyboard = await get_confirmation_keyboard("delete_all_offers")
-    await safe_edit_message(
-        callback,
-        "⚠️ Вы уверены, что хотите удалить ВСЕ предложения игр?\n"
-        "Это действие удалит все активные предложения игр у пользователей.\n\n"
-        "Действие необратимо!",
-        keyboard
-    )
     await callback.answer()
 
 @admin_router.callback_query(F.data.startswith("admin_ban_user:"))

@@ -226,7 +226,7 @@ async def new_offer_handler(callback: types.CallbackQuery, state: FSMContext):
     user_data = users.get(str(user_id), {})
     subscription_active = user_data.get('subscription', {}).get('active', False)
     
-    if not is_admin(callback.message.chat.id):
+    if not await is_admin(callback.message.chat.id):
         if not subscription_active:
             # Получаем количество созданных бесплатных предложений
             free_offers_used = user_data.get('free_offers_used', 0)
@@ -292,7 +292,7 @@ async def offer_game_command(message: types.Message, state: FSMContext):
     # Проверяем подписку и количество бесплатных предложений
     subscription_active = user_data.get('subscription', {}).get('active', False)
     
-    if not is_admin(message.chat.id):
+    if not await is_admin(message.chat.id):
         if not subscription_active:
             # Получаем количество созданных бесплатных предложений
             free_offers_used = user_data.get('free_offers_used', 0)
