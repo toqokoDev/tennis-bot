@@ -115,7 +115,7 @@ async def select_tour_sport(callback: types.CallbackQuery, state: FSMContext):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text=f"🎾 Найти партнера на время отдыха",
-                callback_data=f"create_tour"
+                callback_data=f"createTour"
             )],
             [InlineKeyboardButton(
                 text="🔙 Назад к выбору спорта",
