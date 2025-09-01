@@ -491,24 +491,6 @@ async def process_game_competitive(callback: types.CallbackQuery, state: FSMCont
     competitive = callback.data.split("_", maxsplit=1)[1] == "yes"
     await state.update_data(game_competitive=competitive)
 
-    buttons = [
-        [InlineKeyboardButton(text="🔄 Да", callback_data="gamerepeat_yes")],
-        [InlineKeyboardButton(text="⏩ Нет", callback_data="gamerepeat_no")]
-    ]
-    await show_current_data(
-        callback.message, state,
-        "🔄 Повторять игру еженедельно?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await state.set_state(GameOfferStates.GAME_REPEAT)
-    await callback.answer()
-    await storage.save_session(callback.message.chat.id, await state.get_data())
-
-@router.callback_query(GameOfferStates.GAME_REPEAT, F.data.startswith("gamerepeat_"))
-async def process_game_repeat(callback: types.CallbackQuery, state: FSMContext):
-    repeat = callback.data.split("_", maxsplit=1)[1] == "yes"
-    await state.update_data(game_repeat=repeat)
-
     await show_current_data(
         callback.message, state,
         "💬 Добавьте комментарий к игре (или введите /skip для пропуска):"
@@ -531,7 +513,6 @@ async def process_game_comment(message: types.Message, state: FSMContext):
         "type": user_data.get('game_type'),
         "payment_type": user_data.get('payment_type'),
         "competitive": user_data.get('game_competitive'),
-        "repeat": user_data.get('game_repeat', False),
         "comment": user_data.get('game_comment')
     }
     

@@ -7,8 +7,8 @@ from aiogram.types import (
 )
 
 from config.paths import BASE_DIR, PHOTOS_DIR
-from config.profile import moscow_districts, cities_data, countries
-from models.states import AdminEditProfileStates
+from config.profile import moscow_districts, cities_data, countries, sport_type
+from models.states import AdminEditProfileStates, RegistrationStates
 from services.storage import storage
 from utils.admin import is_admin
 from utils.bot import show_profile
@@ -44,6 +44,10 @@ async def admin_edit_profile_handler(callback: types.CallbackQuery, state: FSMCo
             [
                 InlineKeyboardButton(text="📷 Фото", callback_data="adminUserProfile_edit_photo"),
                 InlineKeyboardButton(text="🌍 Страна/Город", callback_data="adminUserProfile_edit_location")
+            ],
+            [
+                InlineKeyboardButton(text="🎾 Вид спорта", callback_data="adminUserProfile_edit_sport"),
+                InlineKeyboardButton(text="🎭 Роль", callback_data="adminUserProfile_edit_role")
             ],
             [
                 InlineKeyboardButton(text="🔙 Назад", callback_data="admin_edit_profile")
@@ -117,6 +121,27 @@ async def admin_edit_field_handler(callback: types.CallbackQuery, state: FSMCont
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.answer("🌍 Выберите страну:", reply_markup=keyboard)
         await state.set_state(AdminEditProfileStates.COUNTRY)
+    elif field == "sport":
+        # Создаем клавиатуру для выбора вида спорта
+        buttons = []
+        row = []
+        for i, sport in enumerate(sport_type):
+            row.append(InlineKeyboardButton(text=sport, callback_data=f"adminProfile_edit_sport_{sport}"))
+            if (i + 1) % 2 == 0 or i == len(sport_type) - 1:
+                buttons.append(row)
+                row = []
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await callback.message.answer("🎾 Выберите вид спорта:", reply_markup=keyboard)
+        await state.set_state(AdminEditProfileStates.SPORT)
+    elif field == "role":
+        buttons = [
+            [InlineKeyboardButton(text="🎯 Игрок", callback_data="adminProfile_edit_role_Игрок")],
+            [InlineKeyboardButton(text="👨‍🏫 Тренер", callback_data="adminProfile_edit_role_Тренер")]
+        ]
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await callback.message.answer("🎭 Выберите роль:", reply_markup=keyboard)
+        await state.set_state(AdminEditProfileStates.ROLE)
     
     await callback.answer()
 
@@ -176,6 +201,115 @@ async def admin_save_payment_edit(callback: types.CallbackQuery, state: FSMConte
         await callback.message.answer("❌ Профиль не найден")
     
     await callback.answer()
+    await state.clear()
+
+# Обработчик для сохранения вида спорта
+@admin_edit_router.callback_query(AdminEditProfileStates.SPORT, F.data.startswith("adminProfile_edit_sport_"))
+async def admin_save_sport_edit(callback: types.CallbackQuery, state: FSMContext):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    sport = callback.data.split("_", 3)[3]
+    data = await state.get_data()
+    user_id = data.get('admin_edit_user_id')
+    
+    if not user_id:
+        await callback.message.answer("❌ Пользователь не выбран")
+        await state.clear()
+        return
+    
+    users = await storage.load_users()
+    
+    if user_id in users:
+        users[user_id]['sport'] = sport
+        await storage.save_users(users)
+        
+        await callback.message.edit_text("✅ Вид спорта обновлен!")
+        await show_profile(callback.message, users[user_id])
+    else:
+        await callback.message.answer("❌ Профиль не найден")
+    
+    await callback.answer()
+    await state.clear()
+
+# Обработчик для сохранения роли
+@admin_edit_router.callback_query(AdminEditProfileStates.ROLE, F.data.startswith("adminProfile_edit_role_"))
+async def admin_save_role_edit(callback: types.CallbackQuery, state: FSMContext):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    role = callback.data.split("_", 3)[3]
+    data = await state.get_data()
+    user_id = data.get('admin_edit_user_id')
+    
+    if not user_id:
+        await callback.message.answer("❌ Пользователь не выбран")
+        await state.clear()
+        return
+    
+    users = await storage.load_users()
+    
+    if user_id in users:
+        if role == "Тренер" and users[user_id].get('role') != "Тренер":
+            # Если меняем на тренера, запрашиваем цену
+            await state.update_data(role=role)
+            await callback.message.edit_text("💵 Введите стоимость тренировки (в рублях, только цифры):")
+            await state.set_state(AdminEditProfileStates.TRAINER_PRICE)
+        else:
+            # Если меняем на игрока или роль не меняется
+            users[user_id]['role'] = role
+            if role == "Игрок":
+                users[user_id]['price'] = 0  # Сбрасываем цену для игроков
+            
+            await storage.save_users(users)
+            await callback.message.edit_text("✅ Роль обновлена!")
+            await show_profile(callback.message, users[user_id])
+            await state.clear()
+    else:
+        await callback.message.answer("❌ Профиль не найден")
+        await state.clear()
+    
+    await callback.answer()
+
+# Обработчик для ввода цены тренера
+@admin_edit_router.message(AdminEditProfileStates.TRAINER_PRICE, F.text)
+async def admin_save_trainer_price(message: types.Message, state: FSMContext):
+    if not await is_admin(message.from_user.id):
+        await message.answer("❌ Нет прав администратора")
+        await state.clear()
+        return
+    
+    data = await state.get_data()
+    user_id = data.get('admin_edit_user_id')
+    role = data.get('role')
+    
+    if not user_id or not role:
+        await message.answer("❌ Данные не найдены")
+        await state.clear()
+        return
+    
+    try:
+        price = int(message.text.strip())
+        if price <= 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("❌ Введите корректную цену (положительное число):")
+        return
+    
+    users = await storage.load_users()
+    
+    if user_id in users:
+        users[user_id]['role'] = role
+        users[user_id]['price'] = price
+        await storage.save_users(users)
+        
+        await message.answer("✅ Роль и цена тренировки обновлены!")
+        await show_profile(message, users[user_id])
+    else:
+        await message.answer("❌ Профиль не найден")
+    
     await state.clear()
 
 # Обработчики для редактирования местоположения

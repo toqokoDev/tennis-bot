@@ -98,7 +98,7 @@ async def show_profile(message: types.Message, profile: dict):
         # Клавиатура для своего профиля
         keyboard_buttons = [
             [InlineKeyboardButton(text="✏️ Редактировать профиль", callback_data="edit_profile")],
-            [InlineKeyboardButton(text="✈️ Найти партнера на время отдыха", callback_data="create_tour")],
+            [InlineKeyboardButton(text="✈️ Найти партнера на время отдыха", callback_data="createTour")],
             [InlineKeyboardButton(text="📋 Мои предложения игр", callback_data="my_offers")],
             [InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer")],
             [InlineKeyboardButton(text="Моя история игр", callback_data=f"game_history:{message.chat.id}")],

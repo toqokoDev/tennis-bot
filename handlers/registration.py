@@ -102,11 +102,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "💡 <b>Здесь вы сможете:</b>\n\n"
         "• Найти партнёра по большому, настольному, пляжному и падл-теннису, бадминтону, сквошу и пиклболу.\n"
         "• Предлагать и находить предложения игр в определенное время и месте.\n"
-        "• Участвовать в многодневных турнирах в вашем городе и на вашем корте.\n"
+        "• Участвовать в многодневных турниров в вашем городе и на вашем корте.\n"
         "• Находить тренеров по теннису.\n"
         "• Отслеживать свой рейтинг.\n\n"
         "Для начала пройдите краткую регистрацию.\n\n"
-        "<b>Начиная регистрацию, Вы соглашаетесь с <a href='https://tennis-play.com/privacy/'>политикой обработки персональных данных</a></b>\n\n"
+        "<b>Начиная регистрацию, Вы соглашаетесь с <a href='https://tennis-play.com/privacy-bot'>политикой обработки персональных данных</a> и даёте согласие на <a href='https://tennis-play.com/soglasie'>обработку данных</a></b>\n\n"
         "<b>Пожалуйста, отправьте номер телефона:</b>"
     )
     
@@ -161,7 +161,7 @@ async def process_phone(message: Message, state: FSMContext):
     row = []
     for i, sport in enumerate(sport_type):
         row.append(InlineKeyboardButton(text=sport, callback_data=f"sport_{sport}"))
-        if (i + 1) % 2 == 0 or i == len(sport_type) - 1:  # меняем 4 на 2
+        if (i + 1) % 2 == 0 or i == len(sport_type) - 1:
             buttons.append(row)
             row = []
 
@@ -201,15 +201,6 @@ async def process_birth_date(message: Message, state: FSMContext):
     date_str = message.text.strip()
     if not await validate_date(date_str):
         await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
-        return
-    
-    age = await calculate_age(date_str)
-    if age < 12:
-        await message.answer("❌ Извините, но наш сервис доступен только для пользователей старше 12 лет.")
-        await state.clear()
-        return
-    elif age > 100:
-        await message.answer("❌ Пожалуйста, проверьте дату рождения. Введенный возраст слишком большой.")
         return
     
     await state.update_data(birth_date=date_str)
@@ -344,22 +335,14 @@ async def process_trainer_price(message: types.Message, state: FSMContext):
     
     await state.update_data(price=int(price_str))
     
-    buttons = [
-        [InlineKeyboardButton(text="👨 Мужской", callback_data="gender_Мужской")],
-        [InlineKeyboardButton(text="👩 Женский", callback_data="gender_Женский")]
-    ]
-    await show_current_data(
-        message, state,
-        "👫 Укажите пол:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await state.set_state(RegistrationStates.GENDER)
+    await show_levels_page(message, state, page=0)
+    await state.set_state(RegistrationStates.PLAYER_LEVEL)
     await storage.save_session(message.chat.id, await state.get_data())
 
 async def show_levels_page(message: types.Message, state: FSMContext, page: int = 0):
     """Показывает страницу с уровнями игроков с возможностью пролистывания"""
     levels_list = list(player_levels.keys())
-    items_per_page = 3  # Показываем по 3 уровня на странице
+    items_per_page = 3
     total_pages = (len(levels_list) + items_per_page - 1) // items_per_page
     
     start_idx = page * items_per_page
@@ -394,13 +377,13 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
         buttons.append(nav_buttons)
     
     # Если сообщение уже существует, редактируем его, иначе отправляем новое
-    if hasattr(message, 'edit_text'):
+    try:
         await message.edit_text(
             levels_text,
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
-    else:
+    except:
         await message.answer(
             levels_text,
             parse_mode="Markdown",
@@ -547,12 +530,84 @@ async def process_vacation_tennis(callback: types.CallbackQuery, state: FSMConte
     choice = callback.data.split("_", maxsplit=1)[1]
     
     if choice == "yes":
-        await callback.message.edit_text("✈️ Введите дату начала отдыха (ДД.ММ.ГГГГ):", reply_markup=None)
-        await state.set_state(RegistrationStates.VACATION_START)
+        # Сначала спрашиваем страну отдыха
+        buttons = []
+        for country in countries[:5]:
+            buttons.append([InlineKeyboardButton(text=f"{country}", callback_data=f"vacation_country_{country}")])
+        buttons.append([InlineKeyboardButton(text="🌎 Другая страна", callback_data="vacation_other_country")])
+
+        await callback.message.edit_text(
+            "🌍 Выберите страну отдыха:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+        await state.set_state(RegistrationStates.VACATION_COUNTRY)
     else:
         await state.update_data(vacation_tennis=False)
         await ask_for_default_payment(callback.message, state)
     
+    await callback.answer()
+    await storage.save_session(callback.message.chat.id, await state.get_data())
+
+@router.callback_query(RegistrationStates.VACATION_COUNTRY, F.data.startswith("vacation_country_"))
+async def process_vacation_country_selection(callback: types.CallbackQuery, state: FSMContext):
+    country = callback.data.split("_", maxsplit=2)[2]
+    await state.update_data(vacation_country=country)
+    await ask_for_vacation_city(callback.message, state, country)
+    await callback.answer()
+    await storage.save_session(callback.message.chat.id, await state.get_data())
+
+@router.callback_query(RegistrationStates.VACATION_COUNTRY, F.data == "vacation_other_country")
+async def process_vacation_other_country(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("🌍 Введите название страны отдыха:", reply_markup=None)
+    await state.set_state(RegistrationStates.VACATION_COUNTRY_INPUT)
+    await callback.answer()
+    await storage.save_session(callback.message.chat.id, await state.get_data())
+
+@router.message(RegistrationStates.VACATION_COUNTRY_INPUT, F.text)
+async def process_vacation_country_input(message: Message, state: FSMContext):
+    await state.update_data(vacation_country=message.text.strip())
+    await message.answer("🏙 Введите название города отдыха:")
+    await state.set_state(RegistrationStates.VACATION_CITY_INPUT)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+@router.message(RegistrationStates.VACATION_CITY_INPUT, F.text)
+async def process_vacation_city_input(message: Message, state: FSMContext):
+    await state.update_data(vacation_city=message.text.strip())
+    await message.answer("✈️ Введите дату начала отдыха (ДД.ММ.ГГГГ):")
+    await state.set_state(RegistrationStates.VACATION_START)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+async def ask_for_vacation_city(message: types.Message, state: FSMContext, country: str):
+    if country == "Россия":
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
+        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in main_russian_cities]
+        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="vacation_other_city")])
+    else:
+        cities = cities_data.get(country, [])
+        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in cities[:5]]
+        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="vacation_other_city")])
+
+    await show_current_data(
+        message, state,
+        f"🏙 Выберите город отдыха в стране: {country}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await state.set_state(RegistrationStates.VACATION_CITY)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+@router.callback_query(RegistrationStates.VACATION_CITY, F.data.startswith("vacation_city_"))
+async def process_vacation_city_selection(callback: types.CallbackQuery, state: FSMContext):
+    city = callback.data.split("_", maxsplit=2)[2]
+    await state.update_data(vacation_city=city)
+    await callback.message.edit_text("✈️ Введите дату начала отдыха (ДД.ММ.ГГГГ):", reply_markup=None)
+    await state.set_state(RegistrationStates.VACATION_START)
+    await callback.answer()
+    await storage.save_session(callback.message.chat.id, await state.get_data())
+
+@router.callback_query(RegistrationStates.VACATION_CITY, F.data == "vacation_other_city")
+async def process_vacation_other_city(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("🏙 Введите название города отдыха:", reply_markup=None)
+    await state.set_state(RegistrationStates.VACATION_CITY_INPUT)
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
 
@@ -564,7 +619,7 @@ async def process_vacation_start(message: Message, state: FSMContext):
         return
     
     if not await validate_future_date(date_str):
-        await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
+        await message.answer("❌ Дата начала отдыха должна быть в будущем. Пожалуйста, введите корректную дату:")
         return
     
     await state.update_data(vacation_start=date_str, vacation_tennis=True)
@@ -583,7 +638,7 @@ async def process_vacation_end(message: Message, state: FSMContext):
     start_date = user_data.get('vacation_start')
     
     if not await validate_date_range(start_date, date_str):
-        await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
+        await message.answer("❌ Дата завершения должна быть после даты начала. Пожалуйста, введите корректную дату:")
         return
     
     await state.update_data(vacation_end=date_str)
@@ -672,6 +727,8 @@ async def process_create_game_offer(callback: types.CallbackQuery, state: FSMCon
 
     if user_state.get('vacation_tennis', False):
         profile["vacation_tennis"] = True
+        profile["vacation_country"] = user_state.get('vacation_country')
+        profile["vacation_city"] = user_state.get('vacation_city')
         profile["vacation_start"] = user_state.get('vacation_start')
         profile["vacation_end"] = user_state.get('vacation_end')
         profile["vacation_comment"] = user_state.get('vacation_comment')
@@ -683,7 +740,7 @@ async def process_create_game_offer(callback: types.CallbackQuery, state: FSMCon
     # Отправляем уведомление о регистрации
     await send_registration_notification(callback.message, profile)
     
-    # Переходим к созданию игры (здесь нужно будет добавить логику создания игры)
+    # Переходим к созданию игры
     await callback.message.edit_text(
         "✅ Регистрация завершена! Теперь вы можете создать предложение об игре.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Предложить игру", callback_data="new_offer")]])
@@ -726,6 +783,8 @@ async def process_skip_game_offer(callback: types.CallbackQuery, state: FSMConte
 
     if user_state.get('vacation_tennis', False):
         profile["vacation_tennis"] = True
+        profile["vacation_country"] = user_state.get('vacation_country')
+        profile["vacation_city"] = user_state.get('vacation_city')
         profile["vacation_start"] = user_state.get('vacation_start')
         profile["vacation_end"] = user_state.get('vacation_end')
         profile["vacation_comment"] = user_state.get('vacation_comment')
