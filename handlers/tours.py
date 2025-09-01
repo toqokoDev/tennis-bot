@@ -3,15 +3,16 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     InlineKeyboardMarkup,
-    InlineKeyboardButton
+    InlineKeyboardButton,
+    Message
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE
-from config.profile import sport_type
+from config.profile import sport_type, countries, cities_data
 from models.states import BrowseToursStates, CreateTourStates
 from services.channels import send_tour_to_channel
 from utils.utils import create_user_profile_link, format_tour_date
-from utils.validate import validate_future_date
+from utils.validate import validate_future_date, validate_date, validate_date_range
 from services.storage import storage
 
 router = Router()
@@ -89,6 +90,7 @@ async def select_tour_sport(callback: types.CallbackQuery, state: FSMContext):
     """Обработка выбора спорта для туров"""
     sport = callback.data.split("_", maxsplit=1)[1]
     await state.update_data(selected_sport=sport)
+    sport_text = "любому виду спорта" if sport == "any" else sport
     
     users = await storage.load_users()
     current_user_id = str(callback.from_user.id)
@@ -104,7 +106,7 @@ async def select_tour_sport(callback: types.CallbackQuery, state: FSMContext):
         # и что выбранный спорт соответствует его профилю
         if (user_data.get('vacation_tennis', False) and 
             (user_data.get('sport') == sport or sport == "any")):
-            country = user_data.get('country', '')
+            country = user_data.get('vacation_country', '')
             if country:
                 country_stats[country] = country_stats.get(country, 0) + 1
     
@@ -122,7 +124,7 @@ async def select_tour_sport(callback: types.CallbackQuery, state: FSMContext):
         ])
         
         await callback.message.edit_text(
-            f"❌ На данный момент нет активных туров по {sport} от других пользователей.",
+            f"❌ На данный момент нет активных туров по {sport_text} от других пользователей.",
             reply_markup=keyboard
         )
         return
@@ -138,9 +140,9 @@ async def select_tour_sport(callback: types.CallbackQuery, state: FSMContext):
         ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-    
+
     await callback.message.edit_text(
-        f"🌍 Выберите страну для просмотра туров по {sport}:",
+        f"🌍 Выберите страну для просмотра туров по {sport_text}:",
         reply_markup=keyboard
     )
     await state.set_state(BrowseToursStates.SELECT_COUNTRY)
@@ -156,14 +158,14 @@ async def select_tour_country(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(selected_country=country)
     
     users = await storage.load_users()
-    
+
     # Собираем статистику по городам в выбранной стране для выбранного спорта
     city_stats = {}
     for user_id, user_data in users.items():
-        if (user_data.get('country') == country and 
+        if (user_data.get('vacation_country') == country and 
             user_data.get('vacation_tennis', False) and
-            user_data.get('sport') == sport):
-            city = user_data.get('city', '')
+            (user_data.get('sport') == sport or sport=="any")):
+            city = user_data.get('vacation_city', '')
             if city:
                 city_stats[city] = city_stats.get(city, 0) + 1
     
@@ -205,10 +207,10 @@ async def select_tour_city(callback: types.CallbackQuery, state: FSMContext):
     all_tours = []
     
     for user_id, user_data in users.items():
-        if (user_data.get('country') == country and 
-            user_data.get('city') == city and 
+        if (user_data.get('vacation_country') == country and 
+            user_data.get('vacation_city') == city and 
             user_data.get('vacation_tennis', False) and
-            user_data.get('sport') == sport):
+            (user_data.get('sport') == sport or sport=="any")):
             
             tour = {
                 'user_id': user_id,
@@ -255,8 +257,10 @@ async def show_tours_page(message: types.Message, state: FSMContext):
         'table_tennis': '🏓'
     }
     sport_icon = sport_icons.get(sport, '🎾')
-    
-    text = f"{sport_icon} Туры по {sport} в {state_data.get('selected_city')}, {state_data.get('selected_country')}\n\n"
+
+    sport_text = "любому виду спорта" if sport == "any" else sport
+
+    text = f"{sport_icon} Туры по {sport_text} в {state_data.get('selected_city')}, {state_data.get('selected_country')}\n\n"
     
     # Создаем клавиатуру
     builder = InlineKeyboardBuilder()
@@ -275,7 +279,7 @@ async def show_tours_page(message: types.Message, state: FSMContext):
         user_name = f"{first_name[:1]}. {last_name}" if first_name and last_name else first_name or last_name or 'Неизвестно'
         
         level = user_data.get('player_level', '-')
-        
+
         start_date = await format_tour_date(tour.get('vacation_start', '-'))
         end_date = await format_tour_date(tour.get('vacation_end', '-'))
         
@@ -286,6 +290,11 @@ async def show_tours_page(message: types.Message, state: FSMContext):
             text=tour_info,
             callback_data=f"viewtour_{tour['user_id']}"
         ))
+    
+    builder.row(InlineKeyboardButton(
+        text="🎾 Найти партнера на время отдыха",
+        callback_data="createTour"
+    ))
     
     # Кнопки навигации
     nav_buttons = []
@@ -332,14 +341,8 @@ async def view_tour_details(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("❌ Тур не найден")
         return
     
-    # Формируем детальную информацию
-    username = user_data.get("username")
-    username_str = f"@{username}" if username else "👤 (без username)"
-    
-    user_name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
-    player_level = user_data.get("player_level", "—")
-    country = user_data.get("country", "—")
-    city = user_data.get("city", "—")
+    country = user_data.get("vacation_country", "—")
+    city = user_data.get("vacation_city", "—")
     district = user_data.get('district', None)
     sport = user_data.get('sport', 'теннис')
     
@@ -360,7 +363,6 @@ async def view_tour_details(callback: types.CallbackQuery, state: FSMContext):
     text = (
         f"{sport_icon} Тур пользователя ({sport}):\n\n"
         f"{profile_link}\n"
-        f"🏅 Уровень: {player_level}\n"
         f"📍 Место: {country}, {city}\n\n"
         f"📅 Даты поездки:\n"
         f"Начало: {user_data.get('vacation_start', '—')}\n"
@@ -380,6 +382,10 @@ async def view_tour_details(callback: types.CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(
                 text="🔙 Назад к списку", callback_data="back_to_tours_list"
             )]
+            ,
+            [InlineKeyboardButton(
+                text="🎾 Найти партнера на время отдыха", callback_data="createTour"
+            )]
         ]
     )
     
@@ -392,27 +398,106 @@ async def back_to_tours_list(callback: types.CallbackQuery, state: FSMContext):
     await show_tours_page(callback.message, state)
     await callback.answer()
 
-@router.callback_query(F.data.startswith("create_tour"))
+@router.callback_query(F.data.startswith("createTour"))
 async def start_create_tour(callback: types.CallbackQuery, state: FSMContext):
-    """Начало создания тура с определенным видом спорта"""    
+    """Начало создания тура с выбором страны"""
+    # Создаем клавиатуру с кнопками стран
+    buttons = []
+    for country in countries[:5]:
+        buttons.append([InlineKeyboardButton(text=f"{country}", callback_data=f"create_tour_country_{country}")])
+    buttons.append([InlineKeyboardButton(text="🌎 Другая страна", callback_data="create_tour_other_country")])
+
     try:
         await callback.message.edit_text(
-            "📅 Введите дату начала поездки в формате ДД.ММ.ГГГГ:\n"
-            "Например: 25.08.2025"
+            "🌍 Выберите страну отдыха:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     except:
-        try:
-            await callback.message.delete()
-        except:
-            pass
-
         await callback.message.answer(
-            "📅 Введите дату начала поездки в формате ДД.ММ.ГГГГ:\n"
-            "Например: 25.08.2025"
+            "🌍 Выберите страну отдыха:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     
+    await state.set_state(CreateTourStates.SELECT_COUNTRY)
+    await callback.answer()
+
+@router.callback_query(CreateTourStates.SELECT_COUNTRY, F.data.startswith("create_tour_country_"))
+async def process_create_tour_country_selection(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка выбора страны для создания тура"""
+    country = callback.data.split("_", maxsplit=3)[3]
+    await state.update_data(vacation_country=country)
+    await ask_for_create_tour_city(callback.message, state, country)
+    await callback.answer()
+
+@router.callback_query(CreateTourStates.SELECT_COUNTRY, F.data == "create_tour_other_country")
+async def process_create_tour_other_country(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка выбора другой страны для создания тура"""
+    await callback.message.edit_text("🌍 Введите название страны отдыха:", reply_markup=None)
+    await state.set_state(CreateTourStates.ENTER_COUNTRY)
+    await callback.answer()
+
+@router.message(CreateTourStates.ENTER_COUNTRY, F.text)
+async def process_create_tour_country_input(message: Message, state: FSMContext):
+    """Обработка ввода названия страны для создания тура"""
+    await state.update_data(vacation_country=message.text.strip())
+    await message.answer("🏙 Введите название города отдыха:")
+    await state.set_state(CreateTourStates.ENTER_CITY)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+async def ask_for_create_tour_city(message: types.Message, state: FSMContext, country: str):
+    """Запрос города для создания тура"""
+    if country == "Россия":
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
+        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"create_tour_city_{city}")] for city in main_russian_cities]
+        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="create_tour_other_city")])
+    else:
+        cities = cities_data.get(country, [])
+        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"create_tour_city_{city}")] for city in cities[:5]]
+        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="create_tour_other_city")])
+
+    try:
+        await message.edit_text(
+            f"🏙 Выберите город отдыха в стране: {country}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+    except:
+        await message.answer(
+            f"🏙 Выберите город отдыха в стране: {country}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+    
+    await state.set_state(CreateTourStates.SELECT_CITY)
+
+@router.callback_query(CreateTourStates.SELECT_CITY, F.data.startswith("create_tour_city_"))
+async def process_create_tour_city_selection(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка выбора города для создания тура"""
+    city = callback.data.split("_", maxsplit=3)[3]
+    await state.update_data(vacation_city=city)
+    await callback.message.edit_text(
+        "📅 Введите дату начала поездки в формате ДД.ММ.ГГГГ:\n"
+        "Например: 25.08.2025",
+        reply_markup=None
+    )
     await state.set_state(CreateTourStates.ENTER_START_DATE)
     await callback.answer()
+
+@router.callback_query(CreateTourStates.SELECT_CITY, F.data == "create_tour_other_city")
+async def process_create_tour_other_city(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка выбора другого города для создания тура"""
+    await callback.message.edit_text("🏙 Введите название города отдыха:", reply_markup=None)
+    await state.set_state(CreateTourStates.ENTER_CITY)
+    await callback.answer()
+
+@router.message(CreateTourStates.ENTER_CITY, F.text)
+async def process_create_tour_city_input(message: Message, state: FSMContext):
+    """Обработка ввода названия города для создания тура"""
+    await state.update_data(vacation_city=message.text.strip())
+    await message.answer(
+        "📅 Введите дату начала поездки в формате ДД.ММ.ГГГГ:\n"
+        "Например: 25.08.2025"
+    )
+    await state.set_state(CreateTourStates.ENTER_START_DATE)
+    await storage.save_session(message.chat.id, await state.get_data())
 
 @router.message(CreateTourStates.ENTER_START_DATE, F.text)
 async def process_start_date(message: types.Message, state: FSMContext):
@@ -489,6 +574,8 @@ async def process_tour_comment(message: types.Message, state: FSMContext):
     state_data = await state.get_data()
     vacation_start = state_data.get('vacation_start')
     vacation_end = state_data.get('vacation_end')
+    vacation_country = state_data.get('vacation_country')
+    vacation_city = state_data.get('vacation_city')
     
     # Загружаем данные пользователей
     users = await storage.load_users()
@@ -503,6 +590,8 @@ async def process_tour_comment(message: types.Message, state: FSMContext):
     users[user_id]['vacation_tennis'] = True
     users[user_id]['vacation_start'] = vacation_start
     users[user_id]['vacation_end'] = vacation_end
+    users[user_id]['vacation_country'] = vacation_country
+    users[user_id]['vacation_city'] = vacation_city
     if comment:
         users[user_id]['vacation_comment'] = comment
     
@@ -511,7 +600,8 @@ async def process_tour_comment(message: types.Message, state: FSMContext):
     await send_tour_to_channel(message.bot, user_id, users[user_id])
     
     await message.answer(
-        f"Ваш тур успешно создан! Теперь другие пользователи смогут увидеть его в списке туров.\n\n"
+        f"✅ Ваш тур успешно создан! Теперь другие пользователи смогут увидеть его в списке туров.\n\n"
+        f"📍 Место: {vacation_country}, {vacation_city}\n"
         f"📅 Даты: {vacation_start} - {vacation_end}\n"
         f"💬 Комментарий: {comment if comment else 'Не указан'}"
     )

@@ -359,7 +359,6 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
         f"🕹 {game.get('type', '—')}\n"
         f"💰 Оплата: {game.get('payment_type', '—')}\n"
         f"🏆 На счёт: {'Да' if game.get('competitive') else 'Нет'}\n"
-        f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
     )
     
     if game.get('comment'):

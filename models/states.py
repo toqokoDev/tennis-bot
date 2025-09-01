@@ -23,6 +23,10 @@ class RegistrationStates(StatesGroup):
     PROFILE_COMMENT = State()
     DEFAULT_PAYMENT = State()
     CREATE_GAME_OFFER = State()
+    VACATION_COUNTRY = State()
+    VACATION_COUNTRY_INPUT = State()
+    VACATION_CITY = State()
+    VACATION_CITY_INPUT = State()
 
 class GameOfferStates(StatesGroup):
     GAME_CITY = State()
@@ -55,6 +59,7 @@ class EditProfileStates(StatesGroup):
     CITY_INPUT = State()
     COUNTRY = State()
     COUNTRY_INPUT = State()
+    SPORT = State()
 
 class PaymentStates(StatesGroup):
     WAITING_EMAIL = State()
@@ -106,6 +111,10 @@ class CreateTourStates(StatesGroup):
     ENTER_START_DATE = State()
     ENTER_END_DATE = State()
     ENTER_COMMENT = State()
+    SELECT_COUNTRY = State()
+    ENTER_COUNTRY = State()
+    SELECT_CITY = State()
+    ENTER_CITY = State()
 
 class AdminEditProfileStates(StatesGroup):
     SELECT_USER = State()
@@ -116,4 +125,7 @@ class AdminEditProfileStates(StatesGroup):
     CITY = State()
     CITY_INPUT = State()
     PHOTO_UPLOAD = State()
+    SPORT = State()
+    ROLE = State()
+    TRAINER_PRICE = State()
     

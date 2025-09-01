@@ -8,7 +8,7 @@ from aiogram.types import (
 )
 
 from config.paths import BASE_DIR, PHOTOS_DIR
-from config.profile import moscow_districts, base_keyboard, cities_data, countries
+from config.profile import moscow_districts, base_keyboard, cities_data, countries, sport_type
 from models.states import EditProfileStates
 from utils.bot import show_profile
 from utils.media import download_photo_to_path
@@ -36,6 +36,9 @@ async def edit_profile_handler(callback: types.CallbackQuery, state: FSMContext)
             [
                 InlineKeyboardButton(text="📷 Фото", callback_data="1edit_photo"),
                 InlineKeyboardButton(text="🌍 Страна/Город", callback_data="1edit_location")
+            ],
+            [
+                InlineKeyboardButton(text="🎾 Вид спорта", callback_data="1edit_sport")
             ],
             [
                 InlineKeyboardButton(text="🗑️ Удалить профиль", callback_data="1delete_profile")
@@ -150,6 +153,9 @@ async def cancel_delete_handler(callback: types.CallbackQuery):
                     InlineKeyboardButton(text="🌍 Страна/Город", callback_data="1edit_location")
                 ],
                 [
+                    InlineKeyboardButton(text="🎾 Вид спорта", callback_data="1edit_sport")
+                ],
+                [
                     InlineKeyboardButton(text="🗑️ Удалить профиль", callback_data="1delete_profile")
                 ],
                 [
@@ -209,6 +215,19 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.answer("🌍 Выберите страну:", reply_markup=keyboard)
         await state.set_state(EditProfileStates.COUNTRY)
+    elif field == "sport":
+        # Создаем клавиатуру для выбора вида спорта
+        buttons = []
+        row = []
+        for i, sport in enumerate(sport_type):
+            row.append(InlineKeyboardButton(text=sport, callback_data=f"edit_sport_{sport}"))
+            if (i + 1) % 2 == 0 or i == len(sport_type) - 1:
+                buttons.append(row)
+                row = []
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await callback.message.answer("🎾 Выберите вид спорта:", reply_markup=keyboard)
+        await state.set_state(EditProfileStates.SPORT)
     
     await callback.answer()
 
@@ -252,6 +271,30 @@ async def save_payment_edit(callback: types.CallbackQuery):
     else:
         await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
     
+    await callback.answer()
+
+# Обработчик для сохранения вида спорта
+@router.callback_query(EditProfileStates.SPORT, F.data.startswith("edit_sport_"))
+async def save_sport_edit(callback: types.CallbackQuery, state: FSMContext):
+    sport = callback.data.split("_", 2)[2]
+    users = await storage.load_users()
+    user_key = str(callback.message.chat.id)
+    
+    if user_key in users:
+        users[user_key]['sport'] = sport
+        await storage.save_users(users)
+        
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        
+        await callback.message.answer("✅ Вид спорта обновлен!")
+        await show_profile(callback.message, users[user_key])
+    else:
+        await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+    
+    await state.clear()
     await callback.answer()
 
 # Обработчики для редактирования местоположения
