@@ -134,6 +134,7 @@ async def get_weekday_short(date_str: str) -> str:
 async def create_user_profile_link(user_data: dict, user_id: str, additional=True) -> str:
     first_name = user_data.get('first_name', '')
     last_name = user_data.get('last_name', '')
+    username = user_data.get('username', '')
     
     if user_data.get('player_level'):
         level = user_data.get('player_level')
@@ -143,7 +144,7 @@ async def create_user_profile_link(user_data: dict, user_id: str, additional=Tru
         rating = "Тренер"
 
     if additional:
-        return f"[{first_name} {last_name} {level}({rating})](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
+        return f"[{first_name} {last_name} @{username} NTRP {level} (lvl. {rating})](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
     else:
         return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
 

@@ -65,6 +65,9 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
 
     channel_id = channels_id[users.get(user_id).get('sport')]
 
+    game_text = ""
+    media_group = []
+
     if game_type == 'single':
         # Одиночная игра
         player1_id = data.get('current_user_id')
@@ -78,11 +81,9 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
         
         winner_side = data.get('winner_side')
         if winner_side == "team1":
-            winner_link = player1_link
-            loser_link = player2_link
+            winner_link, loser_link = player1_link, player2_link
         else:
-            winner_link = player2_link
-            loser_link = player1_link
+            winner_link, loser_link = player2_link, player1_link
         
         game_text = (
             "🎾 *Завершена одиночная игра!*\n\n"
@@ -90,6 +91,13 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             f"📊 Счет: {score}\n\n"
             f"#игра"
         )
+
+        # соберем фото игроков
+        for pl in (player1, player2):
+            if pl.get("photo_path"):
+                media_group.append(
+                    types.InputMediaPhoto(media=open(pl["photo_path"], "rb"))
+                )
         
     else:
         # Парная игра
@@ -122,7 +130,15 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             f"📊 Счет: {score}\n\n"
             f"#игра"
         )
-    print(data)
+
+        # соберем фото игроков (до 4)
+        for pl in (team1_player1, team1_player2, team2_player1, team2_player2):
+            if pl.get("photo_path"):
+                media_group.append(
+                    types.InputMediaPhoto(media=open(pl["photo_path"], "rb"))
+                )
+
+    # --- Отправка в канал ---
     if 'photo_id' in data:
         await bot.send_photo(
             chat_id=channel_id,
@@ -137,13 +153,18 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             caption=game_text,
             parse_mode="Markdown"
         )
+    elif media_group:
+        # если фото/видео игры нет, шлём фото игроков как альбом
+        media_group[0].caption = game_text
+        media_group[0].parse_mode = "Markdown"
+        await bot.send_media_group(chat_id=channel_id, media=media_group)
     else:
+        # если вообще нет фото — только текст
         await bot.send_message(
             chat_id=channel_id,
             text=game_text,
             parse_mode="Markdown"
         )
-
 
 async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_id: str, user_data: Dict[str, Any]):
     """Отправляет предложение игры в телеграм-канал"""
@@ -152,7 +173,7 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
         sport = user_data.get('sport', 'Не указан')
         
         offer_text = (
-            f"🎾 *Предложение игры*\n\n"
+            f"🎾 <b>Предложение игры</b>\n\n"
             f"👤 {profile_link}\n"
             f"📍 {game_data.get('city', '—')}\n"
             f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
@@ -170,11 +191,23 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
             
         channel_id = channels_id[sport]
 
-        await bot.send_message(
-            chat_id=channel_id,
-            text=offer_text,
-            parse_mode="Markdown"
-        )
+        photo_path = user_data.get("photo_path")
+
+        if photo_path:
+            # отправляем фото + текст в подписи
+            await bot.send_photo(
+                chat_id=channel_id,
+                photo=FSInputFile(BASE_DIR / photo_path),
+                caption=offer_text,
+                parse_mode="HTML"
+            )
+        else:
+            # если фото нет — обычное сообщение
+            await bot.send_message(
+                chat_id=channel_id,
+                text=offer_text,
+                parse_mode="HTML"
+            )
         
     except Exception as e:
         print(f"Ошибка при отправке предложения игры: {e}")
@@ -201,8 +234,29 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         await bot.send_message(
             chat_id=tour_channel_id,
             text=tour_text,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            disable_web_page_preview=True
         )
+
+        photo_path = user_data.get("photo_path")
+
+        if photo_path:
+            # отправляем фото + текст в подписи
+            await bot.send_photo(
+                chat_id=tour_channel_id,
+                photo=FSInputFile(BASE_DIR / photo_path),
+                caption=tour_text,
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
+        else:
+            # если фото нет — обычное сообщение
+            await bot.send_message(
+                chat_id=tour_channel_id,
+                text=tour_text,
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
         
     except Exception as e:
         print(f"Ошибка при отправке тура в канал: {e}")

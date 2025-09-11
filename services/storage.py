@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import logging
 from contextlib import asynccontextmanager
 
-from config.paths import BANNED_USERS_FILE, GAMES_FILE, SESSIONS_DIR, USERS_FILE
+from config.paths import BANNED_USERS_FILE, GAMES_FILE, SESSIONS_DIR, USERS_FILE, TOURNAMENTS_FILE, TOURNAMENT_APPLICATIONS_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,8 @@ class StorageConfig:
     games_file: Path = GAMES_FILE
     banned_file: Path = BANNED_USERS_FILE
     sessions_dir: Path = SESSIONS_DIR
+    tournaments_file: Path = TOURNAMENTS_FILE
+    tournament_applications_file: Path = TOURNAMENT_APPLICATIONS_FILE
 
 class AsyncJSONStorage:
     def __init__(self, config: StorageConfig = None):
@@ -131,10 +133,21 @@ class AsyncJSONStorage:
         except Exception as e:
             logger.error(f"Error deleting session {user_id}: {e}")
     
-    async def cleanup_old_sessions(self, max_age_hours: int = 24) -> None:
-        """Очистка старых сессий"""
-        # Можно добавить логику очистки по времени
-        pass
+    async def load_tournaments(self) -> Dict[str, Any]:
+        """Загрузка турниров"""
+        return await self._read_file(self.config.tournaments_file, {})
+
+    async def save_tournaments(self, tournaments_data: Dict[str, Any]) -> None:
+        """Сохранение турниров"""
+        await self._write_file(self.config.tournaments_file, tournaments_data)
+
+    async def load_tournament_applications(self) -> Dict[str, Any]:
+        """Загрузка заявок на турниры"""
+        return await self._read_file(self.config.tournament_applications_file, {})
+
+    async def save_tournament_applications(self, applications_data: Dict[str, Any]) -> None:
+        """Сохранение заявок на турниры"""
+        await self._write_file(self.config.tournament_applications_file, applications_data)
 
 # Создаем глобальный экземпляр хранилища
 storage = AsyncJSONStorage()
