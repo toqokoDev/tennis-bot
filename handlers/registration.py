@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+import re
 
 from aiogram import F, Router, types
 from aiogram.filters import Command
@@ -19,7 +20,6 @@ from models.states import RegistrationStates
 
 from services.channels import send_registration_notification
 from utils.admin import is_user_banned
-from utils.utils import calculate_age, create_user_profile_link
 from utils.media import download_photo_to_path
 from utils.bot import show_current_data, show_profile
 from utils.validate import validate_date, validate_date_range, validate_future_date, validate_price
@@ -42,14 +42,20 @@ async def cmd_start(message: types.Message, state: FSMContext):
         )
         return
     
+    referral_id = None
     # Проверяем, есть ли параметр в команде start (для ссылок на профили)
     if len(message.text.split()) > 1:
         command_parts = message.text.split()
         if len(command_parts) >= 2:
             start_param = command_parts[1]
             
-            # Если это ссылка на профиль (profile_12345)
-            if start_param.startswith('profile_'):
+            if start_param.startswith('ref_'):
+                referral_id = start_param.replace('ref_', '')
+                
+                if referral_id != user_id:
+                    await state.update_data(referral_id=referral_id)
+
+            elif start_param.startswith('profile_'):
                 profile_user_id = start_param.replace('profile_', '')
                 
                 # Проверяем, не забанен ли целевой пользователь
@@ -86,7 +92,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
             f"🏆 Ваш рейтинг: <b>{rating}</b>\n"
             f"🎾 Сыграно игр: <b>{games_played}</b>\n"
             f"✅ Побед: <b>{games_wins}</b>\n\n"
-            f"Вы зарегистрированы в официальном боте tennis-play.com\n"
+            f"Вы зарегистрированы в официальном боте @tennis_playbot\n"
             f"Выберите действие из меню ниже:"
         )  
 
@@ -100,13 +106,27 @@ async def cmd_start(message: types.Message, state: FSMContext):
         f"👋 Здравствуйте, <b>{message.from_user.full_name}</b>!\n\n"
         "Вы находитесь в боте @tennis_playbot проекта Tennis-Play.com\n\n"
         "💡 <b>Здесь вы сможете:</b>\n\n"
-        "• Найти партнёра по большому, настольному, пляжному и падл-теннису, бадминтону, сквошу и пиклболу.\n"
+        "• Найти партнёра по:\n"
+        "   🎾 Большому теннису\n"
+        "   🏓 Настольному теннису\n"
+        "   🏸 Бадминтону\n"
+        "   🏖️ Пляжному теннису\n"
+        "   🎾 Падл-теннису\n"
+        "   🥎 Сквошу\n"
+        "   🏆 Пиклболу\n"
+        "   ⛳ Гольфу\n"
+        "   🏃‍♂️ Бегу\n"
+        "   🏋️‍♀️ Фитнесу\n"
+        "   🚴 Велоспорту\n"
+        "   🍻 По пиву 😉\n"
+        "   🍒 Знакомствам\n\n"
         "• Предлагать и находить предложения игр в определенное время и месте.\n"
-        "• Участвовать в многодневных турниров в вашем городе и на вашем корте.\n"
-        "• Находить тренеров по теннису.\n"
+        "• Участвовать в многодневных турнирах в вашем городе и на вашем корте.\n"
+        "• Находить тренеров.\n"
         "• Отслеживать свой рейтинг.\n\n"
         "Для начала пройдите краткую регистрацию.\n\n"
-        "<b>Начиная регистрацию, Вы соглашаетесь с <a href='https://tennis-play.com/privacy-bot'>политикой обработки персональных данных</a> и даёте согласие на <a href='https://tennis-play.com/soglasie'>обработку данных</a></b>\n\n"
+        "Начиная регистрацию, Вы соглашаетесь с <a href='https://tennis-play.com/privacy-bot'>политикой обработки персональных данных</a> "
+        "и даёте согласие на <a href='https://tennis-play.com/soglasie'>обработку данных</a>\n\n"
         "<b>Пожалуйста, отправьте номер телефона:</b>"
     )
     
@@ -146,9 +166,24 @@ async def cmd_profile_id(message: types.Message):
     
     await show_profile(message, profile)
 
-@router.message(RegistrationStates.PHONE, F.contact)
+@router.message(RegistrationStates.PHONE, (F.contact | F.text))
 async def process_phone(message: Message, state: FSMContext):
-    await state.update_data(phone=message.contact.phone_number)
+
+    phone = None
+    phone_pattern = re.compile(r'^\+?\d{10,15}$')
+
+    if message.contact:
+        phone = message.contact.phone_number
+    elif message.text:
+        text = message.text.strip()
+        if phone_pattern.match(text):
+            phone = text
+
+    if not phone:
+        await message.answer("❌ Пожалуйста, отправьте корректный номер телефона.")
+        return
+
+    await state.update_data(phone=phone)
     
     msg = await message.answer(
         "🎾 Выберите вид спорта:",
@@ -156,7 +191,7 @@ async def process_phone(message: Message, state: FSMContext):
     )
     await state.update_data(prev_msg_id=msg.message_id)
 
-    # Спрашиваем вид спорта после телефона
+    # Кнопки выбора вида спорта
     buttons = []
     row = []
     for i, sport in enumerate(sport_type):
@@ -248,12 +283,15 @@ async def process_city_input(message: Message, state: FSMContext):
 
 async def ask_for_city(message: types.Message, state: FSMContext, country: str):
     if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
+        main_russian_cities = [
+            "Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург",
+            "Казань", "Красноярск", "Нижний Новгород", "Сочи", "Ростов-на-Дону"
+        ]
         buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"city_{city}")] for city in main_russian_cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="other_city")])
     else:
         cities = cities_data.get(country, [])
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"city_{city}")] for city in cities[:5]]
+        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"city_{city}")] for city in cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="other_city")])
 
     await show_current_data(
@@ -579,12 +617,15 @@ async def process_vacation_city_input(message: Message, state: FSMContext):
 
 async def ask_for_vacation_city(message: types.Message, state: FSMContext, country: str):
     if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
+        main_russian_cities = [
+            "Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург",
+            "Казань", "Красноярск", "Нижний Новгород", "Сочи", "Ростов-на-Дону"
+        ]
         buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in main_russian_cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="vacation_other_city")])
     else:
         cities = cities_data.get(country, [])
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in cities[:5]]
+        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="vacation_other_city")])
 
     await show_current_data(
@@ -721,6 +762,7 @@ async def process_create_game_offer(callback: types.CallbackQuery, state: FSMCon
         "default_payment": user_state.get("default_payment"),
         "show_in_search": True,
         "profile_comment": user_state.get("profile_comment"),
+        "referrals_invited": 0,
         "games": [],
         "created_at": datetime.now().isoformat(timespec="seconds")
     }
@@ -733,6 +775,34 @@ async def process_create_game_offer(callback: types.CallbackQuery, state: FSMCon
         profile["vacation_end"] = user_state.get('vacation_end')
         profile["vacation_comment"] = user_state.get('vacation_comment')
 
+    referral_id = user_state.get('referral_id')
+    if referral_id and await storage.is_user_registered(referral_id):
+        # Обновляем статистику реферера
+        referrer_data = await storage.get_user(referral_id) or {}
+        referrals_count = referrer_data.get('referrals_invited', 0) + 1
+        
+        await storage.update_user(referral_id, {
+            'referrals_invited': referrals_count
+        })
+        
+        # Проверяем, достиг ли реферер 10 приглашений
+        if referrals_count >= 10:
+            # Дарим подписку на 1 месяц
+            await storage.update_user(referral_id, {
+                'active': True,
+                'until': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
+                'activated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            })
+            
+            # Уведомляем реферера
+            try:
+                await callback.message.bot.send_message(
+                    referral_id,
+                    "🎉 Поздравляем! Вы пригласили 10 друзей и получили бесплатную подписку на 1 месяц!"
+                )
+            except:
+                pass
+            
     await storage.save_user(user_id, profile)
     await state.clear()
     await storage.delete_session(user_id)
@@ -777,6 +847,7 @@ async def process_skip_game_offer(callback: types.CallbackQuery, state: FSMConte
         "default_payment": user_state.get("default_payment"),
         "show_in_search": True,
         "profile_comment": user_state.get("profile_comment"),
+        "referrals_invited": 0,
         "games": [],
         "created_at": datetime.now().isoformat(timespec="seconds")
     }
@@ -788,6 +859,33 @@ async def process_skip_game_offer(callback: types.CallbackQuery, state: FSMConte
         profile["vacation_start"] = user_state.get('vacation_start')
         profile["vacation_end"] = user_state.get('vacation_end')
         profile["vacation_comment"] = user_state.get('vacation_comment')
+
+    referral_id = user_state.get('referral_id')
+    if referral_id and await storage.is_user_registered(referral_id):
+        # Обновляем статистику реферера
+        referrer_data = await storage.get_user(referral_id) or {}
+        referrals_count = referrer_data.get('referrals_invited', 0) + 1
+        
+        await storage.update_user(referral_id, {
+            'referrals_invited': referrals_count
+        })
+        
+        # Проверяем, достиг ли реферер 10 приглашений
+        if referrals_count >= 10:
+            await storage.update_user(referral_id, {
+                'active': True,
+                'until': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
+                'activated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            })
+            
+            # Уведомляем реферера
+            try:
+                await callback.message.bot.send_message(
+                    referral_id,
+                    "🎉 Поздравляем! Вы пригласили 10 друзей и получили бесплатную подписку на 1 месяц!"
+                )
+            except:
+                pass
 
     await storage.save_user(user_id, profile)
     await state.clear()

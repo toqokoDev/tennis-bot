@@ -60,6 +60,9 @@ class EditProfileStates(StatesGroup):
     COUNTRY = State()
     COUNTRY_INPUT = State()
     SPORT = State()
+    ROLE = State()
+    PRICE = State()
+    LEVEL = State()
 
 class PaymentStates(StatesGroup):
     WAITING_EMAIL = State()
@@ -93,6 +96,8 @@ class SearchPartnerStates(StatesGroup):
     SEARCH_RESULTS = State()
     SEARCH_NO_RESULTS = State()
     SEARCH_ERROR = State()
+    SEARCH_OTHER_COUNTRIES = State()
+    SEARCH_OTHER_CITIES = State()
 
 class BrowseOffersStates(StatesGroup):
     SELECT_COUNTRY = State()
@@ -128,4 +133,5 @@ class AdminEditProfileStates(StatesGroup):
     SPORT = State()
     ROLE = State()
     TRAINER_PRICE = State()
+    LEVEL = State()
     

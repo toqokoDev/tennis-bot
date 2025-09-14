@@ -43,6 +43,380 @@ async def safe_send_message(message: Message, text: str, reply_markup=None):
         logger.error(f"Не удалось отправить сообщение: {e}")
         return False
 
+# Команда для работы с турнирами
+@admin_router.message(Command("tournaments"))
+async def tournaments_cmd(message: Message):
+    if not await is_admin(message.from_user.id):
+        await safe_send_message(message, "❌ У вас нет прав администратора")
+        return
+    
+    tournaments = await storage.load_tournaments()
+    
+    if not tournaments:
+        await safe_send_message(message, "📋 Список турниров пуст.")
+        return
+    
+    text = "🏆 Активные турниры:\n\n"
+    for tournament_id, tournament_data in tournaments.items():
+        text += f"🎯 {tournament_data.get('name', 'Без названия')}\n"
+        text += f"📅 Дата: {tournament_data.get('date', 'Не указана')}\n"
+        text += f"📍 Место: {tournament_data.get('location', 'Не указано')}\n"
+        text += f"👥 Участников: {len(tournament_data.get('participants', {}))}\n"
+        text += f"🆔 ID: {tournament_id}\n"
+        text += "─" * 20 + "\n"
+    
+    # Добавляем кнопки для управления турнирами
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📝 Создать турнир", callback_data="admin_create_tournament")
+    builder.button(text="👥 Просмотреть заявки", callback_data="admin_view_applications")
+    builder.button(text="🗑️ Удалить турнир", callback_data="admin_delete_tournament_menu")
+    builder.adjust(1)
+    
+    await safe_send_message(message, text, builder.as_markup())
+
+# Меню создания турнира
+@admin_router.callback_query(F.data == "admin_create_tournament")
+async def create_tournament_menu(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    await safe_edit_message(
+        callback,
+        "🎯 Создание нового турнира\n\n"
+        "Для создания турнира используйте команду:\n"
+        "/create_tournament название;дата;место;описание\n\n"
+        "Пример:\n"
+        "/create_tournament Кубок Осени;2024-10-15;Спорткомплекс;Осенний турнир по настольному теннису"
+    )
+    await callback.answer()
+
+# Команда создания турнира
+@admin_router.message(Command("create_tournament"))
+async def create_tournament_cmd(message: Message):
+    if not await is_admin(message.from_user.id):
+        await safe_send_message(message, "❌ У вас нет прав администратора")
+        return
+    
+    try:
+        # Парсим параметры из сообщения
+        parts = message.text.split(' ', 1)[1].split(';')
+        if len(parts) < 3:
+            await safe_send_message(message, "❌ Недостаточно параметров. Формат: название;дата;место;описание")
+            return
+        
+        name = parts[0].strip()
+        date = parts[1].strip()
+        location = parts[2].strip()
+        description = parts[3].strip() if len(parts) > 3 else ""
+        
+        # Загружаем существующие турниры
+        tournaments = await storage.load_tournaments()
+        
+        # Создаем новый турнир
+        tournament_id = f"tournament_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        tournaments[tournament_id] = {
+            'name': name,
+            'date': date,
+            'location': location,
+            'description': description,
+            'created_at': datetime.now().isoformat(),
+            'created_by': message.from_user.id,
+            'participants': {},
+            'status': 'active'
+        }
+        
+        # Сохраняем турниры
+        await storage.save_tournaments(tournaments)
+                
+        await safe_send_message(
+            message,
+            f"✅ Турнир создан!\n\n"
+            f"🎯 Название: {name}\n"
+            f"📅 Дата: {date}\n"
+            f"📍 Место: {location}\n"
+            f"📝 Описание: {description}\n"
+            f"🆔 ID: {tournament_id}"
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка создания турнира: {e}")
+        await safe_send_message(message, "❌ Ошибка при создании турнира. Проверьте формат команды.")
+
+# Меню просмотра заявок
+@admin_router.callback_query(F.data == "admin_view_applications")
+async def view_applications_menu(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    applications = await storage.load_tournament_applications()
+        
+    if not applications:
+        await callback.answer("📋 Нет активных заявок на турниры")
+        return
+    
+    text = "📋 Заявки на турниры:\n\n"
+    for app_id, app_data in applications.items():
+        text += f"👤 {app_data.get('user_name', 'Неизвестно')}\n"
+        text += f"📞 {app_data.get('phone', 'Неизвестно')}\n"
+        text += f"🎯 Турнир: {app_data.get('tournament_name', 'Неизвестно')}\n"
+        text += f"⏰ Подана: {app_data.get('applied_at', 'Неизвестно')}\n"
+        text += f"🆔 ID заявки: {app_id}\n"
+        text += "─" * 20 + "\n"
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Принять заявку", callback_data="admin_accept_application_menu")
+    builder.button(text="❌ Отклонить заявку", callback_data="admin_reject_application_menu")
+    builder.button(text="🔙 Назад", callback_data="admin_back_to_tournaments")
+    builder.adjust(1)
+    
+    await safe_edit_message(callback, text, builder.as_markup())
+    await callback.answer()
+
+# Меню принятия заявки
+@admin_router.callback_query(F.data == "admin_accept_application_menu")
+async def accept_application_menu(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    applications = await storage.load_tournament_applications()
+    
+    if not applications:
+        await callback.answer("📋 Нет активных заявок")
+        return
+    
+    builder = InlineKeyboardBuilder()
+    for app_id, app_data in applications.items():
+        text = f"✅ {app_data.get('user_name', 'Неизвестно')} - {app_data.get('tournament_name', '')}"
+        builder.button(text=text, callback_data=f"admin_accept_application:{app_id}")
+    
+    builder.button(text="🔙 Назад", callback_data="admin_view_applications")
+    builder.adjust(1)
+    
+    await safe_edit_message(callback, "✅ Выберите заявку для принятия:", builder.as_markup())
+    await callback.answer()
+
+# Обработчик принятия заявки
+@admin_router.callback_query(F.data.startswith("admin_accept_application:"))
+async def accept_application_handler(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    app_id = callback.data.split(':')[1]
+    applications = await storage.load_tournament_applications()
+    tournaments = await storage.load_tournaments()
+    
+    if app_id not in applications:
+        await callback.answer("❌ Заявка не найдена")
+        return
+    
+    app_data = applications[app_id]
+    tournament_id = app_data.get('tournament_id')
+    
+    if tournament_id not in tournaments:
+        await callback.answer("❌ Турнир не найден")
+        return
+    
+    # Обновляем статус заявки
+    applications[app_id]['status'] = 'accepted'
+    applications[app_id]['accepted_at'] = datetime.now().isoformat()
+    applications[app_id]['accepted_by'] = callback.message.chat.id
+    
+    # Добавляем участника в турнир
+    user_id = app_data.get('user_id')
+    tournaments[tournament_id]['participants'][str(user_id)] = {
+        'name': app_data.get('user_name'),
+        'phone': app_data.get('phone'),
+        'applied_at': app_data.get('applied_at'),
+        'accepted_at': datetime.now().isoformat(),
+        'accepted_by': callback.message.chat.id
+    }
+    
+    # Сохраняем изменения
+    await storage.save_tournaments(tournaments)
+    await storage.save_tournament_applications(applications)
+    
+    await safe_edit_message(
+        callback,
+        f"✅ Заявка принята!\n\n"
+        f"👤 Участник: {app_data.get('user_name')}\n"
+        f"📞 Телефон: {app_data.get('phone')}\n"
+        f"🎯 Турнир: {app_data.get('tournament_name')}\n\n"
+        f"Участник добавлен в турнир."
+    )
+    await callback.answer()
+
+# Меню отклонения заявки
+@admin_router.callback_query(F.data == "admin_reject_application_menu")
+async def reject_application_menu(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    applications = await storage.load_tournament_applications()
+    
+    if not applications:
+        await callback.answer("📋 Нет активных заявок")
+        return
+    
+    builder = InlineKeyboardBuilder()
+    for app_id, app_data in applications.items():
+        text = f"❌ {app_data.get('user_name', 'Неизвестно')} - {app_data.get('tournament_name', '')}"
+        builder.button(text=text, callback_data=f"admin_reject_application:{app_id}")
+    
+    builder.button(text="🔙 Назад", callback_data="admin_view_applications")
+    builder.adjust(1)
+    
+    await safe_edit_message(callback, "❌ Выберите заявку для отклонения:", builder.as_markup())
+    await callback.answer()
+
+# Обработчик отклонения заявки
+@admin_router.callback_query(F.data.startswith("admin_reject_application:"))
+async def reject_application_handler(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    app_id = callback.data.split(':')[1]
+    applications = await storage.load_tournament_applications()
+    
+    if app_id not in applications:
+        await callback.answer("❌ Заявка не найдена")
+        return
+    
+    app_data = applications[app_id]
+    
+    # Удаляем заявку
+    del applications[app_id]
+    await storage.save_tournament_applications(applications)
+    
+    await safe_edit_message(
+        callback,
+        f"❌ Заявка отклонена!\n\n"
+        f"👤 Участник: {app_data.get('user_name')}\n"
+        f"🎯 Турнир: {app_data.get('tournament_name')}\n\n"
+        f"Заявка удалена из системы."
+    )
+    await callback.answer()
+
+# Меню удаления турнира
+@admin_router.callback_query(F.data == "admin_delete_tournament_menu")
+async def delete_tournament_menu(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    tournaments = await storage.load_tournaments()
+    
+    if not tournaments:
+        await callback.answer("📋 Нет активных турниров")
+        return
+    
+    builder = InlineKeyboardBuilder()
+    for tournament_id, tournament_data in tournaments.items():
+        text = f"🗑️ {tournament_data.get('name', 'Без названия')} ({tournament_data.get('date', '')})"
+        builder.button(text=text, callback_data=f"admin_delete_tournament:{tournament_id}")
+    
+    builder.button(text="🔙 Назад", callback_data="admin_back_to_tournaments")
+    builder.adjust(1)
+    
+    await safe_edit_message(callback, "🗑️ Выберите турнир для удаления:", builder.as_markup())
+    await callback.answer()
+
+# Обработчик удаления турнира
+@admin_router.callback_query(F.data.startswith("admin_delete_tournament:"))
+async def delete_tournament_handler(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    tournament_id = callback.data.split(':')[1]
+    tournaments = await storage.load_tournaments()
+    
+    if tournament_id not in tournaments:
+        await callback.answer("❌ Турнир не найден")
+        return
+    
+    tournament_data = tournaments[tournament_id]
+    
+    # Создаем клавиатуру подтверждения
+    keyboard = await get_confirmation_keyboard("delete_tournament", tournament_id)
+    
+    await safe_edit_message(
+        callback,
+        f"⚠️ Вы уверены, что хотите удалить турнир?\n\n"
+        f"🎯 Название: {tournament_data.get('name', 'Без названия')}\n"
+        f"📅 Дата: {tournament_data.get('date', 'Неизвестно')}\n"
+        f"📍 Место: {tournament_data.get('location', 'Неизвестно')}\n"
+        f"👥 Участников: {len(tournament_data.get('participants', {}))}\n\n"
+        "Это действие удалит все данные о турнире!",
+        keyboard
+    )
+    await callback.answer()
+
+# Подтверждение удаления турнира
+@admin_router.callback_query(F.data.startswith("admin_confirm_delete_tournament:"))
+async def confirm_delete_tournament(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    tournament_id = callback.data.split(':')[1]
+    tournaments = await storage.load_tournaments()
+    
+    if tournament_id not in tournaments:
+        await callback.answer("❌ Турнир не найден")
+        return
+    
+    tournament_data = tournaments[tournament_id]
+    
+    # Удаляем турнир
+    del tournaments[tournament_id]
+    await storage.save_tournaments(tournaments)
+    
+    await safe_edit_message(
+        callback,
+        f"✅ Турнир удален!\n\n"
+        f"🎯 Название: {tournament_data.get('name', 'Без названия')}\n"
+        f"📅 Дата: {tournament_data.get('date', 'Неизвестно')}\n\n"
+        f"Все данные о турнире удалены из системы."
+    )
+    await callback.answer()
+
+# Кнопка назад к турнирам
+@admin_router.callback_query(F.data == "admin_back_to_tournaments")
+async def back_to_tournaments(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    tournaments = await storage.load_tournaments()
+    
+    if not tournaments:
+        await safe_edit_message(callback, "📋 Список турниров пуст.")
+        return
+    
+    text = "🏆 Активные турниры:\n\n"
+    for tournament_id, tournament_data in tournaments.items():
+        text += f"🎯 {tournament_data.get('name', 'Без названия')}\n"
+        text += f"📅 Дата: {tournament_data.get('date', 'Не указана')}\n"
+        text += f"📍 Место: {tournament_data.get('location', 'Не указано')}\n"
+        text += f"👥 Участников: {len(tournament_data.get('participants', {}))}\n"
+        text += f"🆔 ID: {tournament_id}\n"
+        text += "─" * 20 + "\n"
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📝 Создать турнир", callback_data="admin_create_tournament")
+    builder.button(text="👥 Просмотреть заявки", callback_data="admin_view_applications")
+    builder.button(text="🗑️ Удалить турнир", callback_data="admin_delete_tournament_menu")
+    builder.adjust(1)
+    
+    await safe_edit_message(callback, text, builder.as_markup())
+    await callback.answer()
+    
 # Команда для просмотра забаненных пользователей
 @admin_router.message(Command("banned_users"))
 async def banned_users_cmd(message: Message):
@@ -112,8 +486,41 @@ async def cancel_action(callback: CallbackQuery):
 def get_admin_keyboard():
     builder = InlineKeyboardBuilder()
     builder.button(text="🚫 Забаненные пользователи", callback_data="admin_banned_list")
+    builder.button(text="🏆 Турниры", callback_data="admin_tournaments")
     builder.adjust(1)
     return builder.as_markup()
+
+# Обработчик кнопки турниров в админской панели
+@admin_router.callback_query(F.data == "admin_tournaments")
+async def tournaments_handler(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    tournaments = await storage.load_tournaments()
+    
+    if not tournaments:
+        await safe_edit_message(callback, "📋 Список турниров пуст.")
+        return
+    
+    text = "🏆 Активные турниры:\n\n"
+    for tournament_id, tournament_data in tournaments.items():
+        text += f"🎯 {tournament_data.get('name', 'Без названия')}\n"
+        text += f"📅 Дата: {tournament_data.get('date', 'Не указана')}\n"
+        text += f"📍 Место: {tournament_data.get('location', 'Не указано')}\n"
+        text += f"👥 Участников: {len(tournament_data.get('participants', {}))}\n"
+        text += f"🆔 ID: {tournament_id}\n"
+        text += "─" * 20 + "\n"
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📝 Создать турнир", callback_data="admin_create_tournament")
+    builder.button(text="👥 Просмотреть заявки", callback_data="admin_view_applications")
+    builder.button(text="🗑️ Удалить турнир", callback_data="admin_delete_tournament_menu")
+    builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
+    builder.adjust(1)
+    
+    await safe_edit_message(callback, text, builder.as_markup())
+    await callback.answer()
 
 # Команда админской панели
 @admin_router.message(Command("admin"))

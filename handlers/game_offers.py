@@ -13,7 +13,7 @@ from utils.admin import is_admin
 from utils.bot import show_current_data
 from utils.game import get_user_games, save_user_game
 
-from config.profile import moscow_districts, game_types, payment_types, base_keyboard, cities_data
+from config.profile import WEEKDAYS, moscow_districts, game_types, payment_types, base_keyboard, cities_data
 from utils.validate import validate_time, validate_date
 
 router = Router()
@@ -301,9 +301,11 @@ async def offer_game_command(message: types.Message, state: FSMContext):
             if free_offers_used >= 2:
                 text = (
                     "🔒 <b>Доступ закрыт</b>\n\n"
-                    "Вы использовали все бесплатные предложения игры (максимум 2).\n\n"
+                    "Вы использовали все бесплатные предложения игры (максимум 1).\n\n"
                     "Функция предложения игры доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
                     f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
+                    "Также вы можете получить подписку бесплатно, пригласив 10 друзей.\n"
+                    "Ваша персональная ссылка для приглашений доступна в разделе «🔍Ещё → 🔗 Моя ссылка».\n\n"
                     "Перейдите в раздел '💳 Платежи' для оформления подписки."
                 )
                 
@@ -343,14 +345,33 @@ async def process_game_city(callback: types.CallbackQuery, state: FSMContext):
     city = callback.data.split("_", maxsplit=1)[1]
     await state.update_data(game_city=city)
 
-    today = datetime.now().strftime('%d.%m.%Y')
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime('%d.%m.%Y')
+    today = datetime.now()
 
-    buttons = [
-        [InlineKeyboardButton(text=f"📅 Сегодня ({today})", callback_data=f"gamedate_{today}")],
-        [InlineKeyboardButton(text=f"📅 Завтра ({tomorrow})", callback_data=f"gamedate_{tomorrow}")],
-        [InlineKeyboardButton(text="📝 Ввести дату вручную", callback_data="gamedate_manual")]
-    ]
+    # список кнопок на 7 дней вперёд
+    buttons = []
+    row = []
+
+    for i in range(7):
+        date = today + timedelta(days=i)
+        date_str = date.strftime("%d.%m")
+        weekday = WEEKDAYS[date.weekday()]
+        text = f"{weekday} ({date_str})"
+
+        row.append(InlineKeyboardButton(text=text, callback_data=f"gamedate_{date_str}"))
+
+        # если в ряду 3 кнопки — перенос строки
+        if len(row) == 3:
+            buttons.append(row)
+            row = []
+
+    # если остались кнопки (например, 7 не делится на 3)
+    if row:
+        buttons.append(row)
+
+    # добавляем кнопку для ручного ввода
+    buttons.append([InlineKeyboardButton(text="📝 Ввести дату вручную", callback_data="gamedate_manual")])
+
+
     await show_current_data(
         callback.message, state,
         "📅 Выберите дату игры:",
@@ -534,19 +555,18 @@ async def process_game_comment(message: types.Message, state: FSMContext):
     
     # Формируем информационное сообщение о созданной игре
     response = [
-        "✅ Предложение игры успешно создано!\n\n",
-        f"🎾 Предложение #{game_id}",
-        f"🏙 Город: {game_data.get('city', '—')}",
-        f"📅 Дата: {game_data.get('date', '—')}",
-        f"⏰ Время: {game_data.get('time', '—')}",
-        f"🔍 Тип: {game_data.get('type', '—')}",
-        f"💳 Оплата: {game_data.get('payment_type', '—')}",
-        f"🏆 На счет: {'Да' if game_data.get('competitive') else 'Нет'}",
-        f"🔄 Повтор: {'Да' if game_data.get('repeat') else 'Нет'}"
+        "✅ Предложение игры успешно создано!\n",
+        f"🎮 Игра #{game_id}",
+        f"🎾 {user_data.get('sport') or game_data.get('type', '—')}",
+        f"🏙 {game_data.get('city', '—')}",
+        f"📅 {game_data.get('date', '—')}",
+        f"⏰ {game_data.get('time', '—')}",
+        f"💳 {game_data.get('payment_type', '—')}",
+        f"🏆 На счет: {'Да' if game_data.get('competitive') else 'Нет'}"
     ]
     
     if game_data.get('comment'):
-        response.append(f"💬 Комментарий: {game_data['comment']}")
+        response.append(f"💬 {game_data['comment']}")
     
     # Добавляем информацию о статусе подписки
     users = await storage.load_users()
@@ -558,6 +578,8 @@ async def process_game_comment(message: types.Message, state: FSMContext):
         remaining_offers = max(0, 1 - free_offers_used)
         response.append(f"\n📊 Бесплатных предложений осталось: {remaining_offers}/1")
         response.append("💳 Оформите подписку для неограниченного создания предложений!")
+    else:
+        response.append("💎 У вас активна подписка — создавайте игры без ограничений!")
     
     await send_game_offer_to_channel(message.bot, game_data, str(message.chat.id), user_data)
     await message.answer("\n".join(response), reply_markup=base_keyboard)

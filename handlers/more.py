@@ -37,6 +37,9 @@ async def handle_more(message: types.Message):
         types.InlineKeyboardButton(text="👤 Моя анкета", callback_data="profile"),
         types.InlineKeyboardButton(text="Перейти на сайт", url="https://tennis-play.com/")
     )
+    builder.row(
+        types.InlineKeyboardButton(text="🔗 Моя ссылка", callback_data="invite_friend")
+    )
     
     await message.answer("Дополнительные опции:", reply_markup=builder.as_markup())
 
@@ -78,6 +81,8 @@ async def handle_all_players(callback: types.CallbackQuery, state: FSMContext):
                 "🔒 <b>Доступ закрыт</b>\n\n"
                 "Функция просмотра всех игроков доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
                 f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
+                "Также вы можете получить подписку бесплатно, пригласив 10 друзей.\n"
+                "Ваша персональная ссылка для приглашений доступна в разделе «🔍Ещё → 🔗 Моя ссылка».\n\n"
                 "Перейдите в раздел '💳 Платежи' для оформления подписки."
             )
             
@@ -224,6 +229,9 @@ async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
     builder.row(
         types.InlineKeyboardButton(text="👤 Моя анкета", callback_data="profile"),
         types.InlineKeyboardButton(text="Перейти на сайт", url="https://tennis-play.com/")
+    )
+    builder.row(
+        types.InlineKeyboardButton(text="🔗 Моя ссылка", callback_data="invite_friend")
     )
     
     await callback.message.edit_text("Дополнительные опции:", reply_markup=builder.as_markup())

@@ -8,6 +8,8 @@ BANNED_USERS_FILE = DATA_DIR / 'banned_users.json'
 PHOTOS_DIR = DATA_DIR / "user_photos"
 SESSIONS_DIR = DATA_DIR / "sessions"
 GAMES_PHOTOS_DIR = DATA_DIR / "games_photo"
+TOURNAMENTS_FILE = DATA_DIR / "tournaments.json"
+TOURNAMENT_APPLICATIONS_FILE = DATA_DIR / "tournament_applications.json"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
