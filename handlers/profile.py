@@ -269,7 +269,7 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
         if user_key in users:
             user_data = users[user_key]
             # Проверяем, редактировал ли пользователь уровень ранее
-            if user_data.get('level_edited', False):
+            if user_data.get('rating_edited', False):
                 await callback.message.answer("📊 Ваш уровень рассчитывается автоматически на основе игр и не может быть изменен вручную.")
             else:
                 await callback.message.answer("📊 Введите ваш уровень (количество очков):")
@@ -432,8 +432,8 @@ async def save_level_edit(message: types.Message, state: FSMContext):
                 await message.answer("❌ Уровень не может быть отрицательным. Попробуйте еще раз:")
                 return
             
-            users[user_key]['level'] = level
-            users[user_key]['level_edited'] = True  # Помечаем, что пользователь редактировал уровень
+            users[user_key]['rating_points'] = level
+            users[user_key]['rating_edited'] = True  # Помечаем, что пользователь редактировал уровень
             await storage.save_users(users)
             
             await message.answer("✅ Уровень обновлен!")
@@ -484,12 +484,12 @@ async def ask_for_city(message: types.Message, state: FSMContext, country: str, 
     country = data.get('country', country)
     
     if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
         buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"edit_city_{city}")] for city in main_russian_cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="edit_other_city")])
     else:
         cities = cities_data.get(country, [])
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"edit_city_{city}")] for city in cities[:5]]
+        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"edit_city_{city}")] for city in cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="edit_other_city")])
 
     await message.edit_text(

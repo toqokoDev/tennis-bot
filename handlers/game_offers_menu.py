@@ -6,12 +6,12 @@ from aiogram.types import (
     InlineKeyboardButton
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config.config import ITEMS_PER_PAGE
+from config.config import ITEMS_PER_PAGE, SUBSCRIPTION_PRICE
 from config.profile import sport_type
 from services.storage import storage
 from utils.admin import is_admin
 from models.states import BrowseOffersStates, RespondToOfferStates
-from utils.utils import create_user_profile_link, get_sort_key, get_weekday_short
+from utils.utils import create_user_profile_link, get_sort_key
 
 router = Router()
 
@@ -20,13 +20,12 @@ async def browse_offers_start(message: types.Message, state: FSMContext):
     """Начало просмотра предложенных игр - выбор вида спорта"""
     # Создаем клавиатуру с видами спорта
     buttons = []
-    for sport in sport_type:
-        buttons.append([
-            InlineKeyboardButton(
-                text=sport,
-                callback_data=f"offersport_{sport}"
-            )
-        ])
+    row = []
+    for i, sport in enumerate(sport_type):
+        row.append(InlineKeyboardButton(text=sport, callback_data=f"sport_{sport}"))
+        if (i + 1) % 2 == 0 or i == len(sport_type) - 1:
+            buttons.append(row)
+            row = []
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
@@ -49,10 +48,6 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
     # Собираем статистику по странам (исключая текущего пользователя) для выбранного вида спорта
     country_stats = {}
     for user_id, user_data in users.items():
-        # Пропускаем текущего пользователя
-        if user_id == current_user_id:
-            continue
-            
         if user_data.get('games'):
             country = user_data.get('country', '')
             if country:
@@ -82,6 +77,10 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
         ])
     
     # Добавляем кнопку возврата
+    buttons.append([
+        InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer")
+    ])
+
     buttons.append([
         InlineKeyboardButton(text="🔙 Назад к выбору спорта", callback_data="back_to_sport_selection")
     ])
@@ -115,7 +114,7 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
             city = user_data.get('city', '')
             if city:
                 active_games = [game for game in user_data['games'] 
-                               if game.get('active', True) and user_data.get('sport') == sport_type_selected and user_id != callback.message.chat.id]
+                               if game.get('active', True) and user_data.get('sport') == sport_type_selected]
                 if active_games:
                     city_stats[city] = city_stats.get(city, 0) + len(active_games)
     
@@ -138,6 +137,9 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
             )
         ])
     
+    buttons.append([
+        InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer")
+    ])
     # Добавляем кнопку возврата
     buttons.append([
         InlineKeyboardButton(text="🔙 Назад к выбору страны", callback_data="back_to_country_selection")
@@ -443,10 +445,6 @@ async def back_to_country_selection(callback: types.CallbackQuery, state: FSMCon
     # Собираем статистику по странам (исключая текущего пользователя) для выбранного вида спорта
     country_stats = {}
     for user_id, user_data in users.items():
-        # Пропускаем текущего пользователя
-        if user_id == current_user_id:
-            continue
-            
         if user_data.get('games'):
             country = user_data.get('country', '')
             if country:

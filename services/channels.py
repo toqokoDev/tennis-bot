@@ -173,7 +173,7 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
         sport = user_data.get('sport', 'Не указан')
         
         offer_text = (
-            f"🎾 <b>Предложение игры</b>\n\n"
+            f"🎾 *Предложение игры*\n\n"
             f"👤 {profile_link}\n"
             f"📍 {game_data.get('city', '—')}\n"
             f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
@@ -199,14 +199,14 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
                 chat_id=channel_id,
                 photo=FSInputFile(BASE_DIR / photo_path),
                 caption=offer_text,
-                parse_mode="HTML"
+                parse_mode="Markdown"
             )
         else:
             # если фото нет — обычное сообщение
             await bot.send_message(
                 chat_id=channel_id,
                 text=offer_text,
-                parse_mode="HTML"
+                parse_mode="Markdown"
             )
         
     except Exception as e:

@@ -8,13 +8,13 @@ from aiogram.types import (
 
 router = Router()
 
-@router.callback_query(F.data == "invite_friend")
-async def handle_inline_invite_friend(callback: types.CallbackQuery):
+@router.message(F.text == "🔗 Пригласить друга")
+async def invite_friend(message: types.Message):
     """Обработчик inline кнопки 'Пригласить друга'"""
-    user_id = str(callback.message.chat.id)
+    user_id = str(message.chat.id)
     
     if not await storage.is_user_registered(user_id):
-        await callback.answer("❌ Вы еще не зарегистрированы. Введите /start для регистрации.")
+        await message.answer("❌ Вы еще не зарегистрированы. Введите /start для регистрации.")
         return
     
     # Получаем информацию о пользователе
@@ -39,13 +39,13 @@ async def handle_inline_invite_friend(callback: types.CallbackQuery):
     )
     
     buttons = [
-        [InlineKeyboardButton(text="📤 Поделиться ссылкой", switch_inline_query=f"Присоединяйся к теннисному сообществу!\n\n{referral_link}")],
+        [InlineKeyboardButton(text="📤 Поделиться ссылкой", switch_inline_query=f"Присоединяйся к сообществу по теннису и другим видам спорта!\n\n{referral_link}")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]
     ]
     
-    await callback.message.edit_text(
+    await message.edit_text(
         text,
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
-    await callback.answer()
+    await message.answer()

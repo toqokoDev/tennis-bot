@@ -118,7 +118,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "   🏃‍♂️ Бегу\n"
         "   🏋️‍♀️ Фитнесу\n"
         "   🚴 Велоспорту\n"
-        "   🍻 По пиву 😉\n"
+        "   🍻 По пиву\n"
         "   🍒 Знакомствам\n\n"
         "• Предлагать и находить предложения игр в определенное время и месте.\n"
         "• Участвовать в многодневных турнирах в вашем городе и на вашем корте.\n"
@@ -283,10 +283,7 @@ async def process_city_input(message: Message, state: FSMContext):
 
 async def ask_for_city(message: types.Message, state: FSMContext, country: str):
     if country == "Россия":
-        main_russian_cities = [
-            "Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург",
-            "Казань", "Красноярск", "Нижний Новгород", "Сочи", "Ростов-на-Дону"
-        ]
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
         buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"city_{city}")] for city in main_russian_cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="other_city")])
     else:
@@ -617,10 +614,7 @@ async def process_vacation_city_input(message: Message, state: FSMContext):
 
 async def ask_for_vacation_city(message: types.Message, state: FSMContext, country: str):
     if country == "Россия":
-        main_russian_cities = [
-            "Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург",
-            "Казань", "Красноярск", "Нижний Новгород", "Сочи", "Ростов-на-Дону"
-        ]
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
         buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in main_russian_cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="vacation_other_city")])
     else:

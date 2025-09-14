@@ -37,9 +37,6 @@ async def handle_more(message: types.Message):
         types.InlineKeyboardButton(text="👤 Моя анкета", callback_data="profile"),
         types.InlineKeyboardButton(text="Перейти на сайт", url="https://tennis-play.com/")
     )
-    builder.row(
-        types.InlineKeyboardButton(text="🔗 Моя ссылка", callback_data="invite_friend")
-    )
     
     await message.answer("Дополнительные опции:", reply_markup=builder.as_markup())
 
@@ -82,7 +79,7 @@ async def handle_all_players(callback: types.CallbackQuery, state: FSMContext):
                 "Функция просмотра всех игроков доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
                 f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
                 "Также вы можете получить подписку бесплатно, пригласив 10 друзей.\n"
-                "Ваша персональная ссылка для приглашений доступна в разделе «🔍Ещё → 🔗 Моя ссылка».\n\n"
+                "Ваша персональная ссылка для приглашений доступна в разделе «🔗 Пригласить друга».\n\n"
                 "Перейдите в раздел '💳 Платежи' для оформления подписки."
             )
             
@@ -142,7 +139,7 @@ async def process_search_country(callback: types.CallbackQuery, state: FSMContex
     search_type = data.get('search_type')
     
     if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринburg", "Казань"]
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
         buttons = []
         for city in main_russian_cities:
             count = await count_users_by_location(search_type, country, city)
@@ -163,7 +160,7 @@ async def process_search_country(callback: types.CallbackQuery, state: FSMContex
     else:
         cities = cities_data.get(country, [])
         buttons = []
-        for city in cities[:5]:
+        for city in cities:
             count = await count_users_by_location(search_type, country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"{city} ({count})", 
@@ -171,7 +168,7 @@ async def process_search_country(callback: types.CallbackQuery, state: FSMContex
             )])
 
         counts = []
-        for c in cities[:5]:
+        for c in cities:
             counts.append(await count_users_by_location(search_type, country, c))
 
         count_other = await count_users_by_location(search_type, country) - sum(counts)
@@ -229,9 +226,6 @@ async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
     builder.row(
         types.InlineKeyboardButton(text="👤 Моя анкета", callback_data="profile"),
         types.InlineKeyboardButton(text="Перейти на сайт", url="https://tennis-play.com/")
-    )
-    builder.row(
-        types.InlineKeyboardButton(text="🔗 Моя ссылка", callback_data="invite_friend")
     )
     
     await callback.message.edit_text("Дополнительные опции:", reply_markup=builder.as_markup())
@@ -736,7 +730,7 @@ async def handle_back_to_cities(callback: types.CallbackQuery, state: FSMContext
     search_type = data.get('search_type')
     
     if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
         buttons = []
         for city in main_russian_cities:
             count = await count_users_by_location(search_type, country, city)
@@ -757,7 +751,7 @@ async def handle_back_to_cities(callback: types.CallbackQuery, state: FSMContext
     else:
         cities = cities_data.get(country, [])
         buttons = []
-        for city in cities[:5]:
+        for city in cities:
             count = await count_users_by_location(search_type, country, city)
             buttons.append([InlineKeyboardButton(
                 text=f"🏙 {city} ({count})", 
@@ -765,7 +759,7 @@ async def handle_back_to_cities(callback: types.CallbackQuery, state: FSMContext
             )])
         
         counts = []
-        for c in cities[:5]:
+        for c in cities:
             counts.append(await count_users_by_location(search_type, country, c))
 
         count_other = await count_users_by_location(search_type, country) - sum(counts)
