@@ -50,6 +50,10 @@ async def admin_edit_profile_handler(callback: types.CallbackQuery, state: FSMCo
                 InlineKeyboardButton(text="🎭 Роль", callback_data="adminUserProfile_edit_role")
             ],
             [
+                InlineKeyboardButton(text="💰 Стоимость", callback_data="adminUserProfile_edit_price"),
+                InlineKeyboardButton(text="📊 Уровень", callback_data="adminUserProfile_edit_level")
+            ],
+            [
                 InlineKeyboardButton(text="🔙 Назад", callback_data="admin_edit_profile")
             ]
         ]
@@ -142,6 +146,44 @@ async def admin_edit_field_handler(callback: types.CallbackQuery, state: FSMCont
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.answer("🎭 Выберите роль:", reply_markup=keyboard)
         await state.set_state(AdminEditProfileStates.ROLE)
+    elif field == "price":
+        # Запрос стоимости тренировки
+        data = await state.get_data()
+        user_id = data.get('admin_edit_user_id')
+        
+        if not user_id:
+            await callback.message.answer("❌ Пользователь не выбран")
+            return
+        
+        users = await storage.load_users()
+        if user_id in users:
+            current_price = users[user_id].get('price', 'Не указана')
+            await callback.message.answer(f"💰 Текущая стоимость: {current_price} руб.\nВведите новую стоимость тренировки (в рублях):")
+            await state.set_state(AdminEditProfileStates.TRAINER_PRICE)
+        else:
+            await callback.message.answer("❌ Профиль не найден")
+    elif field == "level":
+        # Запрос уровня
+        data = await state.get_data()
+        user_id = data.get('admin_edit_user_id')
+        
+        if not user_id:
+            await callback.message.answer("❌ Пользователь не выбран")
+            return
+        
+        users = await storage.load_users()
+        if user_id in users:
+            current_level = users[user_id].get('level', 'Не указан')
+            level_edited = users[user_id].get('level_edited', False)
+            
+            if level_edited:
+                await callback.message.answer(f"📊 Текущий уровень: {current_level}\n⚠️ Пользователь уже редактировал уровень вручную.\nВведите новый уровень (количество очков):")
+            else:
+                await callback.message.answer(f"📊 Текущий уровень: {current_level}\nВведите новый уровень (количество очков):")
+            
+            await state.set_state(AdminEditProfileStates.LEVEL)
+        else:
+            await callback.message.answer("❌ Профиль не найден")
     
     await callback.answer()
 
@@ -149,7 +191,7 @@ async def admin_edit_field_handler(callback: types.CallbackQuery, state: FSMCont
 @admin_edit_router.message(AdminEditProfileStates.COMMENT, F.text)
 async def admin_save_comment_edit(message: types.Message, state: FSMContext):
     if not await is_admin(message.from_user.id):
-        await message.answer("❌ Нет прав администратора")
+        await message.answer("❌ Н�т прав администратора")
         await state.clear()
         return
     
@@ -261,7 +303,7 @@ async def admin_save_role_edit(callback: types.CallbackQuery, state: FSMContext)
             # Если меняем на игрока или роль не меняется
             users[user_id]['role'] = role
             if role == "Игрок":
-                users[user_id]['price'] = 0  # Сбрасываем цену для игроков
+                users[user_id]['price'] = None  # Сбрасываем цену для игроков
             
             await storage.save_users(users)
             await callback.message.edit_text("✅ Роль обновлена!")
@@ -306,6 +348,45 @@ async def admin_save_trainer_price(message: types.Message, state: FSMContext):
         await storage.save_users(users)
         
         await message.answer("✅ Роль и цена тренировки обновлены!")
+        await show_profile(message, users[user_id])
+    else:
+        await message.answer("❌ Профиль не найден")
+    
+    await state.clear()
+
+# Обработчик для сохранения уровня
+@admin_edit_router.message(AdminEditProfileStates.LEVEL, F.text)
+async def admin_save_level_edit(message: types.Message, state: FSMContext):
+    if not await is_admin(message.from_user.id):
+        await message.answer("❌ Нет прав администратора")
+        await state.clear()
+        return
+    
+    data = await state.get_data()
+    user_id = data.get('admin_edit_user_id')
+    
+    if not user_id:
+        await message.answer("❌ Пользователь не выбран")
+        await state.clear()
+        return
+    
+    try:
+        level = int(message.text.strip())
+        if level < 0:
+            await message.answer("❌ Уровень не может быть отрицательным. Попробуйте еще раз:")
+            return
+    except ValueError:
+        await message.answer("❌ Пожалуйста, введите корректное число для уровня:")
+        return
+    
+    users = await storage.load_users()
+    
+    if user_id in users:
+        users[user_id]['level'] = level
+        users[user_id]['level_edited'] = True  # Помечаем, что уровень был отредактирован
+        await storage.save_users(users)
+        
+        await message.answer("✅ Уровень обновлен!")
         await show_profile(message, users[user_id])
     else:
         await message.answer("❌ Профиль не найден")
@@ -383,10 +464,16 @@ async def admin_ask_for_city(message: types.Message, state: FSMContext, country:
         buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"adminProfile_edit_city_{city}")] for city in cities[:5]]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="adminProfile_edit_other_city")])
 
-    await message.edit_text(
-        f"🏙 Выберите город в стране: {country}",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
+    try:
+        await message.edit_text(
+            f"🏙 Выберите город в стране: {country}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+    except:
+        await message.answer(
+            f"🏙 Выберите город в стране: {country}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
     await state.set_state(AdminEditProfileStates.CITY)
 
 @admin_edit_router.callback_query(AdminEditProfileStates.CITY, F.data.startswith("adminProfile_edit_city_"))

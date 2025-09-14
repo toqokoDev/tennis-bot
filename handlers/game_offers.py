@@ -555,19 +555,18 @@ async def process_game_comment(message: types.Message, state: FSMContext):
     
     # Формируем информационное сообщение о созданной игре
     response = [
-        "✅ Предложение игры успешно создано!\n\n",
-        f"🎾 Предложение #{game_id}",
-        f"🏙 Город: {game_data.get('city', '—')}",
-        f"📅 Дата: {game_data.get('date', '—')}",
-        f"⏰ Время: {game_data.get('time', '—')}",
-        f"🔍 Тип: {game_data.get('type', '—')}",
-        f"💳 Оплата: {game_data.get('payment_type', '—')}",
-        f"🏆 На счет: {'Да' if game_data.get('competitive') else 'Нет'}",
-        f"🔄 Повтор: {'Да' if game_data.get('repeat') else 'Нет'}"
+        "✅ Предложение игры успешно создано!\n",
+        f"🎮 Игра #{game_id}",
+        f"🎾 {user_data.get('sport') or game_data.get('type', '—')}",
+        f"🏙 {game_data.get('city', '—')}",
+        f"📅 {game_data.get('date', '—')}",
+        f"⏰ {game_data.get('time', '—')}",
+        f"💳 {game_data.get('payment_type', '—')}",
+        f"🏆 На счет: {'Да' if game_data.get('competitive') else 'Нет'}"
     ]
     
     if game_data.get('comment'):
-        response.append(f"💬 Комментарий: {game_data['comment']}")
+        response.append(f"💬 {game_data['comment']}")
     
     # Добавляем информацию о статусе подписки
     users = await storage.load_users()
@@ -579,6 +578,8 @@ async def process_game_comment(message: types.Message, state: FSMContext):
         remaining_offers = max(0, 1 - free_offers_used)
         response.append(f"\n📊 Бесплатных предложений осталось: {remaining_offers}/1")
         response.append("💳 Оформите подписку для неограниченного создания предложений!")
+    else:
+        response.append("💎 У вас активна подписка — создавайте игры без ограничений!")
     
     await send_game_offer_to_channel(message.bot, game_data, str(message.chat.id), user_data)
     await message.answer("\n".join(response), reply_markup=base_keyboard)

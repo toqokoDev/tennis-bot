@@ -1,8 +1,86 @@
 from datetime import datetime
-from typing import List
+from typing import List, Dict, Tuple
+from collections import defaultdict
 
 from config.config import BOT_USERNAME
 from services.storage import storage
+
+async def get_users_by_location(search_type=None, country=None, city=None, sport_type=None, 
+                               exclude_user_id=None, limit=20) -> Dict[str, int]:
+    """
+    Получение реальных местоположений пользователей с количеством пользователей в каждом.
+    Возвращает словарь: {местоположение: количество_пользователей}
+    """
+    users = await storage.load_users()
+    location_counts = defaultdict(int)
+    
+    for user_id, profile in users.items():
+        # Исключаем текущего пользователя
+        if exclude_user_id and str(user_id) == str(exclude_user_id):
+            continue
+            
+        if not profile.get('show_in_search', True):
+            continue
+            
+        # Фильтр по типу поиска
+        if search_type == "coaches" and profile.get('role') != "Тренер":
+            continue
+        elif search_type == "players" and profile.get('role') != "Игрок":
+            continue
+        elif search_type == "partner" and profile.get('role') != "Игрок":
+            continue
+            
+        # Фильтр по стране
+        if country and profile.get('country') != country:
+            continue
+            
+        # Фильтр по городу (если указана страна и мы ищем города)
+        if country and city is None:
+            # Для подсчета городов в стране
+            user_city = profile.get('city')
+            if user_city:
+                location_counts[user_city] += 1
+            continue
+            
+        # Фильтр по городу (если указан конкретный город)
+        if city and profile.get('city') != city:
+            continue
+            
+        # Фильтр по виду спорта (только для партнера)
+        if search_type == "partner" and sport_type and profile.get('sport') != sport_type:
+            continue
+            
+        # Если не указана страна - считаем страны
+        if country is None:
+            user_country = profile.get('country')
+            if user_country:
+                location_counts[user_country] += 1
+        # Если указана страна, но не указан город - считаем города
+        elif country and city is None:
+            user_city = profile.get('city')
+            if user_city:
+                location_counts[user_city] += 1
+        # Если указаны и страна и город - считаем пользователей
+        else:
+            location_counts["users"] += 1
+    
+    # Сортируем по количеству пользователей (по убыванию) и ограничиваем лимитом
+    sorted_locations = dict(sorted(
+        location_counts.items(), 
+        key=lambda x: x[1], 
+        reverse=True
+    ))
+    
+    # Применяем лимит
+    if limit:
+        limited_locations = {}
+        for i, (location, count) in enumerate(sorted_locations.items()):
+            if i >= limit:
+                break
+            limited_locations[location] = count
+        return limited_locations
+    
+    return sorted_locations
 
 async def count_users_by_location(search_type=None, country=None, city=None, sport_type=None, exclude_user_id=None):
     """Подсчет пользователей по локации"""

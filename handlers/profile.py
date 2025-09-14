@@ -38,7 +38,12 @@ async def edit_profile_handler(callback: types.CallbackQuery, state: FSMContext)
                 InlineKeyboardButton(text="🌍 Страна/Город", callback_data="1edit_location")
             ],
             [
-                InlineKeyboardButton(text="🎾 Вид спорта", callback_data="1edit_sport")
+                InlineKeyboardButton(text="🎾 Вид спорта", callback_data="1edit_sport"),
+                InlineKeyboardButton(text="👤 Роль", callback_data="1edit_role")
+            ],
+            [
+                InlineKeyboardButton(text="💰 Стоимость", callback_data="1edit_price"),
+                InlineKeyboardButton(text="📊 Уровень", callback_data="1edit_level")
             ],
             [
                 InlineKeyboardButton(text="🗑️ Удалить профиль", callback_data="1delete_profile")
@@ -153,7 +158,12 @@ async def cancel_delete_handler(callback: types.CallbackQuery):
                     InlineKeyboardButton(text="🌍 Страна/Город", callback_data="1edit_location")
                 ],
                 [
-                    InlineKeyboardButton(text="🎾 Вид спорта", callback_data="1edit_sport")
+                    InlineKeyboardButton(text="🎾 Вид спорта", callback_data="1edit_sport"),
+                    InlineKeyboardButton(text="👤 Роль", callback_data="1edit_role")
+                ],
+                [
+                    InlineKeyboardButton(text="💰 Стоимость", callback_data="1edit_price"),
+                    InlineKeyboardButton(text="📊 Уровень", callback_data="1edit_level")
                 ],
                 [
                     InlineKeyboardButton(text="🗑️ Удалить профиль", callback_data="1delete_profile")
@@ -228,6 +238,44 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.answer("🎾 Выберите вид спорта:", reply_markup=keyboard)
         await state.set_state(EditProfileStates.SPORT)
+    elif field == "role":
+        # Клавиатура для выбора роли
+        buttons = [
+            [InlineKeyboardButton(text="🎾 Игрок", callback_data="edit_role_Игрок")],
+            [InlineKeyboardButton(text="👨‍🏫 Тренер", callback_data="edit_role_Тренер")]
+        ]
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await callback.message.answer("👤 Выберите вашу роль:", reply_markup=keyboard)
+        await state.set_state(EditProfileStates.ROLE)
+    elif field == "price":
+        if user_key not in users:
+            await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+            await callback.answer()
+            return
+
+        role = users[user_key].get('role')
+        if role != "Тренер":
+            await callback.message.answer("❌ Стоимость доступна только для тренеров.")
+            await callback.answer()
+            return
+
+        await callback.message.answer("💰 Введите стоимость тренировки (в рублях):")
+        await state.set_state(EditProfileStates.PRICE)
+    elif field == "level":
+        # Проверяем, можно ли пользователю редактировать уровень
+        users = await storage.load_users()
+        user_key = str(callback.message.chat.id)
+        
+        if user_key in users:
+            user_data = users[user_key]
+            # Проверяем, редактировал ли пользователь уровень ранее
+            if user_data.get('level_edited', False):
+                await callback.message.answer("📊 Ваш уровень рассчитывается автоматически на основе игр и не может быть изменен вручную.")
+            else:
+                await callback.message.answer("📊 Введите ваш уровень (количество очков):")
+                await state.set_state(EditProfileStates.LEVEL)
+        else:
+            await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
     
     await callback.answer()
 
@@ -296,6 +344,107 @@ async def save_sport_edit(callback: types.CallbackQuery, state: FSMContext):
     
     await state.clear()
     await callback.answer()
+
+# Обработчик для сохранения роли
+@router.callback_query(EditProfileStates.ROLE, F.data.startswith("edit_role_"))
+async def save_role_edit(callback: types.CallbackQuery, state: FSMContext):
+    role = callback.data.split("_", 2)[2]
+    users = await storage.load_users()
+    user_key = str(callback.message.chat.id)
+    
+    if user_key in users:
+        users[user_key]['role'] = role
+        
+        # Если выбрана роль "Игрок" — удаляем стоимость
+        if role == "Игрок":
+            users[user_key].pop('price', None)
+            await storage.save_users(users)
+            
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            
+            await callback.message.answer("✅ Роль обновлена! (Стоимость для игроков недоступна)")
+            await show_profile(callback.message, users[user_key])
+            await state.clear()
+            await callback.answer()
+            return
+        
+        # Если выбрана роль "Тренер" — сразу спрашиваем стоимость
+        elif role == "Тренер":
+            await storage.save_users(users)
+            
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            
+            await callback.message.answer("✅ Роль обновлена!\n\n💰 Теперь введите стоимость тренировки (в рублях):")
+            await state.set_state(EditProfileStates.PRICE)
+            await callback.answer()
+            return
+    
+    else:
+        await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+    
+    await state.clear()
+    await callback.answer()
+
+# Обработчик для сохранения стоимости тренировки
+@router.message(EditProfileStates.PRICE, F.text)
+async def save_price_edit(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    users = await storage.load_users()
+    user_key = str(user_id)
+    
+    if user_key in users:
+        try:
+            price = int(message.text.strip())
+            if price < 0:
+                await message.answer("❌ Стоимость не может быть отрицательной. Попробуйте еще раз:")
+                return
+            
+            users[user_key]['price'] = price
+            await storage.save_users(users)
+            
+            await message.answer("✅ Стоимость тренировки обновлена!")
+            await show_profile(message, users[user_key])
+        except ValueError:
+            await message.answer("❌ Пожалуйста, введите корректное число для стоимости:")
+            return
+    else:
+        await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+    
+    await state.clear()
+
+# Обработчик для сохранения уровня
+@router.message(EditProfileStates.LEVEL, F.text)
+async def save_level_edit(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    users = await storage.load_users()
+    user_key = str(user_id)
+    
+    if user_key in users:
+        try:
+            level = int(message.text.strip())
+            if level < 0:
+                await message.answer("❌ Уровень не может быть отрицательным. Попробуйте еще раз:")
+                return
+            
+            users[user_key]['level'] = level
+            users[user_key]['level_edited'] = True  # Помечаем, что пользователь редактировал уровень
+            await storage.save_users(users)
+            
+            await message.answer("✅ Уровень обновлен!")
+            await show_profile(message, users[user_key])
+        except ValueError:
+            await message.answer("❌ Пожалуйста, введите корректное число для уровня:")
+            return
+    else:
+        await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+    
+    await state.clear()
 
 # Обработчики для редактирования местоположения
 @router.callback_query(EditProfileStates.COUNTRY, F.data.startswith("edit_country_"))

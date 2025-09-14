@@ -219,7 +219,7 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         sport = user_data.get('sport', 'Не указан')
         
         tour_text = (
-            f"✈️ *Теннисный тур*\n\n"
+            f"✈️ <b>Теннисный тур</b>\n\n"
             f"👤 {profile_link}\n"
             f"📍 {user_data.get('city', '—')}, {user_data.get('country', '—')}\n"
             f"📅 {user_data.get('vacation_start')} - {user_data.get('vacation_end')}\n\n"
@@ -231,13 +231,6 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         else:
             tour_text += " \n\n#тур"
             
-        await bot.send_message(
-            chat_id=tour_channel_id,
-            text=tour_text,
-            parse_mode="Markdown",
-            disable_web_page_preview=True
-        )
-
         photo_path = user_data.get("photo_path")
 
         if photo_path:
@@ -260,3 +253,56 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         
     except Exception as e:
         print(f"Ошибка при отправке тура в канал: {e}")
+
+async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]):
+    """Отправляет анкету пользователя в канал (для регистрации)"""
+    try:
+        city = user_data.get('city', '—')
+        district = user_data.get('district', '')
+        if district:
+            city = f"{city} - {district}"
+            
+        username_text = "\n"
+        if user_data.get('username'):
+            username_text = f"✉️ @{user_data.get('username')}\n\n"
+        
+        role = user_data.get('role', 'Игрок')
+        channel_id = channels_id[user_data.get('sport')]
+
+        # Разное оформление для тренеров и игроков
+        if role == "Тренер":
+            profile_text = (
+                "👨‍🏫 <b>Новый тренер присоединился к платформе!</b>\n\n"
+                f"🏆 {await create_user_profile_link(user_data, user_id)}\n"
+                f"💰 {user_data.get('price', 0)} руб./тренировка\n"
+                f"📍 {city} ({user_data.get('country', '')})\n"
+                f"{username_text}"
+                f"#тренер"
+            )
+        else:
+            profile_text = (
+                "🎾 <b>Новый игрок присоединился к сообществу!</b>\n\n"
+                f"👤 {await create_user_profile_link(user_data, user_id)}\n" 
+                f"💪 {user_data.get('player_level', 'Не указан')} уровень игры\n"
+                f"📍 {city} ({user_data.get('country', '')})\n"
+                f"{username_text}"
+                f"#игрок"
+            )
+        
+        photo_path = user_data.get("photo_path")
+
+        if photo_path:
+            await bot.send_photo(
+                chat_id=channel_id,
+                photo=FSInputFile(BASE_DIR / photo_path),
+                caption=profile_text,
+                parse_mode="HTML"
+            )
+        else:
+            await bot.send_message(
+                chat_id=channel_id,
+                text=profile_text,
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        print(f"Ошибка отправки анкеты пользователя: {e}")

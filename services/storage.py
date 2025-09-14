@@ -89,6 +89,11 @@ class AsyncJSONStorage:
             if user_id_str not in users:
                 users[user_id_str] = {}
             users[user_id_str][field] = value
+
+    async def update_user(self, user_id: str, updates: dict) -> None:
+        async with self._transaction(self.config.users_file, {}) as users:
+            if user_id in users:
+                users[user_id].update(updates)
     
     # Games methods
     async def load_games(self) -> List[Any]:

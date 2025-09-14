@@ -38,7 +38,7 @@ async def handle_more(message: types.Message):
         types.InlineKeyboardButton(text="Перейти на сайт", url="https://tennis-play.com/")
     )
     builder.row(
-        types.InlineKeyboardButton(text="🔗 Моя ссылка", callback_data="user_invite_link")
+        types.InlineKeyboardButton(text="🔗 Моя ссылка", callback_data="invite_friend")
     )
     
     await message.answer("Дополнительные опции:", reply_markup=builder.as_markup())
@@ -229,6 +229,9 @@ async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
     builder.row(
         types.InlineKeyboardButton(text="👤 Моя анкета", callback_data="profile"),
         types.InlineKeyboardButton(text="Перейти на сайт", url="https://tennis-play.com/")
+    )
+    builder.row(
+        types.InlineKeyboardButton(text="🔗 Моя ссылка", callback_data="invite_friend")
     )
     
     await callback.message.edit_text("Дополнительные опции:", reply_markup=builder.as_markup())
