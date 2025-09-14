@@ -19,7 +19,8 @@ async def send_registration_notification(message: types.Message, profile: dict):
             username_text = f"✉️ @{profile.get('username')}\n\n"
         
         role = profile.get('role', 'Игрок')
-        channel_id = channels_id[profile.get('sport')]
+        sport = profile.get('sport', '🎾Большой теннис')
+        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
 
         # Разное оформление для тренеров и игроков
         if role == "Тренер":
@@ -63,7 +64,8 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
     game_type = data.get('game_type')
     score = data.get('score')
 
-    channel_id = channels_id[users.get(user_id).get('sport')]
+    sport = users.get(user_id, {}).get('sport', '🎾Большой теннис')
+    channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
 
     game_text = ""
     media_group = []
@@ -169,27 +171,78 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
 async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_id: str, user_data: Dict[str, Any]):
     """Отправляет предложение игры в телеграм-канал"""
     try:
+        from config.profile import get_sport_config
+        
         profile_link = await create_user_profile_link(user_data, user_id)
-        sport = user_data.get('sport', 'Не указан')
+        sport = game_data.get('sport', user_data.get('sport', 'Не указан'))
         
-        offer_text = (
-            f"🎾 *Предложение игры*\n\n"
-            f"👤 {profile_link}\n"
-            f"📍 {game_data.get('city', '—')}\n"
-            f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
-            f"{sport} • {game_data.get('type', '—')}\n"
-            f"💳 {game_data.get('payment_type', '—')}"
-        )
+        # Получаем конфигурацию для вида спорта
+        config = get_sport_config(sport)
+        category = config.get("category", "court_sport")
         
-        if game_data.get('competitive'):
-            offer_text += f"\n🏆 На счет"
+        # Формируем текст в зависимости от категории
+        if category == "dating":
+            # Для знакомств
+            offer_text = (
+                f"💕 *Анкета для знакомств*\n\n"
+                f"👤 {profile_link}\n"
+                f"📍 {game_data.get('city', '—')}\n"
+            )
+        elif category == "meeting":
+            # Для встреч
+            if sport == "☕️Бизнес-завтрак":
+                offer_text = (
+                    f"☕️ *Предложение бизнес-завтрака*\n\n"
+                    f"👤 {profile_link}\n"
+                    f"📍 {game_data.get('city', '—')}\n"
+                    f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
+                )
+            else:  # По пиву
+                offer_text = (
+                    f"🍻 *Предложение встречи за пивом*\n\n"
+                    f"👤 {profile_link}\n"
+                    f"📍 {game_data.get('city', '—')}\n"
+                    f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
+                )
+        elif category == "outdoor_sport":
+            # Для активных видов спорта
+            offer_text = (
+                f"🏃 *Предложение активности*\n\n"
+                f"👤 {profile_link}\n"
+                f"📍 {game_data.get('city', '—')}\n"
+                f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
+                f"🎯 {sport}\n"
+            )
+        else:  # court_sport
+            # Для спортивных видов с кортами
+            offer_text = (
+                f"🎾 *Предложение игры*\n\n"
+                f"👤 {profile_link}\n"
+                f"📍 {game_data.get('city', '—')}\n"
+                f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
+                f"🎯 {sport} • {game_data.get('type', '—')}\n"
+                f"💳 {game_data.get('payment_type', '—')}"
+            )
             
+            if game_data.get('competitive'):
+                offer_text += f"\n🏆 На счет"
+        
+        # Добавляем комментарий
         if game_data.get('comment'):
-            offer_text += f"\n💬 {game_data['comment']} \n\n#предложение"
+            offer_text += f"\n💬 {game_data['comment']}"
+        
+        # Добавляем хештег
+        if category == "dating":
+            offer_text += " \n\n#знакомства"
+        elif category == "meeting":
+            offer_text += " \n\n#встречи"
+        elif category == "outdoor_sport":
+            offer_text += " \n\n#активность"
         else:
             offer_text += " \n\n#предложение"
             
-        channel_id = channels_id[sport]
+        # Получаем ID канала для данного вида спорта
+        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
 
         photo_path = user_data.get("photo_path")
 

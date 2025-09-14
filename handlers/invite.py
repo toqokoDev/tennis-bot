@@ -43,9 +43,15 @@ async def invite_friend(message: types.Message):
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]
     ]
     
-    await message.edit_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await message.answer()
+    try:
+        await message.edit_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+    except:
+        await message.answer(
+            text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )

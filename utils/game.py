@@ -5,7 +5,7 @@ from services.storage import storage
 async def get_user_games(user_id: int) -> list:
     """Получить массив игр пользователя"""
     users = await storage.load_users()
-    user_data = users.get(str(user_id)), {}
+    user_data = users.get(str(user_id))
     return user_data.get('games', [])
 
 async def save_user_game(user_id: int, game_data: dict) -> None:

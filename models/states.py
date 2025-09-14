@@ -27,8 +27,20 @@ class RegistrationStates(StatesGroup):
     VACATION_COUNTRY_INPUT = State()
     VACATION_CITY = State()
     VACATION_CITY_INPUT = State()
+    
+    # Новые поля для знакомств
+    DATING_GOAL = State()
+    DATING_INTERESTS = State()
+    DATING_ADDITIONAL = State()
+    
+    # Поля для встреч
+    MEETING_TIME = State()
+    
+    # Поля для настольного тенниса (рейтинг)
+    TABLE_TENNIS_RATING = State()
 
 class GameOfferStates(StatesGroup):
+    GAME_SPORT = State()
     GAME_CITY = State()
     GAME_DATE = State()
     GAME_DATE_MANUAL = State()
@@ -38,6 +50,7 @@ class GameOfferStates(StatesGroup):
     GAME_COMPETITIVE = State()
     GAME_REPEAT = State()
     GAME_COMMENT = State()
+    GAME_MEDIA = State()
 
 class SearchStates(StatesGroup):
     SEARCH_TYPE = State()

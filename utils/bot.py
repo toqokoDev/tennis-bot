@@ -9,6 +9,7 @@ from aiogram.types import (
 )
 from utils.utils import calculate_age
 from services.storage import storage
+from config.profile import get_sport_config, get_sport_texts
 
 # ---------- Вспомогательная отправка единого "текущего" сообщения ----------
 async def show_current_data(message: types.Message, state: FSMContext, text: str,
@@ -40,12 +41,23 @@ async def show_profile(message: types.Message, profile: dict):
         if age > 0:
             caption_lines.append(f"🎂 Возраст: {age} лет")
     
-    caption_lines.append(f"\n🔎 Роль: {profile.get('role', '—')}")
+    # Получаем конфигурацию для вида спорта
+    sport = profile.get('sport', '🎾Большой теннис')
+    config = get_sport_config(sport)
     
-    if profile.get('player_level'):
-        caption_lines.append(f"🏆 Уровень: {profile.get('player_level')} ({profile.get('rating_points', 0)} очков)")
+    # Показываем роль только если она нужна для данного вида спорта
+    if config.get("has_role", True):
+        caption_lines.append(f"\n🔎 Роль: {profile.get('role', '—')}")
     
-    if profile.get('price') is not None:
+    # Показываем уровень только если он нужен для данного вида спорта
+    if config.get("has_level", True) and profile.get('player_level'):
+        if sport == "🏓Настольный теннис":
+            caption_lines.append(f"🏓 Рейтинг: {profile.get('player_level')}")
+        else:
+            caption_lines.append(f"🏆 Уровень: {profile.get('player_level')} ({profile.get('rating_points', 0)} очков)")
+    
+    # Показываем стоимость только если она нужна для данного вида спорта
+    if config.get("has_payment", True) and profile.get('price') is not None:
         caption_lines.append(f"💵 Стоимость тренировки: {profile.get('price')} руб")
     
     caption_lines.append(f"\n🌍 Страна: {profile.get('country', '—')}")
@@ -58,27 +70,49 @@ async def show_profile(message: types.Message, profile: dict):
     caption_lines.append(f"🗂 Вид спорта: {profile.get('sport', '—')}")
     caption_lines.append(f"👫 Пол: {profile.get('gender', '—')}")
     
-    # Обязательный вывод статистики игр (даже если 0)
-    games_played = profile.get('games_played', 0)
-    games_wins = profile.get('games_wins', 0)
-    caption_lines.append(f"\n📊 Статистика игр:")
-    caption_lines.append(f"• Сыграно: {games_played}")
-    caption_lines.append(f"• Побед: {games_wins}")
+    # Показываем статистику игр только для спортивных видов
+    if sport not in ["☕️Бизнес-завтрак", "🍻По пиву", "🍒Знакомства"]:
+        games_played = profile.get('games_played', 0)
+        games_wins = profile.get('games_wins', 0)
+        caption_lines.append(f"\n📊 Статистика игр:")
+        caption_lines.append(f"• Сыграно: {games_played}")
+        caption_lines.append(f"• Побед: {games_wins}")
+        
+        if games_played > 0:
+            percent = int((games_wins / games_played) * 100) if games_played > 0 else 0
+            caption_lines.append(f"• Процент побед: {percent}%")
     
-    if games_played > 0:
-        percent = int((games_wins / games_played) * 100) if games_played > 0 else 0
-        caption_lines.append(f"• Процент побед: {percent}%")
-    
-    if profile.get('default_payment'):
+    # Показываем оплату корта только если она нужна для данного вида спорта
+    if config.get("has_payment", True) and profile.get('default_payment'):
         caption_lines.append(f"\n💳 Оплата корта: {profile.get('default_payment', '—')}")
     
-    if profile.get('vacation_tennis', False):
+    # Показываем поиск партнера на отдых только если это нужно для данного вида спорта
+    if config.get("has_vacation", True) and profile.get('vacation_tennis', False):
         caption_lines.append(f"\n✈️ Ищет партнёра на время отдыха:")
         caption_lines.append(f"• С {profile.get('vacation_start', '—')} по {profile.get('vacation_end', '—')}")
         if profile.get('vacation_comment'):
             caption_lines.append(f"• Комментарий: {profile.get('vacation_comment')}")
     
-    if profile.get('profile_comment'):
+    # Специальные поля для знакомств
+    if sport == "🍒Знакомства":
+        if profile.get('dating_goal'):
+            caption_lines.append(f"\n💕 Цель знакомства: {profile.get('dating_goal')}")
+        
+        if profile.get('dating_interests'):
+            interests = profile.get('dating_interests', [])
+            if isinstance(interests, list) and interests:
+                caption_lines.append(f"\n🎯 Интересы: {', '.join(interests)}")
+        
+        if profile.get('dating_additional'):
+            caption_lines.append(f"\n📝 Дополнительно: {profile.get('dating_additional')}")
+    
+    # Специальные поля для встреч
+    if sport in ["☕️Бизнес-завтрак", "🍻По пиву"]:
+        if profile.get('meeting_time'):
+            caption_lines.append(f"\n⏰ Время встречи: {profile.get('meeting_time')}")
+    
+    # Показываем "О себе" только если это нужно для данного вида спорта
+    if config.get("has_about_me", True) and profile.get('profile_comment'):
         caption_lines.append(f"\n💬 О себе:\n{profile.get('profile_comment', '—')}")
     
     caption = "\n".join(caption_lines) if caption_lines else "Анкета недоступна."
@@ -95,26 +129,50 @@ async def show_profile(message: types.Message, profile: dict):
     ]
     
     if message.chat.id == profile_user_id:
-        # Клавиатура для своего профиля
+        # Клавиатура для своего профиля в зависимости от вида спорта
         keyboard_buttons = [
-            [InlineKeyboardButton(text="✏️ Редактировать профиль", callback_data="edit_profile")],
-            [InlineKeyboardButton(text="✈️ Найти партнера на время отдыха", callback_data="createTour")],
-            [InlineKeyboardButton(text="📋 Мои предложения игр", callback_data="my_offers")],
-            [InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer")],
-            [InlineKeyboardButton(text="Моя история игр", callback_data=f"game_history:{message.chat.id}")],
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+            [InlineKeyboardButton(text="✏️ Редактировать профиль", callback_data="edit_profile")]
         ]
+        
+        # Получаем тексты для вида спорта
+        texts = get_sport_texts(sport)
+        
+        # Добавляем кнопки в зависимости от вида спорта
+        if sport not in ["☕️Бизнес-завтрак", "🍻По пиву", "🍒Знакомства"]:
+            # Для спортивных видов
+            if config.get("has_vacation", True):
+                keyboard_buttons.append([InlineKeyboardButton(text="✈️ Найти партнера на время отдыха", callback_data="createTour")])
+            
+            keyboard_buttons.extend([
+                [InlineKeyboardButton(text=texts["my_offers_button"], callback_data="my_offers")],
+                [InlineKeyboardButton(text=texts["offer_button"], callback_data="new_offer")],
+                [InlineKeyboardButton(text="Моя история игр", callback_data=f"game_history:{message.chat.id}")]
+            ])
+        else:
+            # Для неспортивных видов
+            keyboard_buttons.append([InlineKeyboardButton(text=texts["my_offers_button"], callback_data="my_offers")])
+            keyboard_buttons.append([InlineKeyboardButton(text=texts["offer_button"], callback_data="new_offer")])
+        
+        keyboard_buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
         
         # Если админ смотрит свой профиль - добавляем админские кнопки
         if is_user_admin:
             keyboard_buttons = admin_buttons + keyboard_buttons
             
     else:
-        # Клавиатура для чужого профиля
-        keyboard_buttons = [
-            [InlineKeyboardButton(text="Просмотреть историю матчей", callback_data=f"game_history:{profile_user_id}")],
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
-        ]
+        # Клавиатура для чужого профиля в зависимости от вида спорта
+        keyboard_buttons = []
+        
+        # Добавляем кнопки в зависимости от вида спорта
+        if sport not in ["☕️Бизнес-завтрак", "🍻По пиву", "🍒Знакомства"]:
+            # Для спортивных видов
+            keyboard_buttons.append([InlineKeyboardButton(text="Просмотреть историю матчей", callback_data=f"game_history:{profile_user_id}")])
+        elif sport in ["☕️Бизнес-завтрак", "🍻По пиву"]:
+            keyboard_buttons.append([InlineKeyboardButton(text="📅 Просмотреть предложения встреч", callback_data=f"game_history:{profile_user_id}")])
+        elif sport == "🍒Знакомства":
+            keyboard_buttons.append([InlineKeyboardButton(text="💕 Просмотреть анкеты", callback_data=f"game_history:{profile_user_id}")])
+        
+        keyboard_buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
         
         # Если админ смотрит чужой профиль - добавляем админские кнопки
         if is_user_admin:

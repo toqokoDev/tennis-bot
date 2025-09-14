@@ -8,7 +8,10 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config.profile import GENDER_TYPES, player_levels, cities_data, countries, sport_type
+from config.profile import (
+    GENDER_TYPES, player_levels, cities_data, countries, sport_type,
+    get_sport_config
+)
 from models.states import SearchPartnerStates
 from utils.bot import show_profile
 from utils.utils import calculate_age, count_users_by_location, get_users_by_location
