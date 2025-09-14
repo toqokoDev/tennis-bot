@@ -45,14 +45,14 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
     users = await storage.load_users()
     current_user_id = str(callback.message.chat.id)
     
-    # Собираем статистику по странам (исключая текущего пользователя) для выбранного вида спорта
+    # Собираем статистику по странам  для выбранного вида спорта
     country_stats = {}
     for user_id, user_data in users.items():
         if user_data.get('games'):
             country = user_data.get('country', '')
             if country:
                 active_games = [game for game in user_data['games'] 
-                               if game.get('active', True) and user_data.get('sport') == sport_type_selected]
+                               if game.get('active', True) and game.get('sport') == sport_type_selected]
                 if active_games:
                     country_stats[country] = country_stats.get(country, 0) + len(active_games)
     
@@ -114,7 +114,7 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
             city = user_data.get('city', '')
             if city:
                 active_games = [game for game in user_data['games'] 
-                               if game.get('active', True) and user_data.get('sport') == sport_type_selected]
+                               if game.get('active', True) and game.get('sport') == sport_type_selected]
                 if active_games:
                     city_stats[city] = city_stats.get(city, 0) + len(active_games)
     
@@ -592,7 +592,7 @@ async def back_to_country_selection(callback: types.CallbackQuery, state: FSMCon
             country = user_data.get('country', '')
             if country:
                 active_games = [game for game in user_data['games'] 
-                               if game.get('active', True) and user_data.get('sport') == sport_type_selected]
+                               if game.get('active', True) and game.get('sport') == sport_type_selected]
                 if active_games:
                     country_stats[country] = country_stats.get(country, 0) + len(active_games)
     
@@ -648,7 +648,7 @@ async def back_to_city_selection(callback: types.CallbackQuery, state: FSMContex
             city = user_data.get('city', '')
             if city:
                 active_games = [game for game in user_data['games'] 
-                               if game.get('active', True) and user_data.get('sport') == sport_type_selected]
+                               if game.get('active', True) and game.get('sport') == sport_type_selected]
                 if active_games:
                     city_stats[city] = city_stats.get(city, 0) + len(active_games)
     

@@ -98,10 +98,6 @@ async def select_tour_sport(callback: types.CallbackQuery, state: FSMContext):
     # Собираем статистику по странам с активными турами (исключая текущего пользователя)
     country_stats = {}
     for user_id, user_data in users.items():
-        # Пропускаем текущего пользователя
-        if user_id == current_user_id:
-            continue
-            
         # Проверяем, что у пользователя включен поиск партнера на время отдыха
         # и что выбранный спорт соответствует его профилю
         if (user_data.get('vacation_tennis', False) and 
