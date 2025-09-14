@@ -447,7 +447,7 @@ async def process_create_tour_country_input(message: Message, state: FSMContext)
 async def ask_for_create_tour_city(message: types.Message, state: FSMContext, country: str):
     """Запрос города для создания тура"""
     if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
         buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"create_tour_city_{city}")] for city in main_russian_cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="create_tour_other_city")])
     else:

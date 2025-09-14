@@ -3,6 +3,7 @@ from typing import List, Dict, Tuple
 from collections import defaultdict
 
 from config.config import BOT_USERNAME
+from config.profile import get_sport_config
 from services.storage import storage
 
 async def get_users_by_location(search_type=None, country=None, city=None, sport_type=None, 
@@ -27,8 +28,12 @@ async def get_users_by_location(search_type=None, country=None, city=None, sport
             continue
         elif search_type == "players" and profile.get('role') != "Игрок":
             continue
-        elif search_type == "partner" and profile.get('role') != "Игрок":
-            continue
+        elif search_type == "partner":
+            # Для поиска партнера проверяем роль только если она нужна для данного вида спорта
+            user_sport = profile.get('sport', '🎾Большой теннис')
+            config = get_sport_config(user_sport)
+            if config.get("has_role", True) and profile.get('role') != "Игрок":
+                continue
             
         # Фильтр по стране
         if country and profile.get('country') != country:
@@ -100,8 +105,12 @@ async def count_users_by_location(search_type=None, country=None, city=None, spo
             continue
         elif search_type == "players" and profile.get('role') != "Игрок":
             continue
-        elif search_type == "partner" and profile.get('role') != "Игрок":
-            continue
+        elif search_type == "partner":
+            # Для поиска партнера проверяем роль только если она нужна для данного вида спорта
+            user_sport = profile.get('sport', '🎾Большой теннис')
+            config = get_sport_config(user_sport)
+            if config.get("has_role", True) and profile.get('role') != "Игрок":
+                continue
             
         # Фильтр по стране
         if country and profile.get('country') != country:

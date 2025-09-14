@@ -456,12 +456,12 @@ async def admin_ask_for_city(message: types.Message, state: FSMContext, country:
     country = data.get('country', country)
     
     if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
         buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"adminProfile_edit_city_{city}")] for city in main_russian_cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="adminProfile_edit_other_city")])
     else:
         cities = cities_data.get(country, [])
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"adminProfile_edit_city_{city}")] for city in cities[:5]]
+        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"adminProfile_edit_city_{city}")] for city in cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="adminProfile_edit_other_city")])
 
     try:

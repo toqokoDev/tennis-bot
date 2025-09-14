@@ -8,11 +8,66 @@ from aiogram.types import (
 )
 
 from config.paths import BASE_DIR, PHOTOS_DIR
-from config.profile import moscow_districts, base_keyboard, cities_data, countries, sport_type
+from config.profile import (
+    moscow_districts, base_keyboard, cities_data, countries, sport_type,
+    get_sport_config, get_sport_texts, get_base_keyboard, tennis_levels, table_tennis_levels,
+    DATING_GOALS, DATING_INTERESTS, DATING_ADDITIONAL_FIELDS
+)
 from models.states import EditProfileStates
 from utils.bot import show_profile
 from utils.media import download_photo_to_path
 from services.storage import storage
+from handlers.registration import check_profile_completeness, get_missing_fields_text
+
+async def migrate_profile_data(old_sport: str, new_sport: str, profile: dict) -> dict:
+    """
+    Мигрирует данные профиля при смене вида спорта
+    Заполняет поля, которые нужны для нового вида спорта
+    """
+    old_config = get_sport_config(old_sport)
+    new_config = get_sport_config(new_sport)
+    
+    # Создаем копию профиля
+    new_profile = profile.copy()
+    
+    # Обновляем вид спорта
+    new_profile["sport"] = new_sport
+    
+    # Заполняем поля, которые нужны для нового вида спорта, но отсутствуют
+    if new_config.get("has_role", True) and not new_profile.get("role"):
+        new_profile["role"] = "🎯 Игрок"  # По умолчанию игрок
+    
+    if new_config.get("has_level", True) and not new_profile.get("player_level"):
+        # Для настольного тенниса используем рейтинг, для остальных - уровень
+        if new_sport == "🏓Настольный теннис":
+            new_profile["player_level"] = "0.0"  # По умолчанию
+        else:
+            new_profile["player_level"] = "1.0"  # По умолчанию
+        new_profile["rating_points"] = 500  # Базовые очки
+    
+    if new_config.get("has_payment", True) and not new_profile.get("price"):
+        new_profile["price"] = "💰 Пополам"  # По умолчанию пополам
+        new_profile["default_payment"] = "💰 Пополам"
+    
+    if new_config.get("has_vacation", True):
+        # Поля отпуска остаются как есть, если уже заполнены
+        pass
+    
+    # Специальные поля для знакомств
+    if new_sport == "🍒Знакомства":
+        if not new_profile.get("dating_goal"):
+            new_profile["dating_goal"] = "Общение"  # По умолчанию
+        if not new_profile.get("dating_interests"):
+            new_profile["dating_interests"] = []  # Пустой список
+        if not new_profile.get("dating_additional"):
+            new_profile["dating_additional"] = {}  # Пустой словарь
+    
+    # Специальные поля для встреч
+    if new_sport in ["☕️Бизнес-завтрак", "🍻По пиву"]:
+        if not new_profile.get("meeting_time"):
+            new_profile["meeting_time"] = "Уточню позже"  # По умолчанию
+    
+    return new_profile
 
 router = Router()
 
@@ -26,33 +81,49 @@ async def edit_profile_handler(callback: types.CallbackQuery, state: FSMContext)
         await callback.answer("❌ Профиль не найден", reply_markup=base_keyboard)
         return
     
-    # Создаем клавиатуру для редактирования
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="💬 О себе", callback_data="1edit_comment"),
-                InlineKeyboardButton(text="💳 Оплата", callback_data="1edit_payment")
-            ],
-            [
-                InlineKeyboardButton(text="📷 Фото", callback_data="1edit_photo"),
-                InlineKeyboardButton(text="🌍 Страна/Город", callback_data="1edit_location")
-            ],
-            [
-                InlineKeyboardButton(text="🎾 Вид спорта", callback_data="1edit_sport"),
-                InlineKeyboardButton(text="👤 Роль", callback_data="1edit_role")
-            ],
-            [
-                InlineKeyboardButton(text="💰 Стоимость", callback_data="1edit_price"),
-                InlineKeyboardButton(text="📊 Уровень", callback_data="1edit_level")
-            ],
-            [
-                InlineKeyboardButton(text="🗑️ Удалить профиль", callback_data="1delete_profile")
-            ],
-            [
-                InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{user_id}")
-            ]
-        ]
-    )
+    # Создаем клавиатуру для редактирования в зависимости от вида спорта
+    sport = profile.get("sport", "🎾Большой теннис")
+    config = get_sport_config(sport)
+    
+    buttons = []
+    
+    # Базовые поля (всегда доступны)
+    buttons.append([
+        InlineKeyboardButton(text="📷 Фото", callback_data="1edit_photo"),
+        InlineKeyboardButton(text="🌍 Страна/Город", callback_data="1edit_location")
+    ])
+    
+    # Поля в зависимости от конфигурации
+    if config.get("has_about_me", True):
+        buttons.append([InlineKeyboardButton(text="💬 О себе", callback_data="1edit_comment")])
+    
+    if config.get("has_payment", True):
+        buttons.append([InlineKeyboardButton(text="💳 Оплата", callback_data="1edit_payment")])
+    
+    if config.get("has_role", True):
+        buttons.append([InlineKeyboardButton(text="👤 Роль", callback_data="1edit_role")])
+    
+    if config.get("has_level", True):
+        buttons.append([InlineKeyboardButton(text="📊 Уровень", callback_data="1edit_level")])
+    
+    # Специальные поля для знакомств
+    if sport == "🍒Знакомства":
+        buttons.append([InlineKeyboardButton(text="💕 Цель знакомства", callback_data="1edit_dating_goal")])
+        buttons.append([InlineKeyboardButton(text="🎯 Интересы", callback_data="1edit_dating_interests")])
+        buttons.append([InlineKeyboardButton(text="📝 Дополнительно", callback_data="1edit_dating_additional")])
+    
+    # Специальные поля для встреч
+    if sport in ["☕️Бизнес-завтрак", "🍻По пиву"]:
+        buttons.append([InlineKeyboardButton(text="⏰ Время встречи", callback_data="1edit_meeting_time")])
+    
+    # Вид спорта (всегда доступен)
+    buttons.append([InlineKeyboardButton(text="🎾 Вид спорта", callback_data="1edit_sport")])
+    
+    # Удаление профиля и назад
+    buttons.append([InlineKeyboardButton(text="🗑️ Удалить профиль", callback_data="1delete_profile")])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{user_id}")])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     await callback.message.edit_reply_markup(reply_markup=keyboard)
     await callback.answer()
@@ -268,12 +339,31 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
         
         if user_key in users:
             user_data = users[user_key]
+            sport = user_data.get("sport", "🎾Большой теннис")
+            config = get_sport_config(sport)
+            
             # Проверяем, редактировал ли пользователь уровень ранее
-            if user_data.get('level_edited', False):
+            if user_data.get('rating_edited', False):
                 await callback.message.answer("📊 Ваш уровень рассчитывается автоматически на основе игр и не может быть изменен вручную.")
             else:
-                await callback.message.answer("📊 Введите ваш уровень (количество очков):")
-                await state.set_state(EditProfileStates.LEVEL)
+                if config.get("level_type") == "table_tennis":
+                    await callback.message.answer("🏓 Введите ваш рейтинг в настольном теннисе (цифры):")
+                else:
+                    # Показываем уровни для выбора
+                    levels_dict = tennis_levels if config.get("level_type", "tennis") == "tennis" else table_tennis_levels
+                    buttons = []
+                    for level, data in levels_dict.items():
+                        buttons.append([InlineKeyboardButton(
+                            text=f"{level} - {data['desc'][:50]}...",
+                            callback_data=f"edit_level_{level}"
+                        )])
+                    
+                    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+                    await callback.message.answer(
+                        f"📊 Выберите ваш уровень в {sport.replace('🎾', '').replace('🏓', '').replace('🏸', '').replace('🏖️', '').replace('🥎', '').replace('🏆', '')}:",
+                        reply_markup=keyboard
+                    )
+                    await state.set_state(EditProfileStates.LEVEL)
         else:
             await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
     
@@ -324,12 +414,25 @@ async def save_payment_edit(callback: types.CallbackQuery):
 # Обработчик для сохранения вида спорта
 @router.callback_query(EditProfileStates.SPORT, F.data.startswith("edit_sport_"))
 async def save_sport_edit(callback: types.CallbackQuery, state: FSMContext):
-    sport = callback.data.split("_", 2)[2]
+    new_sport = callback.data.split("_", 2)[2]
     users = await storage.load_users()
     user_key = str(callback.message.chat.id)
     
     if user_key in users:
-        users[user_key]['sport'] = sport
+        old_sport = users[user_key].get("sport", "🎾Большой теннис")
+        
+        # Если вид спорта не изменился, просто возвращаемся к профилю
+        if old_sport == new_sport:
+            await show_profile(callback.message, users[user_key])
+            await state.clear()
+            await callback.answer()
+            return
+        
+        # Мигрируем данные профиля
+        migrated_profile = await migrate_profile_data(old_sport, new_sport, users[user_key])
+        
+        # Сохраняем мигрированный профиль
+        users[user_key] = migrated_profile
         await storage.save_users(users)
         
         try:
@@ -338,7 +441,7 @@ async def save_sport_edit(callback: types.CallbackQuery, state: FSMContext):
             pass
         
         await callback.message.answer("✅ Вид спорта обновлен!")
-        await show_profile(callback.message, users[user_key])
+        await show_profile(callback.message, migrated_profile)
     else:
         await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
     
@@ -419,6 +522,30 @@ async def save_price_edit(message: types.Message, state: FSMContext):
     await state.clear()
 
 # Обработчик для сохранения уровня
+@router.callback_query(EditProfileStates.LEVEL, F.data.startswith("edit_level_"))
+async def save_level_edit_callback(callback: types.CallbackQuery, state: FSMContext):
+    level = callback.data.split("_", 2)[2]
+    users = await storage.load_users()
+    user_key = str(callback.message.chat.id)
+    
+    if user_key in users:
+        sport = users[user_key].get("sport", "🎾Большой теннис")
+        config = get_sport_config(sport)
+        levels_dict = tennis_levels if config.get("level_type", "tennis") == "tennis" else table_tennis_levels
+        
+        users[user_key]['player_level'] = level
+        users[user_key]['rating_points'] = levels_dict.get(level, {}).get("points", 0)
+        users[user_key]['rating_edited'] = True
+        await storage.save_users(users)
+        
+        await callback.message.edit_text("✅ Уровень обновлен!")
+        await show_profile(callback.message, users[user_key])
+    else:
+        await callback.message.edit_text("❌ Профиль не найден")
+    
+    await state.clear()
+    await callback.answer()
+
 @router.message(EditProfileStates.LEVEL, F.text)
 async def save_level_edit(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -426,20 +553,33 @@ async def save_level_edit(message: types.Message, state: FSMContext):
     user_key = str(user_id)
     
     if user_key in users:
-        try:
-            level = int(message.text.strip())
-            if level < 0:
-                await message.answer("❌ Уровень не может быть отрицательным. Попробуйте еще раз:")
-                return
-            
-            users[user_key]['level'] = level
-            users[user_key]['level_edited'] = True  # Помечаем, что пользователь редактировал уровень
+        sport = users[user_key].get("sport", "🎾Большой теннис")
+        config = get_sport_config(sport)
+        
+        if config.get("level_type") == "table_tennis":
+            # Для настольного тенниса сохраняем как есть
+            users[user_key]['player_level'] = message.text.strip()
+            users[user_key]['rating_points'] = 1000  # Базовый рейтинг
+            users[user_key]['rating_edited'] = True
             await storage.save_users(users)
             
-            await message.answer("✅ Уровень обновлен!")
+            await message.answer("✅ Рейтинг обновлен!")
             await show_profile(message, users[user_key])
-        except ValueError:
-            await message.answer("❌ Пожалуйста, введите корректное число для уровня:")
+        else:
+            try:
+                level = int(message.text.strip())
+                if level < 0:
+                    await message.answer("❌ Уровень не может быть отрицательным. Попробуйте еще раз:")
+                    return
+                
+                users[user_key]['rating_points'] = level
+                users[user_key]['rating_edited'] = True
+                await storage.save_users(users)
+                
+                await message.answer("✅ Уровень обновлен!")
+                await show_profile(message, users[user_key])
+            except ValueError:
+                await message.answer("❌ Пожалуйста, введите корректное число для уровня:")
             return
     else:
         await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
@@ -484,12 +624,12 @@ async def ask_for_city(message: types.Message, state: FSMContext, country: str, 
     country = data.get('country', country)
     
     if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань"]
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
         buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"edit_city_{city}")] for city in main_russian_cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="edit_other_city")])
     else:
         cities = cities_data.get(country, [])
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"edit_city_{city}")] for city in cities[:5]]
+        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"edit_city_{city}")] for city in cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="edit_other_city")])
 
     await message.edit_text(
@@ -656,16 +796,25 @@ async def save_photo_upload(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "main_menu")
 async def main_menu_callback(callback: types.CallbackQuery):
+    # Получаем профиль пользователя для определения вида спорта
+    user_id = callback.message.chat.id
+    users = await storage.load_users()
+    user_data = users.get(str(user_id), {})
+    sport = user_data.get('sport', '🎾Большой теннис')
+    
+    # Получаем адаптивную клавиатуру
+    keyboard = get_base_keyboard(sport)
+    
     try:
         await callback.message.edit_text(
             "🏠 Главное меню",
-            reply_markup=base_keyboard
+            reply_markup=keyboard
         )
     except:
         await callback.message.delete()
         
         await callback.message.answer(
             "🏠 Главное меню",
-            reply_markup=base_keyboard
+            reply_markup=keyboard
         )
     await callback.answer()

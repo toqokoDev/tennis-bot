@@ -14,7 +14,11 @@ from aiogram.types import (
 )
 
 from config.paths import BASE_DIR, PHOTOS_DIR
-from config.profile import moscow_districts, player_levels, base_keyboard, cities_data, sport_type, countries
+from config.profile import (
+    moscow_districts, player_levels, tennis_levels, table_tennis_levels, 
+    base_keyboard, cities_data, sport_type, countries, SPORT_FIELD_CONFIG,
+    DATING_GOALS, DATING_INTERESTS, DATING_ADDITIONAL_FIELDS, get_sport_config, get_sport_texts, get_base_keyboard
+)
 
 from models.states import RegistrationStates
 
@@ -26,6 +30,79 @@ from utils.validate import validate_date, validate_date_range, validate_future_d
 from services.storage import storage
 
 router = Router()
+
+# ---------- Вспомогательные функции ----------
+
+def get_levels_for_sport(sport: str) -> dict:
+    """Получает уровни для выбранного вида спорта"""
+    config = get_sport_config(sport)
+    level_type = config.get("level_type", "tennis")
+    
+    if level_type == "table_tennis":
+        return table_tennis_levels
+    else:
+        return tennis_levels
+
+def check_profile_completeness(profile: dict, sport: str) -> tuple[bool, list]:
+    """
+    Проверяет заполненность обязательных полей профиля для выбранного вида спорта
+    Возвращает (is_complete, missing_fields)
+    """
+    config = get_sport_config(sport)
+    missing_fields = []
+    
+    # Базовые поля (всегда обязательные)
+    required_basic = ["first_name", "last_name", "birth_date", "country", "city", "gender"]
+    for field in required_basic:
+        if not profile.get(field):
+            missing_fields.append(field)
+    
+    # Поля в зависимости от конфигурации вида спорта
+    if config.get("has_role", True) and not profile.get("role"):
+        missing_fields.append("role")
+    
+    if config.get("has_level", True) and not profile.get("player_level"):
+        missing_fields.append("player_level")
+    
+    if config.get("has_about_me", True) and not profile.get("profile_comment"):
+        missing_fields.append("profile_comment")
+    
+    # Специальные поля для знакомств
+    if sport == "🍒Знакомства":
+        if not profile.get("dating_goal"):
+            missing_fields.append("dating_goal")
+        if not profile.get("dating_interests"):
+            missing_fields.append("dating_interests")
+    
+    # Специальные поля для встреч
+    if sport in ["☕️Бизнес-завтрак", "🍻По пиву"]:
+        if not profile.get("meeting_time"):
+            missing_fields.append("meeting_time")
+    
+    return len(missing_fields) == 0, missing_fields
+
+def get_missing_fields_text(missing_fields: list, sport: str) -> str:
+    """Возвращает текст с описанием недостающих полей"""
+    field_names = {
+        "first_name": "Имя",
+        "last_name": "Фамилия", 
+        "birth_date": "Дата рождения",
+        "country": "Страна",
+        "city": "Город",
+        "gender": "Пол",
+        "role": "Роль",
+        "player_level": "Уровень игры",
+        "profile_comment": "О себе",
+        "dating_goal": "Цель знакомства",
+        "dating_interests": "Интересы",
+        "meeting_time": "Время встречи"
+    }
+    
+    missing_text = []
+    for field in missing_fields:
+        missing_text.append(f"• {field_names.get(field, field)}")
+    
+    return "\n".join(missing_text)
 
 # ---------- Команды и логика ----------
 @router.message(Command("start"))
@@ -96,7 +173,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
             f"Выберите действие из меню ниже:"
         )  
 
-        await message.answer(greet, parse_mode="HTML", reply_markup=base_keyboard)
+        # Получаем адаптивную клавиатуру для вида спорта пользователя
+        sport = profile.get('sport', '🎾Большой теннис')
+        keyboard = get_base_keyboard(sport)
+        await message.answer(greet, parse_mode="HTML", reply_markup=keyboard)
         await state.clear()
         return
 
@@ -118,7 +198,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "   🏃‍♂️ Бегу\n"
         "   🏋️‍♀️ Фитнесу\n"
         "   🚴 Велоспорту\n"
-        "   🍻 По пиву 😉\n"
+        "   🍻 По пиву\n"
         "   🍒 Знакомствам\n\n"
         "• Предлагать и находить предложения игр в определенное время и месте.\n"
         "• Участвовать в многодневных турнирах в вашем городе и на вашем корте.\n"
@@ -283,10 +363,7 @@ async def process_city_input(message: Message, state: FSMContext):
 
 async def ask_for_city(message: types.Message, state: FSMContext, country: str):
     if country == "Россия":
-        main_russian_cities = [
-            "Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург",
-            "Казань", "Красноярск", "Нижний Новгород", "Сочи", "Ростов-на-Дону"
-        ]
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
         buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"city_{city}")] for city in main_russian_cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="other_city")])
     else:
@@ -337,6 +414,15 @@ async def process_other_city(callback: types.CallbackQuery, state: FSMContext):
     await storage.save_session(callback.message.chat.id, await state.get_data())
 
 async def ask_for_role(message: types.Message, state: FSMContext):
+    user_data = await state.get_data()
+    sport = user_data.get("sport")
+    config = get_sport_config(sport)
+    
+    if not config.get("has_role", True):
+        # Если роль не нужна, переходим к следующему шагу
+        await ask_for_gender(message, state)
+        return
+    
     buttons = [
         [InlineKeyboardButton(text="🎯 Игрок", callback_data="role_Игрок")],
         [InlineKeyboardButton(text="👨‍🏫 Тренер", callback_data="role_Тренер")]
@@ -358,11 +444,38 @@ async def process_role_selection(callback: types.CallbackQuery, state: FSMContex
         await callback.message.edit_text("💵 Введите стоимость тренировки (в рублях, только цифры):", reply_markup=None)
         await state.set_state(RegistrationStates.TRAINER_PRICE)
     else:
-        # Показываем первую страницу уровней
-        await show_levels_page(callback.message, state, page=0)
+        # Переходим к следующему шагу в зависимости от вида спорта
+        await ask_for_level_or_gender(callback.message, state)
 
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
+
+async def ask_for_gender(message: types.Message, state: FSMContext):
+    """Спрашивает пол пользователя"""
+    buttons = [
+        [InlineKeyboardButton(text="👨 Мужской", callback_data="gender_Мужской")],
+        [InlineKeyboardButton(text="👩 Женский", callback_data="gender_Женский")]
+    ]
+    await show_current_data(
+        message, state,
+        "👫 Укажите пол:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await state.set_state(RegistrationStates.GENDER)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+async def ask_for_level_or_gender(message: types.Message, state: FSMContext):
+    """Определяет следующий шаг после выбора роли"""
+    user_data = await state.get_data()
+    sport = user_data.get("sport")
+    config = get_sport_config(sport)
+    
+    if config.get("has_level", True):
+        # Показываем уровни
+        await show_levels_page(message, state, page=0)
+    else:
+        # Переходим к полу
+        await ask_for_gender(message, state)
 
 @router.message(RegistrationStates.TRAINER_PRICE, F.text)
 async def process_trainer_price(message: types.Message, state: FSMContext):
@@ -379,7 +492,17 @@ async def process_trainer_price(message: types.Message, state: FSMContext):
 
 async def show_levels_page(message: types.Message, state: FSMContext, page: int = 0):
     """Показывает страницу с уровнями игроков с возможностью пролистывания"""
-    levels_list = list(player_levels.keys())
+    user_data = await state.get_data()
+    sport = user_data.get("sport")
+    config = get_sport_config(sport)
+    levels_dict = get_levels_for_sport(sport)
+    
+    # Для настольного тенниса показываем специальный интерфейс
+    if config.get("level_type") == "table_tennis":
+        await ask_for_table_tennis_rating(message, state)
+        return
+    
+    levels_list = list(levels_dict.keys())
     items_per_page = 3
     total_pages = (len(levels_list) + items_per_page - 1) // items_per_page
     
@@ -388,10 +511,11 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
     current_levels = levels_list[start_idx:end_idx]
     
     # Формируем текст с описанием текущих уровней
-    levels_text = "🏆 *Система уровней теннисистов:*\n\n"
+    sport_name = sport.replace("🎾", "").replace("🏓", "").replace("🏸", "").replace("🏖️", "").replace("🥎", "").replace("🏆", "")
+    levels_text = f"🏆 *Система уровней {sport_name.lower()}:*\n\n"
     
     for level in current_levels:
-        description = player_levels[level]["desc"]
+        description = levels_dict[level]["desc"]
         levels_text += f"*{level}* - {description}\n\n"
     
     levels_text += f"*Страница {page + 1} из {total_pages}*\n\n👇 *Выберите ваш уровень:*"
@@ -432,6 +556,15 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
     await state.update_data(level_page=page)
     await storage.save_session(message.chat.id, await state.get_data())
 
+async def ask_for_table_tennis_rating(message: types.Message, state: FSMContext):
+    """Спрашивает рейтинг для настольного тенниса"""
+    await message.edit_text(
+        "🏓 Укажите ваш рейтинг в настольном теннисе (цифры):",
+        reply_markup=None
+    )
+    await state.set_state(RegistrationStates.TABLE_TENNIS_RATING)
+    await storage.save_session(message.chat.id, await state.get_data())
+
 @router.callback_query(RegistrationStates.PLAYER_LEVEL, F.data.startswith("levelpage_"))
 async def process_level_page_navigation(callback: types.CallbackQuery, state: FSMContext):
     """Обработка навигации по страницам уровней"""
@@ -440,10 +573,21 @@ async def process_level_page_navigation(callback: types.CallbackQuery, state: FS
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
 
+@router.message(RegistrationStates.TABLE_TENNIS_RATING, F.text)
+async def process_table_tennis_rating(message: types.Message, state: FSMContext):
+    """Обрабатывает ввод рейтинга для настольного тенниса"""
+    rating = message.text.strip()
+    await state.update_data(player_level=rating)
+    await ask_for_gender(message, state)
+    await storage.save_session(message.chat.id, await state.get_data())
+
 @router.callback_query(RegistrationStates.PLAYER_LEVEL, F.data.startswith("level_"))
 async def process_player_level(callback: types.CallbackQuery, state: FSMContext):
     level = callback.data.split("_", maxsplit=1)[1]
-    description = player_levels.get(level, {}).get('desc', '')
+    user_data = await state.get_data()
+    sport = user_data.get("sport")
+    levels_dict = get_levels_for_sport(sport)
+    description = levels_dict.get(level, {}).get('desc', '')
     await state.update_data(player_level=level)
 
     await callback.message.edit_text(
@@ -451,16 +595,7 @@ async def process_player_level(callback: types.CallbackQuery, state: FSMContext)
         reply_markup=None
     )
     
-    buttons = [
-        [InlineKeyboardButton(text="👨 Мужской", callback_data="gender_Мужской")],
-        [InlineKeyboardButton(text="👩 Женский", callback_data="gender_Женский")]
-    ]
-    await show_current_data(
-        callback.message, state,
-        "👫 Укажите пол:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await state.set_state(RegistrationStates.GENDER)
+    await ask_for_gender(callback.message, state)
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
 
@@ -469,18 +604,47 @@ async def process_gender_selection(callback: types.CallbackQuery, state: FSMCont
     gender = callback.data.split("_", maxsplit=1)[1]
     await state.update_data(gender=gender)
     
-    # Сначала спрашиваем комментарий к анкете
-    await callback.message.edit_text("💬 Добавьте комментарий к анкете (или /skip для пропуска):", reply_markup=None)
-    await state.set_state(RegistrationStates.PROFILE_COMMENT)
+    user_data = await state.get_data()
+    sport = user_data.get("sport")
+    config = get_sport_config(sport)
+    
+    # Определяем следующий шаг в зависимости от вида спорта
+    if sport == "🍒Знакомства":
+        await ask_for_dating_goals(callback.message, state)
+    elif config.get("has_about_me", True):
+        await ask_for_profile_comment(callback.message, state)
+    else:
+        await ask_for_photo(callback.message, state)
+    
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
 
-@router.message(RegistrationStates.PROFILE_COMMENT, F.text)
-async def process_profile_comment(message: types.Message, state: FSMContext):
-    if message.text.strip() != "/skip":
-        await state.update_data(profile_comment=message.text.strip())
+async def ask_for_profile_comment(message: types.Message, state: FSMContext):
+    """Спрашивает комментарий к профилю"""
+    user_data = await state.get_data()
+    sport = user_data.get("sport")
+    config = get_sport_config(sport)
     
-    # Для игроков продолжаем стандартный процесс
+    comment_text = config.get("comment_text", "• Комментарий:")
+    await message.edit_text(f"{comment_text} (или /skip для пропуска):", reply_markup=None)
+    await state.set_state(RegistrationStates.PROFILE_COMMENT)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+async def ask_for_dating_goals(message: types.Message, state: FSMContext):
+    """Спрашивает цели знакомств"""
+    buttons = []
+    for goal in DATING_GOALS:
+        buttons.append([InlineKeyboardButton(text=goal, callback_data=f"dating_goal_{goal}")])
+    
+    await message.edit_text(
+        "💕 Цель знакомства:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await state.set_state(RegistrationStates.DATING_GOAL)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+async def ask_for_photo(message: types.Message, state: FSMContext):
+    """Спрашивает фото профиля"""
     buttons = [
         [InlineKeyboardButton(text="📷 Загрузить фото", callback_data="photo_upload")],
         [InlineKeyboardButton(text="👀 Без фото", callback_data="photo_none")],
@@ -492,7 +656,149 @@ async def process_profile_comment(message: types.Message, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.PHOTO)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+@router.message(RegistrationStates.PROFILE_COMMENT, F.text)
+async def process_profile_comment(message: types.Message, state: FSMContext):
+    if message.text.strip() != "/skip":
+        await state.update_data(profile_comment=message.text.strip())
     
+    user_data = await state.get_data()
+    sport = user_data.get("sport")
+    config = get_sport_config(sport)
+    
+    # Определяем следующий шаг в зависимости от вида спорта
+    if config.get("has_meeting_time", False):
+        await ask_for_meeting_time(message, state)
+    else:
+        await ask_for_photo(message, state)
+    
+    await storage.save_session(message.chat.id, await state.get_data())
+
+@router.callback_query(RegistrationStates.DATING_GOAL, F.data.startswith("dating_goal_"))
+async def process_dating_goal(callback: types.CallbackQuery, state: FSMContext):
+    """Обрабатывает выбор цели знакомств"""
+    goal = callback.data.split("_", maxsplit=2)[2]
+    await state.update_data(dating_goal=goal)
+    
+    if goal == "Свой вариант":
+        await callback.message.edit_text("💕 Опишите вашу цель знакомства:", reply_markup=None)
+        await state.set_state(RegistrationStates.DATING_GOAL)
+        return
+    
+    await ask_for_dating_interests(callback.message, state)
+    await callback.answer()
+    await storage.save_session(callback.message.chat.id, await state.get_data())
+
+@router.message(RegistrationStates.DATING_GOAL, F.text)
+async def process_dating_goal_text(message: types.Message, state: FSMContext):
+    """Обрабатывает текстовый ввод цели знакомств"""
+    await state.update_data(dating_goal=message.text.strip())
+    await ask_for_dating_interests(message, state)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+async def ask_for_dating_interests(message: types.Message, state: FSMContext):
+    """Спрашивает интересы для знакомств"""
+    buttons = []
+    for interest in DATING_INTERESTS:
+        buttons.append([InlineKeyboardButton(text=interest, callback_data=f"dating_interest_{interest}")])
+    
+    await message.edit_text(
+        "🎯 Ваши интересы (можно выбрать несколько):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await state.set_state(RegistrationStates.DATING_INTERESTS)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+@router.callback_query(RegistrationStates.DATING_INTERESTS, F.data.startswith("dating_interest_"))
+async def process_dating_interest(callback: types.CallbackQuery, state: FSMContext):
+    """Обрабатывает выбор интересов"""
+    interest = callback.data.split("_", maxsplit=2)[2]
+    user_data = await state.get_data()
+    selected_interests = user_data.get("dating_interests", [])
+    
+    if interest == "Свой вариант в дополнение":
+        await callback.message.edit_text("🎯 Опишите ваши дополнительные интересы:", reply_markup=None)
+        await state.set_state(RegistrationStates.DATING_INTERESTS)
+        return
+    
+    if interest in selected_interests:
+        selected_interests.remove(interest)
+    else:
+        selected_interests.append(interest)
+    
+    await state.update_data(dating_interests=selected_interests)
+    
+    # Показываем обновленный список
+    interests_text = "🎯 Выбранные интересы:\n" + "\n".join([f"• {i}" for i in selected_interests])
+    interests_text += "\n\nВыберите еще или нажмите 'Готово' для продолжения:"
+    
+    buttons = []
+    for interest in DATING_INTERESTS:
+        text = f"{'✅' if interest in selected_interests else '⬜'} {interest}"
+        buttons.append([InlineKeyboardButton(text=text, callback_data=f"dating_interest_{interest}")])
+    buttons.append([InlineKeyboardButton(text="✅ Готово", callback_data="dating_interests_done")])
+    
+    await callback.message.edit_text(
+        interests_text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await callback.answer()
+    await storage.save_session(callback.message.chat.id, await state.get_data())
+
+@router.message(RegistrationStates.DATING_INTERESTS, F.text)
+async def process_dating_interest_text(message: types.Message, state: FSMContext):
+    """Обрабатывает текстовый ввод интересов"""
+    user_data = await state.get_data()
+    selected_interests = user_data.get("dating_interests", [])
+    selected_interests.append(f"Свой вариант: {message.text.strip()}")
+    await state.update_data(dating_interests=selected_interests)
+    await ask_for_dating_interests(message, state)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+@router.callback_query(RegistrationStates.DATING_INTERESTS, F.data == "dating_interests_done")
+async def process_dating_interests_done(callback: types.CallbackQuery, state: FSMContext):
+    """Завершает выбор интересов"""
+    await ask_for_dating_additional(callback.message, state)
+    await callback.answer()
+    await storage.save_session(callback.message.chat.id, await state.get_data())
+
+async def ask_for_dating_additional(message: types.Message, state: FSMContext):
+    """Спрашивает дополнительные поля для знакомств"""
+    additional_text = "📝 Дополнительная информация (необязательно, можно пропустить):\n\n"
+    for field in DATING_ADDITIONAL_FIELDS:
+        additional_text += f"• {field}\n"
+    additional_text += "\nНапишите информацию по любому из полей или /skip для пропуска:"
+    
+    await message.edit_text(additional_text, reply_markup=None)
+    await state.set_state(RegistrationStates.DATING_ADDITIONAL)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+@router.message(RegistrationStates.DATING_ADDITIONAL, F.text)
+async def process_dating_additional(message: types.Message, state: FSMContext):
+    """Обрабатывает дополнительные поля знакомств"""
+    if message.text.strip() != "/skip":
+        await state.update_data(dating_additional=message.text.strip())
+    
+    await ask_for_photo(message, state)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+async def ask_for_meeting_time(message: types.Message, state: FSMContext):
+    """Спрашивает время встречи для бизнес-завтрака и по пиву"""
+    user_data = await state.get_data()
+    sport = user_data.get("sport")
+    config = get_sport_config(sport)
+    
+    meeting_text = config.get("meeting_time_text", "Напишите место, конкретный день и время или дни недели и временные промежутки, когда вам удобно встретиться.")
+    await message.answer(meeting_text)
+    await state.set_state(RegistrationStates.MEETING_TIME)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+@router.message(RegistrationStates.MEETING_TIME, F.text)
+async def process_meeting_time(message: types.Message, state: FSMContext):
+    """Обрабатывает время встречи"""
+    await state.update_data(meeting_time=message.text.strip())
+    await ask_for_photo(message, state)
     await storage.save_session(message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.PHOTO, F.data.startswith("photo_"))
@@ -515,7 +821,7 @@ async def process_photo_choice(callback: types.CallbackQuery, state: FSMContext)
                 if ok:
                     rel_path = dest_path.relative_to(BASE_DIR).as_posix()
                     await state.update_data(photo="profile", photo_path=rel_path)
-                    await ask_for_vacation_tennis(callback.message, state)
+                    await ask_for_next_step_after_photo(callback.message, state)
                 else:
                     await callback.message.edit_text("❌ Не удалось получить фото профиля. Пожалуйста, загрузите фото вручную:")
                     return
@@ -527,13 +833,26 @@ async def process_photo_choice(callback: types.CallbackQuery, state: FSMContext)
             return
     elif choice == "none":
         await state.update_data(photo="none", photo_path=None)
-        await ask_for_vacation_tennis(callback.message, state)
+        await ask_for_next_step_after_photo(callback.message, state)
     else:
         await state.update_data(photo="none", photo_path=None)
-        await ask_for_vacation_tennis(callback.message, state)
+        await ask_for_next_step_after_photo(callback.message, state)
 
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
+
+async def ask_for_next_step_after_photo(message: types.Message, state: FSMContext):
+    """Определяет следующий шаг после выбора фото"""
+    user_data = await state.get_data()
+    sport = user_data.get("sport")
+    config = get_sport_config(sport)
+    
+    if config.get("has_vacation", True) and sport not in ["☕️Бизнес-завтрак", "🍻По пиву", "🍒Знакомства"]:
+        await ask_for_vacation_tennis(message, state)
+    elif config.get("has_payment", True) and sport not in ["☕️Бизнес-завтрак", "🍻По пиву", "🍒Знакомства"]:
+        await ask_for_default_payment(message, state)
+    else:
+        await ask_for_create_game(message, state)
 
 @router.message(RegistrationStates.PHOTO, F.photo)
 async def process_photo_upload(message: types.Message, state: FSMContext):
@@ -545,12 +864,20 @@ async def process_photo_upload(message: types.Message, state: FSMContext):
     if ok:
         rel_path = dest_path.relative_to(BASE_DIR).as_posix()
         await state.update_data(photo="uploaded", photo_path=rel_path)
-        await ask_for_vacation_tennis(message, state)
+        await ask_for_next_step_after_photo(message, state)
     else:
         await message.answer("❌ Не удалось сохранить фото. Попробуйте отправить ещё раз или выберите вариант без фото.")
     await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_vacation_tennis(message: types.Message, state: FSMContext):
+    user_data = await state.get_data()
+    sport = user_data.get("sport")
+    config = get_sport_config(sport)
+    
+    if not config.get("has_vacation", True):
+        await ask_for_default_payment(message, state)
+        return
+    
     buttons = [
         [InlineKeyboardButton(text="✅ Да", callback_data="vacation_yes")],
         [InlineKeyboardButton(text="⏩ Нет", callback_data="vacation_no")]
@@ -617,10 +944,7 @@ async def process_vacation_city_input(message: Message, state: FSMContext):
 
 async def ask_for_vacation_city(message: types.Message, state: FSMContext, country: str):
     if country == "Россия":
-        main_russian_cities = [
-            "Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург",
-            "Казань", "Красноярск", "Нижний Новгород", "Сочи", "Ростов-на-Дону"
-        ]
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
         buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in main_russian_cities]
         buttons.append([InlineKeyboardButton(text="Другой город", callback_data="vacation_other_city")])
     else:
@@ -695,6 +1019,14 @@ async def process_vacation_comment(message: Message, state: FSMContext):
     await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_default_payment(message: types.Message, state: FSMContext):
+    user_data = await state.get_data()
+    sport = user_data.get("sport")
+    config = get_sport_config(sport)
+    
+    if not config.get("has_payment", True):
+        await ask_for_create_game(message, state)
+        return
+    
     buttons = [
         [InlineKeyboardButton(text="💰 Пополам", callback_data="defaultpay_Пополам")],
         [InlineKeyboardButton(text="💳 Я оплачиваю", callback_data="defaultpay_Я оплачиваю")],
@@ -718,28 +1050,19 @@ async def process_default_payment(callback: types.CallbackQuery, state: FSMConte
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
 
-async def ask_for_create_game(message: types.Message, state: FSMContext):
-    """Спрашивает пользователя, хочет ли он создать игру после регистрации"""
-    buttons = [
-        [InlineKeyboardButton(text="✅ Да, создать игру", callback_data="registerTonew_offer")],
-        [InlineKeyboardButton(text="❌ Нет, позже", callback_data="skip_offer")]
-    ]
-    await show_current_data(
-        message, state,
-        "🎾 Хотите сразу создать предложение об игре на конкретный день и время?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await state.set_state(RegistrationStates.CREATE_GAME_OFFER)
-    await storage.save_session(message.chat.id, await state.get_data())
-
-@router.callback_query(RegistrationStates.CREATE_GAME_OFFER, F.data == "registerTonew_offer")
-async def process_create_game_offer(callback: types.CallbackQuery, state: FSMContext):
-    """Пользователь хочет создать игру - завершаем регистрацию и переходим к созданию игры"""
-    user_id = callback.message.chat.id
-    username = callback.message.chat.username
-
-    user_state = await state.get_data()
-
+async def create_user_profile(user_id: int, username: str, user_state: dict) -> dict:
+    """Создает профиль пользователя с учетом вида спорта"""
+    # Определяем рейтинговые очки в зависимости от вида спорта
+    sport = user_state.get("sport")
+    levels_dict = get_levels_for_sport(sport)
+    player_level = user_state.get("player_level")
+    
+    # Для настольного тенниса рейтинг может быть текстовым
+    if sport == "🏓Настольный теннис" and player_level and not player_level.replace(".", "").isdigit():
+        rating_points = 1000  # Базовый рейтинг для текстового рейтинга
+    else:
+        rating_points = levels_dict.get(player_level, {}).get("points", 0)
+    
     profile = {
         "telegram_id": user_id,
         "username": username,
@@ -754,7 +1077,7 @@ async def process_create_game_offer(callback: types.CallbackQuery, state: FSMCon
         "sport": user_state.get("sport"),
         "gender": user_state.get("gender"),
         "player_level": user_state.get("player_level"),
-        "rating_points": player_levels.get(user_state.get("player_level"), {}).get("points", 0),
+        "rating_points": rating_points,
         "price": user_state.get("price"),
         "photo_path": user_state.get("photo_path"),
         "games_played": 0,
@@ -766,7 +1089,18 @@ async def process_create_game_offer(callback: types.CallbackQuery, state: FSMCon
         "games": [],
         "created_at": datetime.now().isoformat(timespec="seconds")
     }
-
+    
+    # Добавляем поля для знакомств
+    if sport == "🍒Знакомства":
+        profile["dating_goal"] = user_state.get("dating_goal")
+        profile["dating_interests"] = user_state.get("dating_interests", [])
+        profile["dating_additional"] = user_state.get("dating_additional")
+    
+    # Добавляем поля для встреч
+    if sport in ["☕️Бизнес-завтрак", "🍻По пиву"]:
+        profile["meeting_time"] = user_state.get("meeting_time")
+    
+    # Добавляем поля для отпуска
     if user_state.get('vacation_tennis', False):
         profile["vacation_tennis"] = True
         profile["vacation_country"] = user_state.get('vacation_country')
@@ -774,6 +1108,36 @@ async def process_create_game_offer(callback: types.CallbackQuery, state: FSMCon
         profile["vacation_start"] = user_state.get('vacation_start')
         profile["vacation_end"] = user_state.get('vacation_end')
         profile["vacation_comment"] = user_state.get('vacation_comment')
+    
+    return profile
+
+async def ask_for_create_game(message: types.Message, state: FSMContext):
+    """Спрашивает пользователя, хочет ли он создать игру после регистрации"""
+    # Получаем данные пользователя для определения вида спорта
+    user_data = await state.get_data()
+    sport = user_data.get('sport', '🎾Большой теннис')
+    texts = get_sport_texts(sport)
+    
+    buttons = [
+        [InlineKeyboardButton(text=f"✅ Да, {texts['offer_button'].lower()}", callback_data="registerTonew_offer")],
+        [InlineKeyboardButton(text="❌ Нет, позже", callback_data="skip_offer")]
+    ]
+    await show_current_data(
+        message, state,
+        f"🎾 Хотите сразу {texts['offer_button'].lower()} на конкретный день и время?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await state.set_state(RegistrationStates.CREATE_GAME_OFFER)
+    await storage.save_session(message.chat.id, await state.get_data())
+
+@router.callback_query(RegistrationStates.CREATE_GAME_OFFER, F.data == "registerTonew_offer")
+async def process_create_game_offer(callback: types.CallbackQuery, state: FSMContext):
+    """Пользователь хочет создать игру - завершаем регистрацию и переходим к созданию игры"""
+    user_id = callback.message.chat.id
+    username = callback.message.chat.username
+
+    user_state = await state.get_data()
+    profile = await create_user_profile(user_id, username, user_state)
 
     referral_id = user_state.get('referral_id')
     if referral_id and await storage.is_user_registered(referral_id):
@@ -810,10 +1174,13 @@ async def process_create_game_offer(callback: types.CallbackQuery, state: FSMCon
     # Отправляем уведомление о регистрации
     await send_registration_notification(callback.message, profile)
     
+    # Получаем тексты для вида спорта
+    texts = get_sport_texts(profile.get('sport', '🎾Большой теннис'))
+    
     # Переходим к созданию игры
     await callback.message.edit_text(
-        "✅ Регистрация завершена! Теперь вы можете создать предложение об игре.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Предложить игру", callback_data="new_offer")]])
+        f"✅ Регистрация завершена! Теперь вы можете {texts['offer_button'].lower()}.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=texts["offer_button"], callback_data="new_offer")]])
     )
     await callback.answer()
 
@@ -824,41 +1191,7 @@ async def process_skip_game_offer(callback: types.CallbackQuery, state: FSMConte
     username = callback.message.chat.username
 
     user_state = await state.get_data()
-
-    profile = {
-        "telegram_id": user_id,
-        "username": username,
-        "first_name": user_state.get("first_name"),
-        "last_name": user_state.get("last_name"),
-        "phone": user_state.get("phone"),
-        "birth_date": user_state.get("birth_date"),
-        "country": user_state.get("country"),
-        "city": user_state.get("city"),
-        "district": user_state.get("district", ""),
-        "role": user_state.get("role", "пользователь"),
-        "sport": user_state.get("sport"),
-        "gender": user_state.get("gender"),
-        "player_level": user_state.get("player_level"),
-        "rating_points": player_levels.get(user_state.get("player_level"), {}).get("points", 0),
-        "price": user_state.get("price"),
-        "photo_path": user_state.get("photo_path"),
-        "games_played": 0,
-        "games_wins": 0,
-        "default_payment": user_state.get("default_payment"),
-        "show_in_search": True,
-        "profile_comment": user_state.get("profile_comment"),
-        "referrals_invited": 0,
-        "games": [],
-        "created_at": datetime.now().isoformat(timespec="seconds")
-    }
-
-    if user_state.get('vacation_tennis', False):
-        profile["vacation_tennis"] = True
-        profile["vacation_country"] = user_state.get('vacation_country')
-        profile["vacation_city"] = user_state.get('vacation_city')
-        profile["vacation_start"] = user_state.get('vacation_start')
-        profile["vacation_end"] = user_state.get('vacation_end')
-        profile["vacation_comment"] = user_state.get('vacation_comment')
+    profile = await create_user_profile(user_id, username, user_state)
 
     referral_id = user_state.get('referral_id')
     if referral_id and await storage.is_user_registered(referral_id):
