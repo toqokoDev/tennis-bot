@@ -211,8 +211,8 @@ async def admin_edit_field_handler(callback: types.CallbackQuery, state: FSMCont
         # Клавиатура для выбора цели знакомства
         from config.profile import DATING_GOALS
         buttons = []
-        for goal in DATING_GOALS:
-            buttons.append([InlineKeyboardButton(text=goal, callback_data=f"adminProfile_edit_dating_goal_{goal}")])
+        for i, goal in enumerate(DATING_GOALS):
+            buttons.append([InlineKeyboardButton(text=goal, callback_data=f"adgoal_{i}")])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.answer("💕 Выберите цель знакомства:", reply_markup=keyboard)
@@ -221,9 +221,9 @@ async def admin_edit_field_handler(callback: types.CallbackQuery, state: FSMCont
         # Клавиатура для выбора интересов
         from config.profile import DATING_INTERESTS
         buttons = []
-        for interest in DATING_INTERESTS:
-            buttons.append([InlineKeyboardButton(text=interest, callback_data=f"adminProfile_edit_dating_interest_{interest}")])
-        buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="adminProfile_edit_dating_interests_done")])
+        for i, interest in enumerate(DATING_INTERESTS):
+            buttons.append([InlineKeyboardButton(text=interest, callback_data=f"adint_{i}")])
+        buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="adint_done")])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.answer("🎯 Выберите интересы (можно несколько):", reply_markup=keyboard)
@@ -734,13 +734,15 @@ async def admin_save_photo_upload(message: types.Message, state: FSMContext):
     await state.clear()
 
 # Обработчики для редактирования полей знакомств (админ)
-@admin_edit_router.callback_query(AdminEditProfileStates.DATING_GOAL, F.data.startswith("adminProfile_edit_dating_goal_"))
+@admin_edit_router.callback_query(AdminEditProfileStates.DATING_GOAL, F.data.startswith("adgoal_"))
 async def admin_process_dating_goal_edit(callback: types.CallbackQuery, state: FSMContext):
     if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
-    goal = callback.data.split("_", 4)[4]
+    goal_index = int(callback.data.split("_")[1])
+    from config.profile import DATING_GOALS
+    goal = DATING_GOALS[goal_index]
     data = await state.get_data()
     user_id = data.get('admin_edit_user_id')
     
@@ -768,13 +770,47 @@ async def admin_process_dating_goal_edit(callback: types.CallbackQuery, state: F
     await callback.answer()
     await state.clear()
 
-@admin_edit_router.callback_query(AdminEditProfileStates.DATING_INTERESTS, F.data.startswith("adminProfile_edit_dating_interest_"))
+@admin_edit_router.callback_query(AdminEditProfileStates.DATING_INTERESTS, F.data.startswith("adint_"))
 async def admin_process_dating_interest_edit(callback: types.CallbackQuery, state: FSMContext):
     if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
     
-    interest = callback.data.split("_", 4)[4]
+    if callback.data == "adint_done":
+        # Завершение выбора интересов
+        user_data = await state.get_data()
+        interests = user_data.get('dating_interests', [])
+        user_id = user_data.get('admin_edit_user_id')
+        
+        if not user_id:
+            await callback.message.answer("❌ Пользователь не выбран")
+            await callback.answer()
+            return
+        
+        users = await storage.load_users()
+        
+        if user_id in users:
+            users[user_id]['dating_interests'] = interests
+            await storage.save_users(users)
+            
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            
+            await callback.message.answer("✅ Интересы обновлены!")
+            await show_profile(callback.message, users[user_id])
+        else:
+            await callback.message.answer("❌ Профиль не найден")
+        
+        await callback.answer()
+        await state.clear()
+        return
+    
+    # Обработка выбора интереса
+    interest_index = int(callback.data.split("_")[1])
+    from config.profile import DATING_INTERESTS
+    interest = DATING_INTERESTS[interest_index]
     user_data = await state.get_data()
     interests = user_data.get('dating_interests', [])
     
@@ -786,54 +822,19 @@ async def admin_process_dating_interest_edit(callback: types.CallbackQuery, stat
     await state.update_data(dating_interests=interests)
     
     # Обновляем кнопки
-    from config.profile import DATING_INTERESTS
     buttons = []
-    for i in DATING_INTERESTS:
-        if i in interests:
-            buttons.append([InlineKeyboardButton(text=f"✅ {i}", callback_data=f"adminProfile_edit_dating_interest_{i}")])
+    for i, interest_text in enumerate(DATING_INTERESTS):
+        if interest_text in interests:
+            buttons.append([InlineKeyboardButton(text=f"✅ {interest_text}", callback_data=f"adint_{i}")])
         else:
-            buttons.append([InlineKeyboardButton(text=i, callback_data=f"adminProfile_edit_dating_interest_{i}")])
-    buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="adminProfile_edit_dating_interests_done")])
+            buttons.append([InlineKeyboardButton(text=interest_text, callback_data=f"adint_{i}")])
+    buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="adint_done")])
     
     await callback.message.edit_text(
         "🎯 Выберите интересы (можно несколько):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await callback.answer()
-
-@admin_edit_router.callback_query(AdminEditProfileStates.DATING_INTERESTS, F.data == "adminProfile_edit_dating_interests_done")
-async def admin_process_dating_interests_done_edit(callback: types.CallbackQuery, state: FSMContext):
-    if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
-        return
-    
-    user_data = await state.get_data()
-    interests = user_data.get('dating_interests', [])
-    user_id = user_data.get('admin_edit_user_id')
-    
-    if not user_id:
-        await callback.message.answer("❌ Пользователь не выбран")
-        await callback.answer()
-        return
-    
-    users = await storage.load_users()
-    
-    if user_id in users:
-        users[user_id]['dating_interests'] = interests
-        await storage.save_users(users)
-        
-        try:
-            await callback.message.delete()
-        except:
-            pass
-        
-        await callback.message.answer("✅ Интересы обновлены!")
-        await show_profile(callback.message, users[user_id])
-    else:
-        await callback.message.answer("❌ Профиль не найден")
-    
-    await callback.answer()
-    await state.clear()
 
 @admin_edit_router.message(AdminEditProfileStates.DATING_ADDITIONAL, F.text)
 async def admin_save_dating_additional_edit(message: types.Message, state: FSMContext):

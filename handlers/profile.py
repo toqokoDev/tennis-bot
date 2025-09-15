@@ -324,8 +324,8 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
     elif field == "dating_goal":
         # Клавиатура для выбора цели знакомства
         buttons = []
-        for goal in DATING_GOALS:
-            buttons.append([InlineKeyboardButton(text=goal, callback_data=f"edit_dating_goal_{goal}")])
+        for i, goal in enumerate(DATING_GOALS):
+            buttons.append([InlineKeyboardButton(text=goal, callback_data=f"dgoal_{i}")])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.answer("💕 Выберите вашу цель знакомства:", reply_markup=keyboard)
@@ -333,9 +333,9 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
     elif field == "dating_interests":
         # Клавиатура для выбора интересов
         buttons = []
-        for interest in DATING_INTERESTS:
-            buttons.append([InlineKeyboardButton(text=interest, callback_data=f"edit_dating_interest_{interest}")])
-        buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="edit_dating_interests_done")])
+        for i, interest in enumerate(DATING_INTERESTS):
+            buttons.append([InlineKeyboardButton(text=interest, callback_data=f"dint_{i}")])
+        buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="dint_done")])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.answer("🎯 Выберите ваши интересы (можно несколько):", reply_markup=keyboard)
@@ -752,9 +752,10 @@ async def save_photo_upload(message: types.Message, state: FSMContext):
     await state.clear()
 
 # Обработчики для редактирования полей знакомств
-@router.callback_query(EditProfileStates.DATING_GOAL, F.data.startswith("edit_dating_goal_"))
+@router.callback_query(EditProfileStates.DATING_GOAL, F.data.startswith("dgoal_"))
 async def process_dating_goal_edit(callback: types.CallbackQuery, state: FSMContext):
-    goal = callback.data.split("_", 3)[3]
+    goal_index = int(callback.data.split("_")[1])
+    goal = DATING_GOALS[goal_index]
     users = await storage.load_users()
     user_key = str(callback.message.chat.id)
     
@@ -775,9 +776,37 @@ async def process_dating_goal_edit(callback: types.CallbackQuery, state: FSMCont
     await callback.answer()
     await state.clear()
 
-@router.callback_query(EditProfileStates.DATING_INTERESTS, F.data.startswith("edit_dating_interest_"))
+@router.callback_query(EditProfileStates.DATING_INTERESTS, F.data.startswith("dint_"))
 async def process_dating_interest_edit(callback: types.CallbackQuery, state: FSMContext):
-    interest = callback.data.split("_", 3)[3]
+    if callback.data == "dint_done":
+        # Завершение выбора интересов
+        user_data = await state.get_data()
+        interests = user_data.get('dating_interests', [])
+        
+        users = await storage.load_users()
+        user_key = str(callback.message.chat.id)
+        
+        if user_key in users:
+            users[user_key]['dating_interests'] = interests
+            await storage.save_users(users)
+            
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            
+            await callback.message.answer("✅ Интересы обновлены!")
+            await show_profile(callback.message, users[user_key])
+        else:
+            await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        
+        await callback.answer()
+        await state.clear()
+        return
+    
+    # Обработка выбора интереса
+    interest_index = int(callback.data.split("_")[1])
+    interest = DATING_INTERESTS[interest_index]
     user_data = await state.get_data()
     interests = user_data.get('dating_interests', [])
     
@@ -790,43 +819,18 @@ async def process_dating_interest_edit(callback: types.CallbackQuery, state: FSM
     
     # Обновляем кнопки
     buttons = []
-    for i in DATING_INTERESTS:
-        if i in interests:
-            buttons.append([InlineKeyboardButton(text=f"✅ {i}", callback_data=f"edit_dating_interest_{i}")])
+    for i, interest_text in enumerate(DATING_INTERESTS):
+        if interest_text in interests:
+            buttons.append([InlineKeyboardButton(text=f"✅ {interest_text}", callback_data=f"dint_{i}")])
         else:
-            buttons.append([InlineKeyboardButton(text=i, callback_data=f"edit_dating_interest_{i}")])
-    buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="edit_dating_interests_done")])
+            buttons.append([InlineKeyboardButton(text=interest_text, callback_data=f"dint_{i}")])
+    buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="dint_done")])
     
     await callback.message.edit_text(
         "🎯 Выберите ваши интересы (можно несколько):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await callback.answer()
-
-@router.callback_query(EditProfileStates.DATING_INTERESTS, F.data == "edit_dating_interests_done")
-async def process_dating_interests_done_edit(callback: types.CallbackQuery, state: FSMContext):
-    user_data = await state.get_data()
-    interests = user_data.get('dating_interests', [])
-    
-    users = await storage.load_users()
-    user_key = str(callback.message.chat.id)
-    
-    if user_key in users:
-        users[user_key]['dating_interests'] = interests
-        await storage.save_users(users)
-        
-        try:
-            await callback.message.delete()
-        except:
-            pass
-        
-        await callback.message.answer("✅ Интересы обновлены!")
-        await show_profile(callback.message, users[user_key])
-    else:
-        await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
-    
-    await callback.answer()
-    await state.clear()
 
 @router.message(EditProfileStates.DATING_ADDITIONAL, F.text)
 async def save_dating_additional_edit(message: types.Message, state: FSMContext):
