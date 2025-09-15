@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.filters import StateFilter
 
-from config.config import SECRET_KEY, SHOP_ID, SUBSCRIPTION_PRICE
+from config.config import SECRET_KEY, SHOP_ID, SUBSCRIPTION_PRICE, BOT_USERNAME
 from config.profile import base_keyboard
 from models.states import PaymentStates
 from services.payments import create_payment
@@ -41,7 +41,7 @@ async def handle_payments(message: types.Message, state: FSMContext):
         "• Просмотр история игр игроков\n"
         "• Безлимитные заявки на игры\n\n"
         f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
-        "Также вы можете получить подписку бесплатно, пригласив 10 друзей.\n"
+        "Также вы можете получить подписку бесплатно, пригласив 5 друзей.\n"
         "Ваша персональная ссылка для приглашений доступна в разделе «🔗 Пригласить друга».\n\n"
         "💡 <i>Для оформления чека потребуется ваш email</i>"
     )

@@ -46,7 +46,7 @@ async def migrate_profile_data(old_sport: str, new_sport: str, profile: dict) ->
         new_profile["rating_points"] = 500  # Базовые очки
     
     if new_config.get("has_payment", True) and not new_profile.get("price"):
-        new_profile["price"] = "💰 Пополам"  # По умолчанию пополам
+        new_profile["price"] = None  # По умолчанию пополам
         new_profile["default_payment"] = "💰 Пополам"
     
     if new_config.get("has_vacation", True):
@@ -119,8 +119,7 @@ async def edit_profile_handler(callback: types.CallbackQuery, state: FSMContext)
     # Вид спорта (всегда доступен)
     buttons.append([InlineKeyboardButton(text="🎾 Вид спорта", callback_data="1edit_sport")])
     
-    # Удаление профиля и назад
-    buttons.append([InlineKeyboardButton(text="🗑️ Удалить профиль", callback_data="1delete_profile")])
+    # Назад
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{user_id}")])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -217,38 +216,8 @@ async def cancel_delete_handler(callback: types.CallbackQuery):
     profile = await storage.get_user(user_id)
     
     if profile:
-        # Возвращаемся к меню редактирования
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="💬 О себе", callback_data="1edit_comment"),
-                    InlineKeyboardButton(text="💳 Оплата", callback_data="1edit_payment")
-                ],
-                [
-                    InlineKeyboardButton(text="📷 Фото", callback_data="1edit_photo"),
-                    InlineKeyboardButton(text="🌍 Страна/Город", callback_data="1edit_location")
-                ],
-                [
-                    InlineKeyboardButton(text="🎾 Вид спорта", callback_data="1edit_sport"),
-                    InlineKeyboardButton(text="👤 Роль", callback_data="1edit_role")
-                ],
-                [
-                    InlineKeyboardButton(text="💰 Стоимость", callback_data="1edit_price"),
-                    InlineKeyboardButton(text="📊 Уровень", callback_data="1edit_level")
-                ],
-                [
-                    InlineKeyboardButton(text="🗑️ Удалить профиль", callback_data="1delete_profile")
-                ],
-                [
-                    InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{user_id}")
-                ]
-            ]
-        )
-        
-        await callback.message.edit_text(
-            "✏️ Выберите, что хотите изменить:",
-            reply_markup=keyboard
-        )
+        # Возвращаемся к главной странице профиля
+        await show_profile(callback.message, profile)
     else:
         await callback.message.edit_text(
             "❌ Профиль не найден",
@@ -342,28 +311,14 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
             sport = user_data.get("sport", "🎾Большой теннис")
             config = get_sport_config(sport)
             
-            # Проверяем, редактировал ли пользователь уровень ранее
-            if user_data.get('rating_edited', False):
-                await callback.message.answer("📊 Ваш уровень рассчитывается автоматически на основе игр и не может быть изменен вручную.")
+            # Просим пользователя ввести рейтинг
+            if config.get("level_type") == "table_tennis":
+                await callback.message.answer("🏓 Введите ваш рейтинг в настольном теннисе (например: 1500, 2000, 2500):")
             else:
-                if config.get("level_type") == "table_tennis":
-                    await callback.message.answer("🏓 Введите ваш рейтинг в настольном теннисе (цифры):")
-                else:
-                    # Показываем уровни для выбора
-                    levels_dict = tennis_levels if config.get("level_type", "tennis") == "tennis" else table_tennis_levels
-                    buttons = []
-                    for level, data in levels_dict.items():
-                        buttons.append([InlineKeyboardButton(
-                            text=f"{level} - {data['desc'][:50]}...",
-                            callback_data=f"edit_level_{level}"
-                        )])
-                    
-                    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-                    await callback.message.answer(
-                        f"📊 Выберите ваш уровень в {sport.replace('🎾', '').replace('🏓', '').replace('🏸', '').replace('🏖️', '').replace('🥎', '').replace('🏆', '')}:",
-                        reply_markup=keyboard
-                    )
-                    await state.set_state(EditProfileStates.LEVEL)
+                sport_name = sport.replace('🎾', '').replace('🏓', '').replace('🏸', '').replace('🏖️', '').replace('🥎', '').replace('🏆', '').strip()
+                await callback.message.answer(f"📊 Введите ваш рейтинг в {sport_name} (например: 1000, 1500, 2000):")
+            
+            await state.set_state(EditProfileStates.LEVEL)
         else:
             await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
     
@@ -522,29 +477,6 @@ async def save_price_edit(message: types.Message, state: FSMContext):
     await state.clear()
 
 # Обработчик для сохранения уровня
-@router.callback_query(EditProfileStates.LEVEL, F.data.startswith("edit_level_"))
-async def save_level_edit_callback(callback: types.CallbackQuery, state: FSMContext):
-    level = callback.data.split("_", 2)[2]
-    users = await storage.load_users()
-    user_key = str(callback.message.chat.id)
-    
-    if user_key in users:
-        sport = users[user_key].get("sport", "🎾Большой теннис")
-        config = get_sport_config(sport)
-        levels_dict = tennis_levels if config.get("level_type", "tennis") == "tennis" else table_tennis_levels
-        
-        users[user_key]['player_level'] = level
-        users[user_key]['rating_points'] = levels_dict.get(level, {}).get("points", 0)
-        users[user_key]['rating_edited'] = True
-        await storage.save_users(users)
-        
-        await callback.message.edit_text("✅ Уровень обновлен!")
-        await show_profile(callback.message, users[user_key])
-    else:
-        await callback.message.edit_text("❌ Профиль не найден")
-    
-    await state.clear()
-    await callback.answer()
 
 @router.message(EditProfileStates.LEVEL, F.text)
 async def save_level_edit(message: types.Message, state: FSMContext):
@@ -556,31 +488,31 @@ async def save_level_edit(message: types.Message, state: FSMContext):
         sport = users[user_key].get("sport", "🎾Большой теннис")
         config = get_sport_config(sport)
         
-        if config.get("level_type") == "table_tennis":
-            # Для настольного тенниса сохраняем как есть
-            users[user_key]['player_level'] = message.text.strip()
-            users[user_key]['rating_points'] = 1000  # Базовый рейтинг
+        try:
+            # Пытаемся преобразовать в число для всех видов спорта
+            rating = int(message.text.strip())
+            if rating < 0:
+                await message.answer("❌ Рейтинг не может быть отрицательным. Попробуйте еще раз:")
+                return
+            
+            # Сохраняем рейтинг
+            users[user_key]['player_level'] = users[user_key].get('player_level', 1)
+            users[user_key]['rating_points'] = rating
             users[user_key]['rating_edited'] = True
             await storage.save_users(users)
             
             await message.answer("✅ Рейтинг обновлен!")
             await show_profile(message, users[user_key])
-        else:
-            try:
-                level = int(message.text.strip())
-                if level < 0:
-                    await message.answer("❌ Уровень не может быть отрицательным. Попробуйте еще раз:")
-                    return
-                
-                users[user_key]['rating_points'] = level
-                users[user_key]['rating_edited'] = True
-                await storage.save_users(users)
-                
-                await message.answer("✅ Уровень обновлен!")
-                await show_profile(message, users[user_key])
-            except ValueError:
-                await message.answer("❌ Пожалуйста, введите корректное число для уровня:")
-            return
+            
+        except ValueError:
+            # Если не удалось преобразовать в число, сохраняем как текст
+            users[user_key]['player_level'] = users[user_key].get('player_level', 1)
+            users[user_key]['rating_points'] = 1000  # Базовый рейтинг для текстового рейтинга
+            users[user_key]['rating_edited'] = True
+            await storage.save_users(users)
+            
+            await message.answer("✅ Рейтинг обновлен!")
+            await show_profile(message, users[user_key])
     else:
         await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
     

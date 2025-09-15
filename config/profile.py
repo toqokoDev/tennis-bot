@@ -419,8 +419,7 @@ def get_base_keyboard(sport: str = "🎾Большой теннис") -> ReplyKe
                 KeyboardButton(text="📝 Внести счет")
             ],
             [
-                KeyboardButton(text="✈️ Туры"),
-                KeyboardButton(text="🏆 Турниры")
+                KeyboardButton(text="✈️ Туры")
             ],
             [
                 KeyboardButton(text="🔗 Пригласить друга"),

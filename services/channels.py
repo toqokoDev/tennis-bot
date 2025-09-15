@@ -187,7 +187,19 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
                 f"💕 *Анкета для знакомств*\n\n"
                 f"👤 {profile_link}\n"
                 f"📍 {game_data.get('city', '—')}\n"
+                f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
             )
+            
+            # Добавляем поля знакомств
+            if game_data.get('dating_goal'):
+                offer_text += f"💕 Цель: {game_data.get('dating_goal')}\n"
+            
+            if game_data.get('dating_interests'):
+                interests = ', '.join(game_data.get('dating_interests', []))
+                offer_text += f"🎯 Интересы: {interests}\n"
+            
+            if game_data.get('dating_additional'):
+                offer_text += f"📝 О себе: {game_data.get('dating_additional')}\n"
         elif category == "meeting":
             # Для встреч
             if sport == "☕️Бизнес-завтрак":

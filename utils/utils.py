@@ -253,12 +253,22 @@ async def format_tour_date(date_str):
             
 def get_sort_key(offer):
     try:
-        date = datetime.strptime(offer['date'], '%d.%m.%Y') if isinstance(offer['date'], str) else offer['date']
+        if offer.get('date') is None:
+            date = datetime.min
+        elif isinstance(offer['date'], str):
+            date = datetime.strptime(offer['date'], '%d.%m.%Y')
+        else:
+            date = offer['date']
     except (ValueError, TypeError):
         date = datetime.min  # Если дата некорректна, ставим минимальную дату
         
     try:
-        time = datetime.strptime(offer['time'], '%H:%M') if isinstance(offer['time'], str) else offer['time']
+        if offer.get('time') is None:
+            time = datetime.min.time()
+        elif isinstance(offer['time'], str):
+            time = datetime.strptime(offer['time'], '%H:%M').time()
+        else:
+            time = offer['time']
     except (ValueError, TypeError):
         time = datetime.min.time()  # Если время некорректно, ставим минимальное время
         
