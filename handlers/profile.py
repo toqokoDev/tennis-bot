@@ -321,6 +321,31 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
             await state.set_state(EditProfileStates.LEVEL)
         else:
             await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+    elif field == "dating_goal":
+        # Клавиатура для выбора цели знакомства
+        buttons = []
+        for goal in DATING_GOALS:
+            buttons.append([InlineKeyboardButton(text=goal, callback_data=f"edit_dating_goal_{goal}")])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await callback.message.answer("💕 Выберите вашу цель знакомства:", reply_markup=keyboard)
+        await state.set_state(EditProfileStates.DATING_GOAL)
+    elif field == "dating_interests":
+        # Клавиатура для выбора интересов
+        buttons = []
+        for interest in DATING_INTERESTS:
+            buttons.append([InlineKeyboardButton(text=interest, callback_data=f"edit_dating_interest_{interest}")])
+        buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="edit_dating_interests_done")])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await callback.message.answer("🎯 Выберите ваши интересы (можно несколько):", reply_markup=keyboard)
+        await state.set_state(EditProfileStates.DATING_INTERESTS)
+    elif field == "dating_additional":
+        await callback.message.answer("📝 Расскажите о себе дополнительно (работа, образование, рост и т.д.):")
+        await state.set_state(EditProfileStates.DATING_ADDITIONAL)
+    elif field == "meeting_time":
+        await callback.message.answer("⏰ Напишите место, конкретный день и время или дни недели и временные промежутки, когда вам удобно встретиться:")
+        await state.set_state(EditProfileStates.MEETING_TIME)
     
     await callback.answer()
 
@@ -723,6 +748,117 @@ async def save_photo_upload(message: types.Message, state: FSMContext):
             await message.answer("❌ Не удалось сохранить фото", reply_markup=base_keyboard)
     except Exception as e:
         await message.answer("❌ Ошибка при сохранении фото", reply_markup=base_keyboard)
+    
+    await state.clear()
+
+# Обработчики для редактирования полей знакомств
+@router.callback_query(EditProfileStates.DATING_GOAL, F.data.startswith("edit_dating_goal_"))
+async def process_dating_goal_edit(callback: types.CallbackQuery, state: FSMContext):
+    goal = callback.data.split("_", 3)[3]
+    users = await storage.load_users()
+    user_key = str(callback.message.chat.id)
+    
+    if user_key in users:
+        users[user_key]['dating_goal'] = goal
+        await storage.save_users(users)
+        
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        
+        await callback.message.answer("✅ Цель знакомства обновлена!")
+        await show_profile(callback.message, users[user_key])
+    else:
+        await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+    
+    await callback.answer()
+    await state.clear()
+
+@router.callback_query(EditProfileStates.DATING_INTERESTS, F.data.startswith("edit_dating_interest_"))
+async def process_dating_interest_edit(callback: types.CallbackQuery, state: FSMContext):
+    interest = callback.data.split("_", 3)[3]
+    user_data = await state.get_data()
+    interests = user_data.get('dating_interests', [])
+    
+    if interest in interests:
+        interests.remove(interest)
+    else:
+        interests.append(interest)
+    
+    await state.update_data(dating_interests=interests)
+    
+    # Обновляем кнопки
+    buttons = []
+    for i in DATING_INTERESTS:
+        if i in interests:
+            buttons.append([InlineKeyboardButton(text=f"✅ {i}", callback_data=f"edit_dating_interest_{i}")])
+        else:
+            buttons.append([InlineKeyboardButton(text=i, callback_data=f"edit_dating_interest_{i}")])
+    buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="edit_dating_interests_done")])
+    
+    await callback.message.edit_text(
+        "🎯 Выберите ваши интересы (можно несколько):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await callback.answer()
+
+@router.callback_query(EditProfileStates.DATING_INTERESTS, F.data == "edit_dating_interests_done")
+async def process_dating_interests_done_edit(callback: types.CallbackQuery, state: FSMContext):
+    user_data = await state.get_data()
+    interests = user_data.get('dating_interests', [])
+    
+    users = await storage.load_users()
+    user_key = str(callback.message.chat.id)
+    
+    if user_key in users:
+        users[user_key]['dating_interests'] = interests
+        await storage.save_users(users)
+        
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        
+        await callback.message.answer("✅ Интересы обновлены!")
+        await show_profile(callback.message, users[user_key])
+    else:
+        await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+    
+    await callback.answer()
+    await state.clear()
+
+@router.message(EditProfileStates.DATING_ADDITIONAL, F.text)
+async def save_dating_additional_edit(message: types.Message, state: FSMContext):
+    additional = message.text.strip()
+    users = await storage.load_users()
+    user_key = str(message.from_user.id)
+    
+    if user_key in users:
+        users[user_key]['dating_additional'] = additional
+        await storage.save_users(users)
+        
+        await message.answer("✅ Дополнительная информация обновлена!")
+        await show_profile(message, users[user_key])
+    else:
+        await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+    
+    await state.clear()
+
+@router.message(EditProfileStates.MEETING_TIME, F.text)
+async def save_meeting_time_edit(message: types.Message, state: FSMContext):
+    meeting_time = message.text.strip()
+    users = await storage.load_users()
+    user_key = str(message.from_user.id)
+    
+    if user_key in users:
+        users[user_key]['meeting_time'] = meeting_time
+        await storage.save_users(users)
+        
+        await message.answer("✅ Время встречи обновлено!")
+        await show_profile(message, users[user_key])
+    else:
+        await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
     
     await state.clear()
 
