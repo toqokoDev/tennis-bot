@@ -78,6 +78,10 @@ class EditProfileStates(StatesGroup):
     ROLE = State()
     PRICE = State()
     LEVEL = State()
+    DATING_GOAL = State()
+    DATING_INTERESTS = State()
+    DATING_ADDITIONAL = State()
+    MEETING_TIME = State()
 
 class PaymentStates(StatesGroup):
     WAITING_EMAIL = State()
@@ -149,4 +153,8 @@ class AdminEditProfileStates(StatesGroup):
     ROLE = State()
     TRAINER_PRICE = State()
     LEVEL = State()
+    DATING_GOAL = State()
+    DATING_INTERESTS = State()
+    DATING_ADDITIONAL = State()
+    MEETING_TIME = State()
     
