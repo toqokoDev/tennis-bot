@@ -50,7 +50,9 @@ class GameOfferStates(StatesGroup):
     GAME_COMPETITIVE = State()
     GAME_REPEAT = State()
     GAME_COMMENT = State()
-    GAME_MEDIA = State()
+    DATING_GOAL = State()
+    DATING_INTERESTS = State()
+    DATING_ADDITIONAL = State()
 
 class SearchStates(StatesGroup):
     SEARCH_TYPE = State()

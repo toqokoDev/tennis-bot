@@ -8,7 +8,7 @@ import glob
 from typing import List, Optional, Union
 from datetime import datetime
 
-from config.config import SUBSCRIPTION_PRICE
+from config.config import SUBSCRIPTION_PRICE, BOT_USERNAME
 from config.paths import GAMES_PHOTOS_DIR
 from models.states import AddScoreState
 from services.channels import send_game_notification_to_channel
@@ -208,11 +208,16 @@ async def handle_add_score(message: types.Message, state: FSMContext):
     if not await is_admin(user_id):
         if not users[str(user_id)].get('subscription', {}).get('active', False):
             # Показываем сообщение о необходимости подписки
+            referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{message.from_user.id}"
             text = (
                 "🔒 <b>Доступ закрыт</b>\n\n"
                 "Функция внесения счета доступна только для пользователей с активной подписки Tennis-Play PRO.\n\n"
-                f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
-                "Перейдите в раздел '💳 Платежи' для оформления подписки."
+                f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n"
+                "Перейдите в раздел '💳 Платежи' для оформления подписки.\n\n"
+                "Также вы можете получить подписку бесплатно, пригласив 5 друзей.\n"
+                "Ваша персональная ссылка для приглашений доступна в разделе «🔗 Пригласить друга».\n\n"
+                f"🔗 <b>Ваша реферальная ссылка:</b>\n"
+                f"<code>{referral_link}</code>\n\n"
             )
             
             await message.answer(
@@ -1479,11 +1484,16 @@ async def handle_history_request(callback: types.CallbackQuery):
             if current_user_id != target_user_id:
                 users = await storage.load_users()
                 if not users.get(current_user_id, {}).get('subscription', {}).get('active', False):
+                    referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{callback.from_user.id}"
                     text = (
                         "🔒 <b>Доступ закрыт</b>\n\n"
                         "Функция просмотра истории игр игроков доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
-                        f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
-                        "Перейдите в раздел '💳 Платежи' для оформления подписки."
+                        f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n"
+                        "Перейдите в раздел '💳 Платежи' для оформления подписки.\n\n"
+                        "Также вы можете получить подписку бесплатно, пригласив 5 друзей.\n"
+                        "Ваша персональная ссылка для приглашений доступна в разделе «🔗 Пригласить друга».\n\n"
+                        f"🔗 <b>Ваша реферальная ссылка:</b>\n"
+                        f"<code>{referral_link}</code>\n\n"
                     )
                     
                     await callback.message.answer(

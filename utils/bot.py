@@ -153,6 +153,7 @@ async def show_profile(message: types.Message, profile: dict):
             keyboard_buttons.append([InlineKeyboardButton(text=texts["my_offers_button"], callback_data="my_offers")])
             keyboard_buttons.append([InlineKeyboardButton(text=texts["offer_button"], callback_data="new_offer")])
         
+        keyboard_buttons.append([InlineKeyboardButton(text="🗑️ Удалить профиль", callback_data="1delete_profile")])
         keyboard_buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
         
         # Если админ смотрит свой профиль - добавляем админские кнопки

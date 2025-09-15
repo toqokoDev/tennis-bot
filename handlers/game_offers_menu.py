@@ -3,11 +3,12 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     InlineKeyboardMarkup,
-    InlineKeyboardButton
+    InlineKeyboardButton,
+    ReplyKeyboardRemove
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE, SUBSCRIPTION_PRICE
-from config.profile import sport_type
+from config.profile import sport_type, get_sport_config
 from services.storage import storage
 from utils.admin import is_admin
 from models.states import BrowseOffersStates, RespondToOfferStates
@@ -30,7 +31,7 @@ async def browse_offers_start(message: types.Message, state: FSMContext):
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     await message.answer(
-        "🎯 Выберите вид спорта для просмотра предложений игр:",
+        "Выберите вид спорта:",
         reply_markup=keyboard
     )
     await state.set_state(BrowseOffersStates.SELECT_SPORT)
@@ -60,7 +61,7 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             f"❌ На данный момент нет активных предложений игр в {sport_type_selected} от других пользователей.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer")],
+                [InlineKeyboardButton(text="🎾 Предложить", callback_data="new_offer")],
                 [InlineKeyboardButton(text="🔙 Назад к выбору спорта", callback_data="back_to_sport_selection")]
             ])
         )
@@ -78,7 +79,7 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
     
     # Добавляем кнопку возврата
     buttons.append([
-        InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer")
+        InlineKeyboardButton(text="🎾 Предложить", callback_data="new_offer")
     ])
 
     buttons.append([
@@ -138,7 +139,7 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
         ])
     
     buttons.append([
-        InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer")
+        InlineKeyboardButton(text="🎾 Предложить", callback_data="new_offer")
     ])
     # Добавляем кнопку возврата
     buttons.append([
@@ -178,7 +179,7 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
             
             for game in user_data['games']:
                 if (game.get('active', True) and 
-                    user_data.get('sport') == sport_type_selected):
+                    game.get('sport') == sport_type_selected):
                     
                     offer = {
                         'user_id': user_id,
@@ -190,7 +191,7 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
                         'city': game.get('city'),
                         'date': game.get('date'),
                         'time': game.get('time'),
-                        'sport_type': user_data.get('sport'),
+                        'sport_type': game.get('sport'),
                         'game_type': game.get('type'),
                         'payment_type': game.get('payment_type'),
                         'competitive': game.get('competitive'),
@@ -265,8 +266,50 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         time = offer.get('time', '-')
         district = offer.get('district', '')
         
+        # Получаем информацию о виде спорта для краткого описания
+        sport = offer.get('sport', '🎾Большой теннис')
+        config = get_sport_config(sport)
+        category = config.get("category", "court_sport")
+        
+        # Краткое описание в зависимости от категории
+        if category == "dating":
+            sport_desc = "💕 Цель"
+        elif category == "meeting":
+            if sport == "☕️Бизнес-завтрак":
+                sport_desc = "☕ Проекты"
+            else:  # По пиву
+                sport_desc = "🍻 Обсуждение"
+        elif category == "outdoor_sport":
+            if sport == "⛳Гольф":
+                sport_desc = "⛳ Место+уровень"
+            elif sport == "🏃‍♂️‍➡️Бег":
+                sport_desc = "🏃 Маршрут+темп"
+            elif sport == "🏋️‍♀️Фитнес":
+                sport_desc = "🏋️ Тип+место"
+            elif sport == "🚴Вело":
+                sport_desc = "🚴 Маршрут+дистанция"
+            else:
+                sport_desc = "🏃 Активность"
+        else:  # court_sport
+            if sport == "🎾Большой теннис":
+                sport_desc = "🎾 Корт+уровень+формат"
+            elif sport == "🏓Настольный теннис":
+                sport_desc = "🏓 Стол+рейтинг+формат"
+            elif sport == "🏸Бадминтон":
+                sport_desc = "🏸 Корт+уровень+формат"
+            elif sport == "🏖️Пляжный теннис":
+                sport_desc = "🏖️ Пляж+уровень+формат"
+            elif sport == "🎾Падл-теннис":
+                sport_desc = "🎾 Корт+уровень+формат"
+            elif sport == "🥎Сквош":
+                sport_desc = "🥎 Корт+уровень+формат"
+            elif sport == "🏆Пиклбол":
+                sport_desc = "🏆 Корт+уровень+формат"
+            else:
+                sport_desc = "🎾 Игра"
+        
         # Итоговая строка
-        short_info = f"{day_str} {time} {district} {gender_icon} {user_info}"
+        short_info = f"{day_str} {time} {district} {gender_icon} {user_info} • {sport_desc}"
         
         builder.row(InlineKeyboardButton(
             text=short_info,
@@ -284,7 +327,7 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         builder.row(*nav_buttons)
     
     # Кнопка для предложения новой игры
-    builder.row(InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer"))
+    builder.row(InlineKeyboardButton(text="🎾 Предложить", callback_data="new_offer"))
     
     # Кнопка возврата к выбору города
     builder.row(InlineKeyboardButton(text="🔙 Назад к выбору города", callback_data="back_to_city_selection"))
@@ -351,17 +394,200 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     user_name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
     player_level = user_data.get("player_level", "—")
     
-    text = (
-        f"🎯 Вид спорта: {user_data.get('sport', '—')}\n"
-        f"⚠️ {user_name} {username_str}\n"
-        f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-        f"🏙 {game.get('city', '—')}\n"
-        f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
-        f"📅 {game.get('date', '—')}, {game.get('time', '—')}\n"
-        f"🕹 {game.get('type', '—')}\n"
-        f"💰 Оплата: {game.get('payment_type', '—')}\n"
-        f"🏆 На счёт: {'Да' if game.get('competitive') else 'Нет'}\n"
-    )
+    # Получаем вид спорта из игры и конфигурацию
+    sport = game.get('sport', '🎾Большой теннис')
+    config = get_sport_config(sport)
+    category = config.get("category", "court_sport")
+    
+    # Формируем текст в зависимости от категории вида спорта
+    if category == "dating":
+        text = (
+            f"{sport}\n"
+            f"👤 {user_name} {username_str}\n"
+            f"🏙 {game.get('city', '—')}\n"
+            f"📅 Дата: {game.get('date', '—')}\n"
+            f"⏰ Время: {game.get('time', '—')}\n"
+        )
+        if game.get('dating_goal'):
+            text += f"💕 Цель: {game.get('dating_goal')}\n"
+        if game.get('dating_interests'):
+            interests = ', '.join(game.get('dating_interests', []))
+            text += f"🎯 Интересы: {interests}\n"
+        if game.get('dating_additional'):
+            text += f"📝 О себе: {game.get('dating_additional')}\n"
+    elif category == "meeting":
+        if sport == "☕️Бизнес-завтрак":
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+            )
+        else:  # По пиву
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+            )
+    elif category == "outdoor_sport":
+        if sport == "⛳Гольф":
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+            )
+        elif sport == "🏃‍♂️‍➡️Бег":
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+            )
+        elif sport == "🏋️‍♀️Фитнес":
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+            )
+        elif sport == "🚴Вело":
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+            )
+        else:
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+            )
+    else:  # court_sport
+        if sport == "🎾Большой теннис":
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+                f"🔍 Тип: {game.get('type', '—')}\n"
+                f"💳 Оплата: {game.get('payment_type', '—')}\n"
+                f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
+                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
+            )
+        elif sport == "🏓Настольный теннис":
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+                f"🔍 Тип: {game.get('type', '—')}\n"
+                f"💳 Оплата: {game.get('payment_type', '—')}\n"
+                f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
+                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
+            )
+        elif sport == "🏸Бадминтон":
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+                f"🔍 Тип: {game.get('type', '—')}\n"
+                f"💳 Оплата: {game.get('payment_type', '—')}\n"
+                f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
+                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
+            )
+        elif sport == "🏖️Пляжный теннис":
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+                f"🔍 Тип: {game.get('type', '—')}\n"
+                f"💳 Оплата: {game.get('payment_type', '—')}\n"
+                f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
+                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
+            )
+        elif sport == "🎾Падл-теннис":
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+                f"🔍 Тип: {game.get('type', '—')}\n"
+                f"💳 Оплата: {game.get('payment_type', '—')}\n"
+                f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
+                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
+            )
+        elif sport == "🥎Сквош":
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+                f"🔍 Тип: {game.get('type', '—')}\n"
+                f"💳 Оплата: {game.get('payment_type', '—')}\n"
+                f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
+                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
+            )
+        elif sport == "🏆Пиклбол":
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+                f"🔍 Тип: {game.get('type', '—')}\n"
+                f"💳 Оплата: {game.get('payment_type', '—')}\n"
+                f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
+                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
+            )
+        else:
+            text = (
+                f"{sport}\n"
+                f"👤 {user_name} {username_str}\n"
+                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
+                f"🏙 {game.get('city', '—')}\n"
+                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
+                f"📅 Дата: {game.get('date', '—')}\n"
+                f"⏰ Время: {game.get('time', '—')}\n"
+                f"🔍 Тип: {game.get('type', '—')}\n"
+                f"💳 Оплата: {game.get('payment_type', '—')}\n"
+                f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
+                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
+            )
     
     if game.get('comment'):
         text += f"💬 Комментарий: {game['comment']}\n"
@@ -600,7 +826,7 @@ async def back_to_country_selection(callback: types.CallbackQuery, state: FSMCon
         await callback.message.edit_text(
             f"❌ На данный момент нет активных предложений игр в {sport_type_selected} от других пользователей.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🎾 Предложить игру", callback_data="new_offer")],
+                [InlineKeyboardButton(text="🎾 Предложить", callback_data="new_offer")],
                 [InlineKeyboardButton(text="🔙 Назад к выбору спорта", callback_data="back_to_sport_selection")]
             ])
         )

@@ -847,12 +847,10 @@ async def ask_for_next_step_after_photo(message: types.Message, state: FSMContex
     sport = user_data.get("sport")
     config = get_sport_config(sport)
     
-    if config.get("has_vacation", True) and sport not in ["☕️Бизнес-завтрак", "🍻По пиву", "🍒Знакомства"]:
-        await ask_for_vacation_tennis(message, state)
-    elif config.get("has_payment", True) and sport not in ["☕️Бизнес-завтрак", "🍻По пиву", "🍒Знакомства"]:
+    if config.get("has_payment", True) and sport not in ["☕️Бизнес-завтрак", "🍻По пиву", "🍒Знакомства"]:
         await ask_for_default_payment(message, state)
     else:
-        await ask_for_create_game(message, state)
+        await ask_for_vacation_tennis(message, state)
 
 @router.message(RegistrationStates.PHOTO, F.photo)
 async def process_photo_upload(message: types.Message, state: FSMContext):
@@ -908,7 +906,7 @@ async def process_vacation_tennis(callback: types.CallbackQuery, state: FSMConte
         await state.set_state(RegistrationStates.VACATION_COUNTRY)
     else:
         await state.update_data(vacation_tennis=False)
-        await ask_for_default_payment(callback.message, state)
+        await ask_for_create_game(callback.message, state)
     
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
@@ -1015,7 +1013,12 @@ async def process_vacation_end(message: Message, state: FSMContext):
 async def process_vacation_comment(message: Message, state: FSMContext):
     if message.text.strip() != "/skip":
         await state.update_data(vacation_comment=message.text.strip())
-    await ask_for_default_payment(message, state)
+    
+    # Автоматически устанавливаем vacation_tennis=True
+    await state.update_data(vacation_tennis=True)
+    
+    # Переходим к созданию игры
+    await ask_for_create_game(message, state)
     await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_default_payment(message: types.Message, state: FSMContext):
@@ -1045,8 +1048,8 @@ async def process_default_payment(callback: types.CallbackQuery, state: FSMConte
     payment = callback.data.split("_", maxsplit=1)[1]
     await state.update_data(default_payment=payment)
     
-    # Спрашиваем, хочет ли пользователь создать игру
-    await ask_for_create_game(callback.message, state)
+    # Переходим к вопросу о туре
+    await ask_for_vacation_tennis(callback.message, state)
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
 
@@ -1149,8 +1152,8 @@ async def process_create_game_offer(callback: types.CallbackQuery, state: FSMCon
             'referrals_invited': referrals_count
         })
         
-        # Проверяем, достиг ли реферер 10 приглашений
-        if referrals_count >= 10:
+        # Проверяем, достиг ли реферер 5 приглашений
+        if referrals_count >= 5:
             # Дарим подписку на 1 месяц
             await storage.update_user(referral_id, {
                 'active': True,
@@ -1162,7 +1165,7 @@ async def process_create_game_offer(callback: types.CallbackQuery, state: FSMCon
             try:
                 await callback.message.bot.send_message(
                     referral_id,
-                    "🎉 Поздравляем! Вы пригласили 10 друзей и получили бесплатную подписку на 1 месяц!"
+                    "🎉 Поздравляем! Вы пригласили 5 друзей и получили бесплатную подписку на 1 месяц!"
                 )
             except:
                 pass
@@ -1203,8 +1206,8 @@ async def process_skip_game_offer(callback: types.CallbackQuery, state: FSMConte
             'referrals_invited': referrals_count
         })
         
-        # Проверяем, достиг ли реферер 10 приглашений
-        if referrals_count >= 10:
+        # Проверяем, достиг ли реферер 5 приглашений
+        if referrals_count >= 5:
             await storage.update_user(referral_id, {
                 'active': True,
                 'until': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
@@ -1215,7 +1218,7 @@ async def process_skip_game_offer(callback: types.CallbackQuery, state: FSMConte
             try:
                 await callback.message.bot.send_message(
                     referral_id,
-                    "🎉 Поздравляем! Вы пригласили 10 друзей и получили бесплатную подписку на 1 месяц!"
+                    "🎉 Поздравляем! Вы пригласили 5 друзей и получили бесплатную подписку на 1 месяц!"
                 )
             except:
                 pass

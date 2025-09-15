@@ -8,7 +8,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config.config import SUBSCRIPTION_PRICE
+from config.config import SUBSCRIPTION_PRICE, BOT_USERNAME
 from config.profile import PRICE_RANGES, cities_data, sport_type, countries
 from models.states import SearchStates
 from services.storage import storage
@@ -21,6 +21,9 @@ router = Router()
 @router.message(F.text == "🔍 Еще")
 async def handle_more(message: types.Message):
     builder = InlineKeyboardBuilder()
+    builder.row(
+        types.InlineKeyboardButton(text="🏆 Турниры", callback_data="tournaments_main_menu")
+    )
     builder.row(
         types.InlineKeyboardButton(text="🌍 Все игроки", callback_data="all_players"),
         types.InlineKeyboardButton(text="🔍 Поиск тренера", callback_data="find_coach")
@@ -74,13 +77,16 @@ async def handle_all_players(callback: types.CallbackQuery, state: FSMContext):
 
     if not await is_admin(user_id):
         if not users[str(user_id)].get('subscription', {}).get('active', False):
+            referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{callback.from_user.id}"
             text = (
                 "🔒 <b>Доступ закрыт</b>\n\n"
                 "Функция просмотра всех игроков доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
-                f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
-                "Также вы можете получить подписку бесплатно, пригласив 10 друзей.\n"
+                f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n"
+                "Перейдите в раздел '💳 Платежи' для оформления подписки.\n\n"
+                "Также вы можете получить подписку бесплатно, пригласив 5 друзей.\n"
                 "Ваша персональная ссылка для приглашений доступна в разделе «🔗 Пригласить друга».\n\n"
-                "Перейдите в раздел '💳 Платежи' для оформления подписки."
+                f"🔗 <b>Ваша реферальная ссылка:</b>\n"
+                f"<code>{referral_link}</code>\n\n"
             )
             
             await callback.message.answer(
