@@ -229,7 +229,7 @@ async def cancel_delete_handler(callback: types.CallbackQuery):
 # Обработчики для редактирования профиля
 @router.callback_query(F.data.startswith("1edit_"))
 async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
-    field = callback.data.split("_")[1]
+    field = callback.data.replace("1edit_", "")
     
     try:
         await callback.message.delete()
