@@ -402,11 +402,9 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     # Формируем текст в зависимости от категории вида спорта
     if category == "dating":
         text = (
-            f"💕 {sport} - Знакомства\n"
+            f"{sport}\n"
             f"👤 {user_name} {username_str}\n"
-            f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
             f"🏙 {game.get('city', '—')}\n"
-            f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
             f"📅 Дата: {game.get('date', '—')}\n"
             f"⏰ Время: {game.get('time', '—')}\n"
         )
@@ -420,28 +418,24 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     elif category == "meeting":
         if sport == "☕️Бизнес-завтрак":
             text = (
-                f"☕ {sport} - Бизнес-встреча\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
-                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
         else:  # По пиву
             text = (
-                f"🍻 {sport} - Встреча за пивом\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
-                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
     elif category == "outdoor_sport":
         if sport == "⛳Гольф":
             text = (
-                f"⛳ {sport} - Гольф\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
@@ -451,48 +445,40 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🏃‍♂️‍➡️Бег":
             text = (
-                f"🏃 {sport} - Бег\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
-                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
         elif sport == "🏋️‍♀️Фитнес":
             text = (
-                f"🏋️ {sport} - Фитнес\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
-                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
         elif sport == "🚴Вело":
             text = (
-                f"🚴 {sport} - Велоспорт\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
-                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
         else:
             text = (
-                f"🏃 {sport} - Активность\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
-                f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
     else:  # court_sport
         if sport == "🎾Большой теннис":
             text = (
-                f"🎾 {sport} - Большой теннис\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
@@ -506,7 +492,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🏓Настольный теннис":
             text = (
-                f"🏓 {sport} - Настольный теннис\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
@@ -520,7 +506,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🏸Бадминтон":
             text = (
-                f"🏸 {sport} - Бадминтон\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
@@ -534,7 +520,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🏖️Пляжный теннис":
             text = (
-                f"🏖️ {sport} - Пляжный теннис\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
@@ -548,7 +534,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🎾Падл-теннис":
             text = (
-                f"🎾 {sport} - Падл-теннис\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
@@ -562,7 +548,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🥎Сквош":
             text = (
-                f"🥎 {sport} - Сквош\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
@@ -576,7 +562,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🏆Пиклбол":
             text = (
-                f"🏆 {sport} - Пиклбол\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"
@@ -590,7 +576,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         else:
             text = (
-                f"🎾 {sport} - Игра\n"
+                f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🏙 {game.get('city', '—')}\n"

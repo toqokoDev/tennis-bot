@@ -341,13 +341,18 @@ async def new_offer_handler(callback: types.CallbackQuery, state: FSMContext):
     # Проверяем подписку и количество бесплатных предложений
     user_data = users.get(str(user_id), {})
     subscription_active = user_data.get('subscription', {}).get('active', False)
+    user_gender = profile.get('gender', '')
     
     if not await is_admin(callback.message.chat.id):
         if not subscription_active:
             # Получаем количество созданных бесплатных предложений
             free_offers_used = user_data.get('free_offers_used', 0)
             
-            if free_offers_used >= 1:
+            # Для женского пола в категориях "Знакомства" и "По пиву" - неограниченно бесплатно
+            if user_gender == 'Женский':
+                # Пропускаем проверку лимита для женского пола
+                pass
+            elif free_offers_used >= 1:
                 referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{callback.from_user.id}"
                 text = (
                     "🔒 <b>Доступ закрыт</b>\n\n"
@@ -375,10 +380,14 @@ async def new_offer_handler(callback: types.CallbackQuery, state: FSMContext):
     
     await state.update_data(country=country, city=city, sport=sport)
     
-    # Сначала спрашиваем вид спорта
+    # Сначала спрашиваем вид спорта - создаем сетку 3x5
     buttons = []
-    for sport_option in sport_type:
-        buttons.append([InlineKeyboardButton(text=sport_option, callback_data=f"gamesport_{sport_option}")])
+    for i in range(0, len(sport_type), 3):  # По 3 кнопки в ряду
+        row = []
+        for j in range(i, min(i + 3, len(sport_type))):
+            sport_option = sport_type[j]
+            row.append(InlineKeyboardButton(text=sport_option, callback_data=f"gamesport_{sport_option}"))
+        buttons.append(row)
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
@@ -438,13 +447,18 @@ async def offer_game_command(message: types.Message, state: FSMContext):
     
     # Проверяем подписку и количество бесплатных предложений
     subscription_active = user_data.get('subscription', {}).get('active', False)
+    user_gender = user_data.get('gender', '')
     
     if not await is_admin(message.chat.id):
         if not subscription_active:
             # Получаем количество созданных бесплатных предложений
             free_offers_used = user_data.get('free_offers_used', 0)
             
-            if free_offers_used >= 2:
+            # Для женского пола в категориях "Знакомства" и "По пиву" - неограниченно бесплатно
+            if user_gender == 'Женский':
+                # Пропускаем проверку лимита для женского пола
+                pass
+            elif free_offers_used >= 2:
                 referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{message.from_user.id}"
                 text = (
                     "🔒 <b>Доступ закрыт</b>\n\n"
@@ -534,7 +548,7 @@ async def process_game_city(callback: types.CallbackQuery, state: FSMContext):
 
         await show_current_data(
             callback.message, state,
-            "📅 Выберите дату игры:",
+            "📅 Выберите дату:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
         await state.set_state(GameOfferStates.GAME_DATE)
@@ -555,7 +569,7 @@ async def process_game_date(callback: types.CallbackQuery, state: FSMContext):
     if callback.data == "gamedate_manual":
         await show_current_data(
             callback.message, state,
-            "📅 Введите дату игры в формате ДД.ММ.ГГГГ (например, 25.12.2025):"
+            "📅 Введите дату в формате ДД.ММ.ГГГГ (например, 25.12.2025):"
         )
         await state.set_state(GameOfferStates.GAME_DATE_MANUAL)
         await callback.answer()
@@ -576,7 +590,7 @@ async def process_game_date(callback: types.CallbackQuery, state: FSMContext):
 
     await show_current_data(
         callback.message, state,
-        "⏰ Выберите время игры:",
+        "⏰ Выберите время:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(GameOfferStates.GAME_TIME)
@@ -618,7 +632,7 @@ async def process_game_date_manual(message: types.Message, state: FSMContext):
 
     await show_current_data(
         message, state,
-        "⏰ Выберите время игры:",
+        "⏰ Выберите время:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(GameOfferStates.GAME_TIME)
@@ -914,9 +928,14 @@ async def create_game_offer(message: types.Message, state: FSMContext):
     
     if user_id_str in users:
         if not users[user_id_str].get('subscription', {}).get('active', False):
-            free_offers_used = users[user_id_str].get('free_offers_used', 0)
-            users[user_id_str]['free_offers_used'] = free_offers_used + 1
-            await storage.save_users(users)
+            user_gender = users[user_id_str].get('gender', '')
+            sport = user_data.get('game_sport', user_data.get('sport', '🎾Большой теннис'))
+            
+            # Для женского пола в категориях "Знакомства" и "По пиву" не увеличиваем счетчик
+            if not (user_gender == 'Женский' and sport in ['🍒Знакомства', '🍻По пиву']):
+                free_offers_used = users[user_id_str].get('free_offers_used', 0)
+                users[user_id_str]['free_offers_used'] = free_offers_used + 1
+                await storage.save_users(users)
     
     await state.clear()
     await storage.delete_session(message.chat.id)
@@ -967,12 +986,18 @@ async def create_game_offer(message: types.Message, state: FSMContext):
     users = await storage.load_users()
     user_data = users.get(str(message.chat.id), {})
     subscription_active = user_data.get('subscription', {}).get('active', False)
+    user_gender = user_data.get('gender', '')
+    sport = user_data.get('game_sport', user_data.get('sport', '🎾Большой теннис'))
     
     if not subscription_active:
-        free_offers_used = user_data.get('free_offers_used', 0)
-        remaining_offers = max(0, 1 - free_offers_used)
-        response.append(f"\n📊 Бесплатных предложений осталось: {remaining_offers}/1")
-        response.append("💳 Оформите подписку для неограниченного создания предложений!")
+        # Для женского пола в категориях "Знакомства" и "По пиву" - особое сообщение
+        if user_gender == 'Женский' and sport in ['🍒Знакомства', '🍻По пиву']:
+            response.append("💎 Для женского пола в категориях 'Знакомства' и 'По пиву' — неограниченное создание предложений!")
+        else:
+            free_offers_used = user_data.get('free_offers_used', 0)
+            remaining_offers = max(0, 1 - free_offers_used)
+            response.append(f"\n📊 Бесплатных предложений осталось: {remaining_offers}/1")
+            response.append("💳 Оформите подписку для неограниченного создания предложений!")
     else:
         response.append("💎 У вас активна подписка — создавайте игры без ограничений!")
     
@@ -1041,7 +1066,6 @@ async def list_my_games(message: types.Message, state: FSMContext):
         response.append(f"🔍 Тип: {game.get('type', '—')}")
         response.append(f"💳 Оплата: {game.get('payment_type', '—')}")
         response.append(f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}")
-        response.append(f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}")
     
     if game.get('comment'):
         response.append(f"💬 Комментарий: {game['comment']}")
