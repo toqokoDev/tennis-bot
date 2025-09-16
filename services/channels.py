@@ -283,9 +283,6 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         profile_link = await create_user_profile_link(user_data, user_id)
         sport = user_data.get('sport', '🎾Большой теннис')
         
-        # Получаем ID канала для данного вида спорта
-        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
-        
         # Формируем текст тура
         tour_text = (
             f"✈️ *Тур по {sport}*\n\n"
@@ -305,7 +302,7 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         if photo_path:
             # отправляем фото + текст в подписи
             await bot.send_photo(
-                chat_id=channel_id,
+                chat_id=tour_channel_id,
                 photo=FSInputFile(BASE_DIR / photo_path),
                 caption=tour_text,
                 parse_mode="Markdown",
@@ -314,7 +311,7 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         else:
             # если фото нет — обычное сообщение
             await bot.send_message(
-                chat_id=channel_id,
+                chat_id=tour_channel_id,
                 text=tour_text,
                 parse_mode="Markdown",
                 disable_web_page_preview=True
