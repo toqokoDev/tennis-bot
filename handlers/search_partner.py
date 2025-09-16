@@ -703,7 +703,7 @@ async def show_level_selection(message: Union[types.Message, types.CallbackQuery
             callback_data=f"partner_level_{level}"
         ))
     
-    builder.adjust(1, 2)
+    builder.adjust(1, 3)
     
     builder.row(InlineKeyboardButton(
         text="⬅️ Назад к полу",

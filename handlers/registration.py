@@ -1150,7 +1150,7 @@ async def ask_for_create_game(message: types.Message, state: FSMContext):
     ]
     await show_current_data(
         message, state,
-        f"🎾 Хотите сразу {texts['offer_button'].lower()} на конкретный день и время?",
+        f"Хотите сразу {texts['offer_button'].lower()} на конкретный день и время?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.CREATE_GAME_OFFER)
