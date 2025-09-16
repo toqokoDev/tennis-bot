@@ -27,6 +27,11 @@ class RegistrationStates(StatesGroup):
     VACATION_COUNTRY_INPUT = State()
     VACATION_CITY = State()
     VACATION_CITY_INPUT = State()
+    VACATION_AFTER_COUNTRY = State()
+    VACATION_AFTER_CITY = State()
+    VACATION_AFTER_START = State()
+    VACATION_AFTER_END = State()
+    VACATION_AFTER_COMMENT = State()
     
     # Новые поля для знакомств
     DATING_GOAL = State()

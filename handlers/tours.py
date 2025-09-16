@@ -52,7 +52,7 @@ async def browse_tours_start(message: types.Message, state: FSMContext):
     await state.update_data(page=0)
 
 @router.callback_query(F.data == "tours_back_to_sport")
-async def browse_tours_start(callback: types.CallbackQuery, state: FSMContext):
+async def browse_tours_start_callback(callback: types.CallbackQuery, state: FSMContext):
     """Начало просмотра туров - выбор спорта"""
     # Создаем клавиатуру с видами спорта
     builder = InlineKeyboardBuilder()
@@ -84,6 +84,7 @@ async def browse_tours_start(callback: types.CallbackQuery, state: FSMContext):
         )
     await state.set_state(BrowseToursStates.SELECT_SPORT)
     await state.update_data(page=0)
+    await callback.answer()
 
 @router.callback_query(BrowseToursStates.SELECT_SPORT, F.data.startswith("toursport_"))
 async def select_tour_sport(callback: types.CallbackQuery, state: FSMContext):

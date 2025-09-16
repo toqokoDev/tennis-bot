@@ -104,7 +104,11 @@ async def edit_profile_handler(callback: types.CallbackQuery, state: FSMContext)
         buttons.append([InlineKeyboardButton(text="👤 Роль", callback_data="1edit_role")])
     
     if config.get("has_level", True):
-        buttons.append([InlineKeyboardButton(text="📊 Уровень", callback_data="1edit_level")])
+        # Проверяем, не редактировал ли пользователь уже рейтинг
+        if not profile.get('rating_edited', False):
+            buttons.append([InlineKeyboardButton(text="📊 Уровень", callback_data="1edit_level")])
+        else:
+            buttons.append([InlineKeyboardButton(text="📊 Уровень (изменен)", callback_data="1edit_level_disabled")])
     
     # Специальные поля для знакомств
     if sport == "🍒Знакомства":
@@ -308,6 +312,13 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
         
         if user_key in users:
             user_data = users[user_key]
+            
+            # Проверяем, не редактировал ли пользователь уже рейтинг
+            if user_data.get('rating_edited', False):
+                await callback.message.answer("⚠️ Вы уже редактировали свой рейтинг. Изменить его можно только один раз.", reply_markup=base_keyboard)
+                await callback.answer()
+                return
+            
             sport = user_data.get("sport", "🎾Большой теннис")
             config = get_sport_config(sport)
             
@@ -321,6 +332,10 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
             await state.set_state(EditProfileStates.LEVEL)
         else:
             await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+    elif field == "level_disabled":
+        await callback.message.answer("⚠️ Вы уже редактировали свой рейтинг. Изменить его можно только один раз.", reply_markup=base_keyboard)
+        await callback.answer()
+        return
     elif field == "dating_goal":
         # Клавиатура для выбора цели знакомства
         buttons = []

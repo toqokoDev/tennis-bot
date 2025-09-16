@@ -16,10 +16,6 @@ async def get_users_by_location(search_type=None, country=None, city=None, sport
     location_counts = defaultdict(int)
     
     for user_id, profile in users.items():
-        # Исключаем текущего пользователя
-        if exclude_user_id and str(user_id) == str(exclude_user_id):
-            continue
-            
         if not profile.get('show_in_search', True):
             continue
             
@@ -93,10 +89,6 @@ async def count_users_by_location(search_type=None, country=None, city=None, spo
     count = 0
     
     for user_id, profile in users.items():
-        # Исключаем текущего пользователя
-        if exclude_user_id and str(user_id) == str(exclude_user_id):
-            continue
-            
         if not profile.get('show_in_search', True):
             continue
             
@@ -231,9 +223,9 @@ async def create_user_profile_link(user_data: dict, user_id: str, additional=Tru
         rating = "Тренер"
 
     if additional:
-        return f"[{first_name} {last_name} @{username} NTRP {level} (lvl. {rating})](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
+        return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})\n@{username} NTRP {level} (lvl. {rating})"
     else:
-        return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
+        return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})\n@{username}"
 
 async def format_tour_date(date_str):
     if not date_str or date_str == '-':

@@ -526,7 +526,7 @@ async def process_game_city(callback: types.CallbackQuery, state: FSMContext):
         buttons = []
         row = []
 
-        for i in range(7):
+        for i in range(9):
             date = today + timedelta(days=i)
             date_str = date.strftime("%d.%m")
             weekday = WEEKDAYS[date.weekday()]
@@ -700,7 +700,7 @@ async def process_dating_goal(callback: types.CallbackQuery, state: FSMContext):
     if next_step == "dating_interests":
         # Выбираем интересы
         buttons = [[InlineKeyboardButton(text=interest, callback_data=f"datinginterest_{interest}")] for interest in DATING_INTERESTS]
-        buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="datinginterests_done")])
+        buttons.append([InlineKeyboardButton(text="Завершить выбор", callback_data="datinginterests_done")])
         await show_current_data(
             callback.message, state,
             "🎯 Выберите ваши интересы (можно несколько):",

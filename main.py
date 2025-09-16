@@ -94,7 +94,7 @@ async def main():
     dp.message.register(ban_check_handler, BannedUserFilter())
     
     # Подключаем роутеры       
-    dp.include_router(admin.admin_router)    
+    dp.include_router(admin.admin_router)
     dp.include_router(admin_edit.admin_edit_router) 
     dp.include_router(registration.router)
     dp.include_router(game_offers_menu.router)
