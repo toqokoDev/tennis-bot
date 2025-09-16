@@ -280,6 +280,9 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
 async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]):
     """Отправляет информацию о туре в телеграм-канал"""
     try:
+        print(f"Начинаем отправку тура в канал для пользователя {user_id}")
+        print(f"ID канала для туров: {tour_channel_id}")
+        
         profile_link = await create_user_profile_link(user_data, user_id)
         sport = user_data.get('sport', '🎾Большой теннис')
         
@@ -296,10 +299,13 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
             tour_text += f"\n💬 {user_data['vacation_comment']}"
         
         tour_text += "\n\n#тур"
+        
+        print(f"Сформирован текст тура: {tour_text[:100]}...")
             
         photo_path = user_data.get("photo_path")
 
         if photo_path:
+            print(f"Отправляем фото с подписью в канал {tour_channel_id}")
             # отправляем фото + текст в подписи
             await bot.send_photo(
                 chat_id=tour_channel_id,
@@ -309,6 +315,7 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
                 disable_web_page_preview=True
             )
         else:
+            print(f"Отправляем текстовое сообщение в канал {tour_channel_id}")
             # если фото нет — обычное сообщение
             await bot.send_message(
                 chat_id=tour_channel_id,
@@ -317,8 +324,11 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
                 disable_web_page_preview=True
             )
         
+        print(f"Тур успешно отправлен в канал для пользователя {user_id}")
+        
     except Exception as e:
         print(f"Ошибка при отправке тура в канал: {e}")
+        print(f"Тип ошибки: {type(e).__name__}")
 
 async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]):
     """Отправляет анкету пользователя в канал (для регистрации)"""
