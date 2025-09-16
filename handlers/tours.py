@@ -703,21 +703,13 @@ async def process_tour_comment(message: types.Message, state: FSMContext):
     
     # Сохраняем обновленные данные
     await storage.save_users(users)
-    
-    # Отправляем тур в канал
-    try:
-        await send_tour_to_channel(message.bot, user_id, users[user_id])
-        tour_channel_status = "✅ Тур отправлен в канал"
-    except Exception as e:
-        print(f"Ошибка при отправке тура в канал: {e}")
-        tour_channel_status = "⚠️ Тур создан, но не отправлен в канал"
+    await send_tour_to_channel(message.bot, user_id, users[user_id])
     
     await message.answer(
         f"✅ Ваш тур успешно создан! Теперь другие пользователи смогут увидеть его в списке туров.\n\n"
         f"📍 Место: {vacation_country}, {vacation_city}\n"
         f"📅 Даты: {vacation_start} - {vacation_end}\n"
-        f"💬 Комментарий: {comment if comment else 'Не указан'}\n\n"
-        f"{tour_channel_status}"
+        f"💬 Комментарий: {comment if comment else 'Не указан'}"
     )
     
     await state.clear()
