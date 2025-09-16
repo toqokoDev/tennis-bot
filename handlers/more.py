@@ -22,7 +22,7 @@ router = Router()
 async def handle_more(message: types.Message):
     builder = InlineKeyboardBuilder()
     builder.row(
-        types.InlineKeyboardButton(text="🏆 Турниры", callback_data="tournaments_main_menu")
+        types.InlineKeyboardButton(text="✈️ Туры", callback_data="tours_main_menu")
     )
     builder.row(
         types.InlineKeyboardButton(text="🌍 Все игроки", callback_data="all_players"),
@@ -217,6 +217,9 @@ async def process_search_other_country(callback: types.CallbackQuery, state: FSM
 async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     builder = InlineKeyboardBuilder()
+    builder.row(
+        types.InlineKeyboardButton(text="✈️ Туры", callback_data="tours_main_menu")
+    )
     builder.row(
         types.InlineKeyboardButton(text="🌍 Все игроки", callback_data="all_players"),
         types.InlineKeyboardButton(text="🔍 Поиск тренера", callback_data="find_coach")
@@ -420,6 +423,9 @@ async def process_sport_selection(callback: types.CallbackQuery, state: FSMConte
 async def back_to_main_from_sport(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     builder = InlineKeyboardBuilder()
+    builder.row(
+        types.InlineKeyboardButton(text="✈️ Туры", callback_data="tours_main_menu")
+    )
     builder.row(
         types.InlineKeyboardButton(text="🌍 Все игроки", callback_data="all_players"),
         types.InlineKeyboardButton(text="🔍 Поиск тренера", callback_data="find_coach")
@@ -808,3 +814,9 @@ async def handle_my_profile(callback: types.CallbackQuery):
     profile = await storage.get_user(user_id)
     await show_profile(callback.message, profile)
     await callback.answer()
+
+@router.callback_query(F.data == "tours_main_menu")
+async def handle_tours_main_menu(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка кнопки Туры из меню Еще"""
+    from handlers.tours import browse_tours_start_callback
+    await browse_tours_start_callback(callback, state)

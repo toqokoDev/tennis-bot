@@ -250,7 +250,7 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         if offer.get('player_level', '-'):
             user_info = f"{offer['user_name']} ({offer.get('player_level', '-')} lvl)"
         else:
-            user_info = f"{offer['user_name']} (Тренер)"
+            user_info = f"{offer['user_name']}"
         
         # Дата → только число
         raw_date = offer.get('date')
@@ -271,45 +271,8 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         config = get_sport_config(sport)
         category = config.get("category", "court_sport")
         
-        # Краткое описание в зависимости от категории
-        if category == "dating":
-            sport_desc = "💕 Цель"
-        elif category == "meeting":
-            if sport == "☕️Бизнес-завтрак":
-                sport_desc = "☕ Проекты"
-            else:  # По пиву
-                sport_desc = "🍻 Обсуждение"
-        elif category == "outdoor_sport":
-            if sport == "⛳Гольф":
-                sport_desc = "⛳ Место+уровень"
-            elif sport == "🏃‍♂️‍➡️Бег":
-                sport_desc = "🏃 Маршрут+темп"
-            elif sport == "🏋️‍♀️Фитнес":
-                sport_desc = "🏋️ Тип+место"
-            elif sport == "🚴Вело":
-                sport_desc = "🚴 Маршрут+дистанция"
-            else:
-                sport_desc = "🏃 Активность"
-        else:  # court_sport
-            if sport == "🎾Большой теннис":
-                sport_desc = "🎾 Корт+уровень+формат"
-            elif sport == "🏓Настольный теннис":
-                sport_desc = "🏓 Стол+рейтинг+формат"
-            elif sport == "🏸Бадминтон":
-                sport_desc = "🏸 Корт+уровень+формат"
-            elif sport == "🏖️Пляжный теннис":
-                sport_desc = "🏖️ Пляж+уровень+формат"
-            elif sport == "🎾Падл-теннис":
-                sport_desc = "🎾 Корт+уровень+формат"
-            elif sport == "🥎Сквош":
-                sport_desc = "🥎 Корт+уровень+формат"
-            elif sport == "🏆Пиклбол":
-                sport_desc = "🏆 Корт+уровень+формат"
-            else:
-                sport_desc = "🎾 Игра"
-        
         # Итоговая строка
-        short_info = f"{day_str} {time} {district} {gender_icon} {user_info} • {sport_desc}"
+        short_info = f"{day_str} {time} {district} {gender_icon} {user_info}"
         
         builder.row(InlineKeyboardButton(
             text=short_info,
