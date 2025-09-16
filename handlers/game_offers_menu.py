@@ -46,16 +46,16 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
     users = await storage.load_users()
     current_user_id = str(callback.message.chat.id)
     
-    # Собираем статистику по странам  для выбранного вида спорта
+    # Собираем статистику по странам для выбранного вида спорта
     country_stats = {}
     for user_id, user_data in users.items():
         if user_data.get('games'):
-            country = user_data.get('country', '')
-            if country:
-                active_games = [game for game in user_data['games'] 
-                               if game.get('active', True) and game.get('sport') == sport_type_selected]
-                if active_games:
-                    country_stats[country] = country_stats.get(country, 0) + len(active_games)
+            for game in user_data['games']:
+                if (game.get('active', True) and 
+                    game.get('sport') == sport_type_selected and
+                    game.get('country')):
+                    country = game.get('country')
+                    country_stats[country] = country_stats.get(country, 0) + 1
     
     if not country_stats:
         await callback.message.edit_text(
@@ -109,15 +109,14 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
     # Собираем статистику по городам в выбранной стране для выбранного вида спорта
     city_stats = {}
     for user_id, user_data in users.items():
-        if (user_data.get('country') == country and 
-            user_data.get('games')):
-            
-            city = user_data.get('city', '')
-            if city:
-                active_games = [game for game in user_data['games'] 
-                               if game.get('active', True) and game.get('sport') == sport_type_selected]
-                if active_games:
-                    city_stats[city] = city_stats.get(city, 0) + len(active_games)
+        if user_data.get('games'):
+            for game in user_data['games']:
+                if (game.get('active', True) and 
+                    game.get('sport') == sport_type_selected and
+                    game.get('country') == country and
+                    game.get('city')):
+                    city = game.get('city')
+                    city_stats[city] = city_stats.get(city, 0) + 1
     
     if not city_stats:
         await callback.message.edit_text(
@@ -170,16 +169,14 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
     all_offers = []
     
     for user_id, user_data in users.items():
-        if (user_data.get('country') == country and 
-            user_data.get('city') == city and 
-            user_data.get('games') and
-            user_id != callback.message.chat.id):
-            
+        if user_data.get('games') and user_id != callback.message.chat.id:
             user_name = f"{user_data.get('first_name', 'Неизвестно')[:1]}.{user_data.get('last_name', '')}".strip()
             
             for game in user_data['games']:
                 if (game.get('active', True) and 
-                    game.get('sport') == sport_type_selected):
+                    game.get('sport') == sport_type_selected and
+                    game.get('country') == country and 
+                    game.get('city') == city):
                     
                     offer = {
                         'user_id': user_id,
@@ -188,6 +185,7 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
                         'gender': user_data.get('gender'),
                         'district': user_data.get('district'),
                         'game_id': game.get('id'),
+                        'country': game.get('country'),
                         'city': game.get('city'),
                         'date': game.get('date'),
                         'time': game.get('time'),
@@ -236,7 +234,8 @@ async def show_offers_page(message: types.Message, state: FSMContext):
     page_offers = all_offers[start_idx:end_idx]
     
     # Заголовок
-    text = f"🎾 Предложения {sport_type_selected} в {city}\n"
+    country = state_data.get('selected_country', '')
+    text = f"🎾 Предложения {sport_type_selected} в {country}, {city}\n"
     
     # Создаем клавиатуру
     builder = InlineKeyboardBuilder()
@@ -367,7 +366,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
         text = (
             f"{sport}\n"
             f"👤 {user_name} {username_str}\n"
-            f"🏙 {game.get('city', '—')}\n"
+            f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
             f"📅 Дата: {game.get('date', '—')}\n"
             f"⏰ Время: {game.get('time', '—')}\n"
         )
@@ -383,7 +382,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
@@ -391,7 +390,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
@@ -401,7 +400,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
@@ -410,7 +409,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
@@ -418,7 +417,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
@@ -426,7 +425,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
@@ -434,7 +433,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
@@ -444,7 +443,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
@@ -458,7 +457,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
@@ -472,7 +471,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
@@ -486,7 +485,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
@@ -500,7 +499,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
@@ -514,7 +513,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
@@ -528,7 +527,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
@@ -542,7 +541,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🏙 {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
@@ -831,15 +830,14 @@ async def back_to_city_selection(callback: types.CallbackQuery, state: FSMContex
     # Собираем статистику по городам в выбранной стране для выбранного вида спорта
     city_stats = {}
     for user_id, user_data in users.items():
-        if (user_data.get('country') == country and 
-            user_data.get('games')):
-            
-            city = user_data.get('city', '')
-            if city:
-                active_games = [game for game in user_data['games'] 
-                               if game.get('active', True) and game.get('sport') == sport_type_selected]
-                if active_games:
-                    city_stats[city] = city_stats.get(city, 0) + len(active_games)
+        if user_data.get('games'):
+            for game in user_data['games']:
+                if (game.get('active', True) and 
+                    game.get('sport') == sport_type_selected and
+                    game.get('country') == country and
+                    game.get('city')):
+                    city = game.get('city')
+                    city_stats[city] = city_stats.get(city, 0) + 1
     
     if not city_stats:
         await callback.message.edit_text(

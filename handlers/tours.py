@@ -93,48 +93,16 @@ async def select_tour_sport(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(selected_sport=sport)
     sport_text = "любому виду спорта" if sport == "any" else sport
     
-    users = await storage.load_users()
-    current_user_id = str(callback.from_user.id)
-    
-    # Собираем статистику по странам с активными турами (исключая текущего пользователя)
-    country_stats = {}
-    for user_id, user_data in users.items():
-        # Проверяем, что у пользователя включен поиск партнера на время отдыха
-        # и что выбранный спорт соответствует его профилю
-        if (user_data.get('vacation_tennis', False) and 
-            (user_data.get('sport') == sport or sport == "any")):
-            country = user_data.get('vacation_country', '')
-            if country:
-                country_stats[country] = country_stats.get(country, 0) + 1
-    
-    if not country_stats:
-        # Предлагаем создать тур с выбранным видом спорта
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text=f"🎾 Найти партнера на время отдыха",
-                callback_data=f"createTour"
-            )],
-            [InlineKeyboardButton(
-                text="🔙 Назад к выбору спорта",
-                callback_data="tours_back_to_sport"
-            )]
-        ])
-        
-        await callback.message.edit_text(
-            f"❌ На данный момент нет активных туров по {sport_text} от других пользователей.",
-            reply_markup=keyboard
-        )
-        return
-    
-    # Создаем клавиатуру с кнопками стран
+    # Создаем клавиатуру с кнопками всех стран
     buttons = []
-    for country, count in country_stats.items():
+    for country in countries:
         buttons.append([
             InlineKeyboardButton(
-                text=f"{country} ({count} туров)",
+                text=country,
                 callback_data=f"tourcountry_{country}"
             )
         ])
+    buttons.append([InlineKeyboardButton(text="🌎 Другая страна", callback_data="tourcountry_other")])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -154,6 +122,12 @@ async def select_tour_country(callback: types.CallbackQuery, state: FSMContext):
     
     await state.update_data(selected_country=country)
     
+    if country == "other":
+        await callback.message.edit_text("🌍 Введите название страны:", reply_markup=None)
+        await state.set_state(BrowseToursStates.ENTER_COUNTRY)
+        await callback.answer()
+        return
+    
     users = await storage.load_users()
 
     # Собираем статистику по городам в выбранной стране для выбранного спорта
@@ -166,28 +140,116 @@ async def select_tour_country(callback: types.CallbackQuery, state: FSMContext):
             if city:
                 city_stats[city] = city_stats.get(city, 0) + 1
     
-    if not city_stats:
-        await callback.answer("❌ В этой стране нет активных туров по выбранному виду спорта")
-        return
-    
     # Создаем клавиатуру с кнопками городов
     buttons = []
-    for city, count in city_stats.items():
-        buttons.append([
-            InlineKeyboardButton(
-                text=f"🏙 {city} ({count} туров)",
-                callback_data=f"tourcity_{city}"
-            )
-        ])
+    
+    # Если есть туры в этой стране, показываем города с турами
+    if city_stats:
+        for city, count in city_stats.items():
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"🏙 {city} ({count} туров)",
+                    callback_data=f"tourcity_{city}"
+                )
+            ])
+    else:
+        # Если нет туров, показываем основные города страны
+        if country == "🇷🇺 Россия":
+            main_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
+        else:
+            main_cities = cities_data.get(country, [])
+        
+        for city in main_cities[:5]:  # Показываем первые 5 городов
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"🏙 {city}",
+                    callback_data=f"tourcity_{city}"
+                )
+            ])
+    
+    buttons.append([InlineKeyboardButton(text="🏙 Другой город", callback_data="tourcity_other")])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
-    await callback.message.edit_text(
-        f"🏙 Выберите город в {country} для {sport}:",
-        reply_markup=keyboard
-    )
+    if city_stats:
+        await callback.message.edit_text(
+            f"🏙 Выберите город в {country} для {sport}:",
+            reply_markup=keyboard
+        )
+    else:
+        await callback.message.edit_text(
+            f"🏙 Выберите город в {country} (пока нет активных туров):",
+            reply_markup=keyboard
+        )
+    
     await state.set_state(BrowseToursStates.SELECT_CITY)
     await callback.answer()
+
+@router.message(BrowseToursStates.ENTER_COUNTRY, F.text)
+async def process_tour_country_input(message: types.Message, state: FSMContext):
+    """Обработка ввода названия страны для просмотра туров"""
+    country = message.text.strip()
+    await state.update_data(selected_country=country)
+    
+    # Переходим к выбору города
+    await select_tour_country_from_input(message, state, country)
+
+async def select_tour_country_from_input(message: types.Message, state: FSMContext, country: str):
+    """Обработка выбора города после ввода страны"""
+    state_data = await state.get_data()
+    sport = state_data.get('selected_sport')
+    
+    users = await storage.load_users()
+
+    # Собираем статистику по городам в выбранной стране для выбранного спорта
+    city_stats = {}
+    for user_id, user_data in users.items():
+        if (user_data.get('vacation_country') == country and 
+            user_data.get('vacation_tennis', False) and
+            (user_data.get('sport') == sport or sport=="any")):
+            city = user_data.get('vacation_city', '')
+            if city:
+                city_stats[city] = city_stats.get(city, 0) + 1
+    
+    # Создаем клавиатуру с кнопками городов
+    buttons = []
+    
+    # Если есть туры в этой стране, показываем города с турами
+    if city_stats:
+        for city, count in city_stats.items():
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"🏙 {city} ({count} туров)",
+                    callback_data=f"tourcity_{city}"
+                )
+            ])
+    else:
+        # Если нет туров, показываем основные города страны
+        main_cities = cities_data.get(country, [])
+        for city in main_cities[:5]:  # Показываем первые 5 городов
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"🏙 {city}",
+                    callback_data=f"tourcity_{city}"
+                )
+            ])
+    
+    buttons.append([InlineKeyboardButton(text="🏙 Другой город", callback_data="tourcity_other")])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    
+    if city_stats:
+        await message.answer(
+            f"🏙 Выберите город в {country} для {sport}:",
+            reply_markup=keyboard
+        )
+    else:
+        await message.answer(
+            f"🏙 Выберите город в {country} (пока нет активных туров):",
+            reply_markup=keyboard
+        )
+    
+    await state.set_state(BrowseToursStates.SELECT_CITY)
 
 @router.callback_query(BrowseToursStates.SELECT_CITY, F.data.startswith("tourcity_"))
 async def select_tour_city(callback: types.CallbackQuery, state: FSMContext):
@@ -198,6 +260,12 @@ async def select_tour_city(callback: types.CallbackQuery, state: FSMContext):
     sport = state_data.get('selected_sport')
     
     await state.update_data(selected_city=city)
+    
+    if city == "other":
+        await callback.message.edit_text("🏙 Введите название города:", reply_markup=None)
+        await state.set_state(BrowseToursStates.ENTER_CITY)
+        await callback.answer()
+        return
     
     # Получаем все активные туры в выбранном городе и стране для выбранного спорта
     users = await storage.load_users()
@@ -230,6 +298,47 @@ async def select_tour_city(callback: types.CallbackQuery, state: FSMContext):
     # Показываем первую страницу туров
     await show_tours_page(callback.message, state)
     await callback.answer()
+
+@router.message(BrowseToursStates.ENTER_CITY, F.text)
+async def process_tour_city_input(message: types.Message, state: FSMContext):
+    """Обработка ввода названия города для просмотра туров"""
+    city = message.text.strip()
+    await state.update_data(selected_city=city)
+    
+    # Получаем все активные туры в выбранном городе и стране для выбранного спорта
+    state_data = await state.get_data()
+    country = state_data.get('selected_country')
+    sport = state_data.get('selected_sport')
+    
+    users = await storage.load_users()
+    all_tours = []
+    
+    for user_id, user_data in users.items():
+        if (user_data.get('vacation_country') == country and 
+            user_data.get('vacation_city') == city and 
+            user_data.get('vacation_tennis', False) and
+            (user_data.get('sport') == sport or sport=="any")):
+            
+            tour = {
+                'user_id': user_id,
+                'user_data': user_data,
+                'gender': user_data.get('gender'),
+                'vacation_start': user_data.get('vacation_start'),
+                'vacation_end': user_data.get('vacation_end'),
+                'vacation_comment': user_data.get('vacation_comment'),
+                'sport': user_data.get('sport')
+            }
+            all_tours.append(tour)
+    
+    if not all_tours:
+        await message.answer("❌ В этом городе нет активных туров по выбранному виду спорта")
+        return
+    
+    # Сохраняем все туры в state
+    await state.update_data(all_tours=all_tours, current_page=0)
+    
+    # Показываем первую страницу туров
+    await show_tours_page(message, state)
 
 async def show_tours_page(message: types.Message, state: FSMContext):
     """Показать страницу с турами"""

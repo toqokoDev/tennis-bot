@@ -350,7 +350,7 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
         buttons = []
         for i, interest in enumerate(DATING_INTERESTS):
             buttons.append([InlineKeyboardButton(text=interest, callback_data=f"dint_{i}")])
-        buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="dint_done")])
+        buttons.append([InlineKeyboardButton(text="Далее", callback_data="dint_done")])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.answer("🎯 Выберите ваши интересы (можно несколько):", reply_markup=keyboard)
@@ -839,7 +839,7 @@ async def process_dating_interest_edit(callback: types.CallbackQuery, state: FSM
             buttons.append([InlineKeyboardButton(text=f"✅ {interest_text}", callback_data=f"dint_{i}")])
         else:
             buttons.append([InlineKeyboardButton(text=interest_text, callback_data=f"dint_{i}")])
-    buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="dint_done")])
+    buttons.append([InlineKeyboardButton(text="Далее", callback_data="dint_done")])
     
     await callback.message.edit_text(
         "🎯 Выберите ваши интересы (можно несколько):",

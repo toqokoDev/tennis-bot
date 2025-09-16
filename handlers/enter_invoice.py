@@ -17,6 +17,12 @@ from utils.admin import is_admin
 from utils.media import save_media_file
 from utils.utils import calculate_new_ratings, create_user_profile_link, search_users
 
+def format_rating(rating: float) -> str:
+    """Форматирует рейтинг, убирая лишние нули после запятой"""
+    if rating == int(rating):
+        return str(int(rating))
+    return f"{rating:.1f}".rstrip('0').rstrip('.')
+
 router = Router()
 
 # ID последнего сообщения для редактирования
@@ -205,26 +211,27 @@ async def handle_add_score(message: types.Message, state: FSMContext):
     user_id = message.chat.id
     users = await storage.load_users()
     
-    if not await is_admin(user_id):
-        if not users[str(user_id)].get('subscription', {}).get('active', False):
-            # Показываем сообщение о необходимости подписки
-            referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{message.from_user.id}"
-            text = (
-                "🔒 <b>Доступ закрыт</b>\n\n"
-                "Функция внесения счета доступна только для пользователей с активной подписки Tennis-Play PRO.\n\n"
-                f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n"
-                "Перейдите в раздел '💳 Платежи' для оформления подписки.\n\n"
-                "Также вы можете получить подписку бесплатно, пригласив 5 друзей.\n"
-                "Ваша персональная ссылка для приглашений доступна в разделе «🔗 Пригласить друга».\n\n"
-                f"🔗 <b>Ваша реферальная ссылка:</b>\n"
-                f"<code>{referral_link}</code>\n\n"
-            )
+    # @TODO 
+    # if not await is_admin(user_id):
+    #     if not users[str(user_id)].get('subscription', {}).get('active', False):
+    #         # Показываем сообщение о необходимости подписки
+    #         referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{message.from_user.id}"
+    #         text = (
+    #             "🔒 <b>Доступ закрыт</b>\n\n"
+    #             "Функция внесения счета доступна только для пользователей с активной подписки Tennis-Play PRO.\n\n"
+    #             f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n"
+    #             "Перейдите в раздел '💳 Платежи' для оформления подписки.\n\n"
+    #             "Также вы можете получить подписку бесплатно, пригласив 5 друзей.\n"
+    #             "Ваша персональная ссылка для приглашений доступна в разделе «🔗 Пригласить друга».\n\n"
+    #             f"🔗 <b>Ваша реферальная ссылка:</b>\n"
+    #             f"<code>{referral_link}</code>\n\n"
+    #         )
             
-            await message.answer(
-                text,
-                parse_mode="HTML"
-            )
-            return
+    #         await message.answer(
+    #             text,
+    #             parse_mode="HTML"
+    #         )
+    #         return
     
     # Если подписка активна, продолжаем процесс
     await state.set_state(AddScoreState.selecting_game_type)
@@ -263,7 +270,6 @@ async def handle_game_type_selection(callback: types.CallbackQuery, state: FSMCo
 async def handle_opponent_search(message: types.Message, state: FSMContext):
     search_query = message.text
     current_user_id = str(message.chat.id)
-    
     
     matching_users = await search_users(search_query, exclude_ids=[current_user_id])
     
@@ -322,6 +328,24 @@ async def handle_partner_selection(callback: types.CallbackQuery, state: FSMCont
     selected_partner = users[partner_id]
     selected_partner['telegram_id'] = partner_id
     
+    # Проверяем совместимость видов спорта
+    current_user = users.get(str(callback.message.chat.id))
+    current_user_sport = current_user.get('sport', '')
+    partner_sport = selected_partner.get('sport', '')
+    
+    if current_user_sport != partner_sport:
+        await callback.message.edit_text(
+            f"❌ Нельзя играть с игроками другого вида спорта!\n\n"
+            f"Ваш вид спорта: {current_user_sport}\n"
+            f"Вид спорта партнера: {partner_sport}\n\n"
+            f"Выберите партнера с тем же видом спорта.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+        await callback.answer("Виды спорта не совпадают")
+        return
+    
     await state.update_data(partner=selected_partner)
     await state.set_state(AddScoreState.searching_opponent1)
     
@@ -371,6 +395,24 @@ async def handle_opponent1_selection(callback: types.CallbackQuery, state: FSMCo
     
     selected_opponent = users[opponent_id]
     selected_opponent['telegram_id'] = opponent_id
+    
+    # Проверяем совместимость видов спорта
+    current_user = users.get(str(callback.message.chat.id))
+    current_user_sport = current_user.get('sport', '')
+    opponent_sport = selected_opponent.get('sport', '')
+    
+    if current_user_sport != opponent_sport:
+        await callback.message.edit_text(
+            f"❌ Нельзя играть с игроками другого вида спорта!\n\n"
+            f"Ваш вид спорта: {current_user_sport}\n"
+            f"Вид спорта соперника: {opponent_sport}\n\n"
+            f"Выберите соперника с тем же видом спорта.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+        await callback.answer("Виды спорта не совпадают")
+        return
     
     await state.update_data(opponent1=selected_opponent)
     await state.set_state(AddScoreState.searching_opponent2)
@@ -423,6 +465,24 @@ async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMCo
     selected_opponent = users[opponent_id]
     selected_opponent['telegram_id'] = opponent_id
     
+    # Проверяем совместимость видов спорта
+    current_user = users.get(str(callback.message.chat.id))
+    current_user_sport = current_user.get('sport', '')
+    opponent_sport = selected_opponent.get('sport', '')
+    
+    if current_user_sport != opponent_sport:
+        await callback.message.edit_text(
+            f"❌ Нельзя играть с игроками другого вида спорта!\n\n"
+            f"Ваш вид спорта: {current_user_sport}\n"
+            f"Вид спорта соперника: {opponent_sport}\n\n"
+            f"Выберите соперника с тем же видом спорта.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+        await callback.answer("Виды спорта не совпадают")
+        return
+    
     await state.update_data(opponent2=selected_opponent)
     await state.set_state(AddScoreState.selecting_set_score)
     
@@ -430,7 +490,6 @@ async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMCo
     partner = data.get('partner')
     opponent1 = data.get('opponent1')
     opponent2 = selected_opponent
-    current_user = users.get(str(callback.message.chat.id))
     
     team1_avg = (current_user.get('rating_points', 0) + partner.get('rating_points', 0)) / 2
     team2_avg = (opponent1.get('rating_points', 0) + opponent2.get('rating_points', 0)) / 2
@@ -465,11 +524,28 @@ async def handle_single_opponent_selection(callback: types.CallbackQuery, state:
     selected_opponent = users[opponent_id]
     selected_opponent['telegram_id'] = opponent_id
     
+    # Проверяем совместимость видов спорта
+    current_user = users.get(str(callback.message.chat.id))
+    current_user_sport = current_user.get('sport', '')
+    opponent_sport = selected_opponent.get('sport', '')
+    
+    if current_user_sport != opponent_sport:
+        await callback.message.edit_text(
+            f"❌ Нельзя играть с игроками другого вида спорта!\n\n"
+            f"Ваш вид спорта: {current_user_sport}\n"
+            f"Вид спорта соперника: {opponent_sport}\n\n"
+            f"Выберите соперника с тем же видом спорта.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+        await callback.answer("Виды спорта не совпадают")
+        return
+    
     await state.update_data(opponent1=selected_opponent)
     await state.set_state(AddScoreState.selecting_set_score)
     
     opponent = selected_opponent
-    current_user = users.get(str(callback.message.chat.id))
     
     keyboard = create_set_score_keyboard(1)
     
@@ -823,12 +899,12 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             f"👤 {loser_name_link}\n\n"
             f"📊 Счёт: {score}\n\n"
             f"📈 Изменение рейтинга:\n"
-            f"• {winner_user.get('first_name', '')}: {winner_old:.1f} → "
-            f"{(winner_old + (new_winner_points - winner_old)):.1f} "
-            f"({'+' if (new_winner_points - winner_old) > 0 else ''}{(new_winner_points - winner_old):.1f})\n"
-            f"• {loser_user.get('first_name', '')}: {loser_old:.1f} → "
-            f"{(loser_old + (new_loser_points - loser_old)):.1f} "
-            f"({'+' if (new_loser_points - loser_old) > 0 else ''}{(new_loser_points - loser_old):.1f})"
+            f"• {winner_user.get('first_name', '')}: {format_rating(winner_old)} → "
+            f"{format_rating(winner_old + (new_winner_points - winner_old))} "
+            f"({'+' if (new_winner_points - winner_old) > 0 else ''}{format_rating(new_winner_points - winner_old)})\n"
+            f"• {loser_user.get('first_name', '')}: {format_rating(loser_old)} → "
+            f"{format_rating(loser_old + (new_loser_points - loser_old))} "
+            f"({'+' if (new_loser_points - loser_old) > 0 else ''}{format_rating(new_loser_points - loser_old)})"
         )
 
     # ---- ПАРНАЯ ИГРА ----
@@ -899,7 +975,7 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             delta = rating_changes_for_game.get(_id, 0.0)
             new_val = old_val + delta
             sign = '+' if delta > 0 else ''
-            return f"• {name_link}: {old_val:.1f} → {new_val:.1f} ({sign}{delta:.1f})"
+            return f"• {name_link}: {format_rating(old_val)} → {format_rating(new_val)} ({sign}{format_rating(delta)})"
 
         result_text = (
             f"👥 Парная игра\n\n"
@@ -1057,11 +1133,22 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
                     current_user = users[current_user_id]
                     
                     opponent_link = await create_user_profile_link(current_user, current_user_id)
-                    result_msg = (
-                        f"📢 Вам засчитано поражение в игре против {opponent_link}\n"
-                        f"Счет: {data.get('score')}\n"
-                        f"Ваш новый рейтинг: {users[opponent_id]['rating_points']}"
-                    )
+                    
+                    # Определяем результат для соперника
+                    if winner_side == "team1":
+                        # Текущий пользователь победил, соперник проиграл
+                        result_msg = (
+                            f"📢 Вам засчитано поражение в игре против {opponent_link}\n"
+                            f"Счет: {data.get('score')}\n"
+                            f"Ваш новый рейтинг: {format_rating(users[opponent_id]['rating_points'])}"
+                        )
+                    else:
+                        # Соперник победил
+                        result_msg = (
+                            f"🎉 Поздравляем с победой в игре против {opponent_link}!\n"
+                            f"Счет: {data.get('score')}\n"
+                            f"Ваш новый рейтинг: {format_rating(users[opponent_id]['rating_points'])}"
+                        )
                     
                     await callback.bot.send_message(
                         opponent_id,
@@ -1099,12 +1186,39 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
                         
                         players_list = "\n".join(all_players)
                         
-                        result_msg = (
-                            f"📢 Результат парной игры записан\n\n"
-                            f"Участники:\n{players_list}\n\n"
-                            f"Счет: {data.get('score')}\n"
-                            f"Ваш новый рейтинг: {users[player_id]['rating_points']}"
-                        )
+                        # Определяем результат для игрока
+                        if winner_side == "team1":
+                            # Команда 1 (текущий пользователь + партнер) победила
+                            if role == "партнер":
+                                result_msg = (
+                                    f"🎉 Поздравляем с победой в парной игре!\n\n"
+                                    f"Участники:\n{players_list}\n\n"
+                                    f"Счет: {data.get('score')}\n"
+                                    f"Ваш новый рейтинг: {format_rating(users[player_id]['rating_points'])}"
+                                )
+                            else:
+                                result_msg = (
+                                    f"📢 Вам засчитано поражение в парной игре\n\n"
+                                    f"Участники:\n{players_list}\n\n"
+                                    f"Счет: {data.get('score')}\n"
+                                    f"Ваш новый рейтинг: {format_rating(users[player_id]['rating_points'])}"
+                                )
+                        else:
+                            # Команда 2 (соперники) победила
+                            if role == "соперник":
+                                result_msg = (
+                                    f"🎉 Поздравляем с победой в парной игре!\n\n"
+                                    f"Участники:\n{players_list}\n\n"
+                                    f"Счет: {data.get('score')}\n"
+                                    f"Ваш новый рейтинг: {format_rating(users[player_id]['rating_points'])}"
+                                )
+                            else:
+                                result_msg = (
+                                    f"📢 Вам засчитано поражение в парной игре\n\n"
+                                    f"Участники:\n{players_list}\n\n"
+                                    f"Счет: {data.get('score')}\n"
+                                    f"Ваш новый рейтинг: {format_rating(users[player_id]['rating_points'])}"
+                                )
                         
                         await callback.bot.send_message(
                             player_id,
@@ -1490,10 +1604,9 @@ async def handle_history_request(callback: types.CallbackQuery):
                         "Функция просмотра истории игр игроков доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
                         f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n"
                         "Перейдите в раздел '💳 Платежи' для оформления подписки.\n\n"
-                        "Также вы можете получить подписку бесплатно, пригласив 5 друзей.\n"
-                        "Ваша персональная ссылка для приглашений доступна в разделе «🔗 Пригласить друга».\n\n"
-                        f"🔗 <b>Ваша реферальная ссылка:</b>\n"
-                        f"<code>{referral_link}</code>\n\n"
+                        "Также вы можете получить подписку бесплатно, пригласив 5 друзей.\n\n"
+                        f"Ваша персональная ссылка для приглашений <code>{referral_link}</code>\n\n"
+                        "Статистика приглашений доступна в разделе «🔗 Пригласить друга».\n\n"
                     )
                     
                     await callback.message.answer(
@@ -1586,7 +1699,7 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
     
     # Получаем изменение рейтинга
     rating_change = game['rating_changes'].get(target_user_id, 0)
-    rating_change_str = f"+{rating_change:.1f}" if rating_change > 0 else f"{rating_change:.1f}"
+    rating_change_str = f"+{format_rating(rating_change)}" if rating_change > 0 else f"{format_rating(rating_change)}"
     
     # Формируем информацию об игре
     history_text = f"📊 Игра #{game_index + 1} из {len(user_games)}\n\n"

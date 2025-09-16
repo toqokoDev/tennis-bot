@@ -46,7 +46,10 @@ class RegistrationStates(StatesGroup):
 
 class GameOfferStates(StatesGroup):
     GAME_SPORT = State()
+    GAME_COUNTRY = State()
+    GAME_COUNTRY_INPUT = State()
     GAME_CITY = State()
+    GAME_CITY_INPUT = State()
     GAME_DATE = State()
     GAME_DATE_MANUAL = State()
     GAME_TIME = State()
@@ -125,7 +128,9 @@ class SearchPartnerStates(StatesGroup):
 
 class BrowseOffersStates(StatesGroup):
     SELECT_COUNTRY = State()
+    ENTER_COUNTRY = State()
     SELECT_CITY = State()
+    ENTER_CITY = State()
     SELECT_SPORT = State()
 
 class RespondToOfferStates(StatesGroup):
@@ -133,7 +138,9 @@ class RespondToOfferStates(StatesGroup):
 
 class BrowseToursStates(StatesGroup):
     SELECT_COUNTRY = State()
+    ENTER_COUNTRY = State()
     SELECT_CITY = State()
+    ENTER_CITY = State()
     SELECT_SPORT = State()
 
 class CreateTourStates(StatesGroup):
