@@ -21,10 +21,12 @@ async def validate_future_date(date_str: str) -> bool:
 async def validate_date_range(start_date: str, end_date: str) -> bool:
     """Проверяет что end_date после start_date"""
     try:
+        if not start_date or not end_date:
+            return False
         start = datetime.strptime(start_date, "%d.%m.%Y")
         end = datetime.strptime(end_date, "%d.%m.%Y")
         return end > start
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, TypeError):
         return False
 
 async def validate_price(price_str: str) -> bool:

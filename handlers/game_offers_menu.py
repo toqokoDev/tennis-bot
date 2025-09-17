@@ -24,7 +24,7 @@ async def browse_offers_start(message: types.Message, state: FSMContext):
     row = []
     for i, sport in enumerate(sport_type):
         row.append(InlineKeyboardButton(text=sport, callback_data=f"offersport_{sport}"))
-        if (i + 1) % 2 == 0 or i == len(sport_type) - 1:
+        if (i + 1) % 3 == 0 or i == len(sport_type) - 1:
             buttons.append(row)
             row = []
     
@@ -751,7 +751,7 @@ async def back_to_sport_selection(callback: types.CallbackQuery, state: FSMConte
     row = []
     for i, sport in enumerate(sport_type):
         row.append(InlineKeyboardButton(text=sport, callback_data=f"offersport_{sport}"))
-        if (i + 1) % 2 == 0 or i == len(sport_type) - 1:
+        if (i + 1) % 3 == 0 or i == len(sport_type) - 1:
             buttons.append(row)
             row = []
     

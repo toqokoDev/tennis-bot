@@ -40,6 +40,8 @@ def get_levels_for_sport(sport: str) -> dict:
     
     if level_type == "table_tennis":
         return table_tennis_levels
+    elif level_type == "table_tennis_rating":
+        return {}  # Для ввода рейтинга не нужны предустановленные уровни
     else:
         return tennis_levels
 
@@ -384,7 +386,13 @@ async def process_city_selection(callback: types.CallbackQuery, state: FSMContex
     city = callback.data.split("_", maxsplit=1)[1]
 
     if city == "Москва":
-        buttons = [[InlineKeyboardButton(text=district, callback_data=f"district_{district}")] for district in moscow_districts]
+        buttons = []
+        row = []
+        for i, district in enumerate(moscow_districts):
+            row.append(InlineKeyboardButton(text=district, callback_data=f"district_{district}"))
+            if (i + 1) % 3 == 0 or i == len(moscow_districts) - 1:
+                buttons.append(row)
+                row = []
         await show_current_data(
             callback.message, state,
             "🏙 Выберите округ Москвы:",
@@ -498,7 +506,7 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
     levels_dict = get_levels_for_sport(sport)
     
     # Для настольного тенниса показываем специальный интерфейс
-    if config.get("level_type") == "table_tennis":
+    if config.get("level_type") in ["table_tennis", "table_tennis_rating"]:
         await ask_for_table_tennis_rating(message, state)
         return
     
@@ -1091,9 +1099,16 @@ async def create_user_profile(user_id: int, username: str, user_state: dict) -> 
     levels_dict = get_levels_for_sport(sport)
     player_level = user_state.get("player_level")
     
-    # Для настольного тенниса рейтинг может быть текстовым
-    if sport == "🏓Настольный теннис" and player_level and not player_level.replace(".", "").isdigit():
-        rating_points = 1000  # Базовый рейтинг для текстового рейтинга
+    # Для настольного тенниса рейтинг может быть текстовым или числовым
+    if sport == "🏓Настольный теннис":
+        if player_level and player_level.replace(".", "").isdigit():
+            # Если введен числовой рейтинг, используем его как очки
+            try:
+                rating_points = int(float(player_level))
+            except ValueError:
+                rating_points = 1000
+        else:
+            rating_points = 1000  # Базовый рейтинг для текстового рейтинга
     else:
         rating_points = levels_dict.get(player_level, {}).get("points", 0)
     
@@ -1107,7 +1122,7 @@ async def create_user_profile(user_id: int, username: str, user_state: dict) -> 
         "country": user_state.get("country"),
         "city": user_state.get("city"),
         "district": user_state.get("district", ""),
-        "role": user_state.get("role", "пользователь"),
+        "role": user_state.get("role", "Игрок"),
         "sport": user_state.get("sport"),
         "gender": user_state.get("gender"),
         "player_level": user_state.get("player_level"),
@@ -1297,17 +1312,25 @@ async def process_vacation_after_registration(callback: types.CallbackQuery):
     """Обрабатывает ответ о туре после регистрации"""
     data_parts = callback.data.split("_")
     choice = data_parts[2]
-    user_id = int(data_parts[3])
+    
+    # Определяем user_id в зависимости от структуры callback_data
+    if choice in ["yes", "no"]:
+        user_id = callback.message.chat.id
+    else:
+        # Для других случаев user_id находится в конце
+        user_id = int(data_parts[-1])
     
     if choice == "yes":
         # Сохраняем намерение заполнить информацию о туре
-        await storage.update_user(user_id, {"vacation_pending": True})
+        await storage.update_user(str(user_id), {"vacation_pending": True})
         
         # Спрашиваем страну отдыха
         buttons = []
         for country in countries[:5]:
-            buttons.append([InlineKeyboardButton(text=f"{country}", callback_data=f"vacation_after_country_{country}_{user_id}")])
-        buttons.append([InlineKeyboardButton(text="🌎 Другая страна", callback_data=f"vacation_after_other_country_{user_id}")])
+            # Экранируем callback_data для стран с эмодзи
+            country_escaped = country.replace(" ", "_").replace("🇷🇺", "RU").replace("🇺🇸", "US").replace("🇩🇪", "DE").replace("🇫🇷", "FR").replace("🇬🇧", "GB")
+            buttons.append([InlineKeyboardButton(text=f"{country}", callback_data=f"vacation_country_select_{country_escaped}_{user_id}")])
+        buttons.append([InlineKeyboardButton(text="🌎 Другая страна", callback_data=f"vacation_country_other_{user_id}")])
 
         await callback.message.edit_text(
             "🌍 Выберите страну отдыха:",
@@ -1320,35 +1343,81 @@ async def process_vacation_after_registration(callback: types.CallbackQuery):
     
     await callback.answer()
 
-@router.callback_query(F.data.startswith("vacation_after_country_"))
-async def process_vacation_after_country(callback: types.CallbackQuery):
+@router.callback_query(F.data.startswith("vacation_country_select_"))
+async def process_vacation_country_select(callback: types.CallbackQuery):
     """Обрабатывает выбор страны отдыха после регистрации"""
     data_parts = callback.data.split("_")
-    country = data_parts[3]
-    user_id = int(data_parts[4])
+    # user_id всегда в конце, country - все между "select" и user_id
+    user_id = callback.message.chat.id
+    country_escaped = "_".join(data_parts[3:-1])
     
-    await storage.update_user(user_id, {"vacation_country": country})
+    # Восстанавливаем оригинальное название страны
+    country_mapping = {
+        "RU": "🇷🇺 Россия",
+        "US": "🇺🇸 США", 
+        "DE": "🇩🇪 Германия",
+        "FR": "🇫🇷 Франция",
+        "GB": "🇬🇧 Великобритания"
+    }
+    
+    # Ищем точное совпадение в маппинге
+    country = country_mapping.get(country_escaped)
+    if not country:
+        # Если не найдено, восстанавливаем из escaped версии
+        country = country_escaped.replace("_", " ").replace("RU", "🇷🇺").replace("US", "🇺🇸").replace("DE", "🇩🇪").replace("FR", "🇫🇷").replace("GB", "🇬🇧")
+    
+    await storage.update_user(str(user_id), {"vacation_country": country})
     
     # Спрашиваем город
-    if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_after_city_{city}_{user_id}")] for city in main_russian_cities]
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data=f"vacation_after_other_city_{user_id}")])
+    cities = cities_data.get(country, [])
+    if cities:
+        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_select_{city}_{user_id}")] for city in cities]
+        buttons.append([InlineKeyboardButton(text="Другой город", callback_data=f"vacation_city_other_{user_id}")])
+        
+        await callback.message.edit_text(
+            f"🏙 Выберите город отдыха в стране: {country}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
     else:
-        cities = cities_data.get(country, [])
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_after_city_{city}_{user_id}")] for city in cities]
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data=f"vacation_after_other_city_{user_id}")])
+        await callback.message.edit_text(
+            f"🏙 Введите название города отдыха в стране: {country}",
+            reply_markup=None
+        )
 
-    await callback.message.edit_text(
-        f"🏙 Выберите город отдыха в стране: {country}",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
     await callback.answer()
 
-@router.callback_query(F.data.startswith("vacation_after_other_country_"))
-async def process_vacation_after_other_country(callback: types.CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("vacation_city_select_"))
+async def process_vacation_city_select(callback: types.CallbackQuery, state: FSMContext):
+    """Обрабатывает выбор города отдыха после регистрации"""
+    data_parts = callback.data.split("_")
+    # user_id всегда в конце, city - все между "select" и user_id
+    user_id = callback.message.chat.id
+    city = "_".join(data_parts[3:-1])
+    
+    await storage.update_user(str(user_id), {"vacation_city": city})
+    await state.update_data(vacation_user_id=user_id)
+    
+    # Спрашиваем дату начала
+    await callback.message.edit_text(
+        "📅 Введите дату начала поездки (формат: ДД.ММ.ГГГГ):",
+        reply_markup=None
+    )
+    await state.set_state(RegistrationStates.VACATION_AFTER_START)
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("vacation_city_other_"))
+async def process_vacation_city_other(callback: types.CallbackQuery, state: FSMContext):
+    """Обрабатывает ввод другого города отдыха после регистрации"""
+    user_id = callback.message.chat.id
+    await state.update_data(vacation_user_id=user_id)
+    await callback.message.edit_text("🏙 Введите название города отдыха:", reply_markup=None)
+    await state.set_state(RegistrationStates.VACATION_AFTER_CITY)
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("vacation_country_other_"))
+async def process_vacation_country_other(callback: types.CallbackQuery, state: FSMContext):
     """Обрабатывает ввод другой страны отдыха после регистрации"""
-    user_id = int(callback.data.split("_")[4])
+    user_id = callback.message.chat.id
     await state.update_data(vacation_user_id=user_id)
     await callback.message.edit_text("🌍 Введите название страны отдыха:", reply_markup=None)
     await state.set_state(RegistrationStates.VACATION_AFTER_COUNTRY)
@@ -1357,22 +1426,34 @@ async def process_vacation_after_other_country(callback: types.CallbackQuery, st
 @router.message(RegistrationStates.VACATION_AFTER_COUNTRY, F.text)
 async def process_vacation_after_country_input(message: Message, state: FSMContext):
     country = message.text.strip()
-    user_id = (await state.get_data()).get("vacation_user_id")
+    user_id = message.chat.id
     
     if user_id:
-        await storage.update_user(user_id, {"vacation_country": country})
-        await message.answer("🏙 Введите название города отдыха:")
-        await state.set_state(RegistrationStates.VACATION_AFTER_CITY)
+        await storage.update_user(str(user_id), {"vacation_country": country})
+        
+        # Спрашиваем город в зависимости от страны
+        cities = cities_data.get(country, [])
+        if cities:
+            buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_select_{city}_{user_id}")] for city in cities]
+            buttons.append([InlineKeyboardButton(text="Другой город", callback_data=f"vacation_city_other_{user_id}")])
+            
+            await message.answer(
+                f"🏙 Выберите город отдыха в стране: {country}",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+            )
+        else:
+            await message.answer("🏙 Введите название города отдыха:")
+            await state.set_state(RegistrationStates.VACATION_AFTER_CITY)
     await storage.save_session(message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.VACATION_AFTER_CITY, F.text)
 async def process_vacation_after_city_input(message: Message, state: FSMContext):
     city = message.text.strip()
-    user_id = (await state.get_data()).get("vacation_user_id")
+    user_id = message.chat.id
     
     if user_id:
-        await storage.update_user(user_id, {"vacation_city": city})
-        await message.answer("✈️ Введите дату начала отдыха (ДД.ММ.ГГГГ):")
+        await storage.update_user(str(user_id), {"vacation_city": city})
+        await message.answer("📅 Введите дату начала поездки (формат: ДД.ММ.ГГГГ):")
         await state.set_state(RegistrationStates.VACATION_AFTER_START)
     await storage.save_session(message.chat.id, await state.get_data())
 
@@ -1387,11 +1468,11 @@ async def process_vacation_after_start(message: Message, state: FSMContext):
         await message.answer("❌ Дата начала отдыха должна быть в будущем. Пожалуйста, введите корректную дату:")
         return
     
-    user_id = (await state.get_data()).get("vacation_user_id")
+    user_id = message.chat.id
     
     if user_id:
-        await storage.update_user(user_id, {"vacation_start": date_str, "vacation_tennis": True})
-        await message.answer("✈️ Введите дату завершения отдыха (ДД.ММ.ГГГГ):")
+        await storage.update_user(str(user_id), {"vacation_start": date_str, "vacation_tennis": True})
+        await message.answer("📅 Введите дату завершения поездки (формат: ДД.ММ.ГГГГ):")
         await state.set_state(RegistrationStates.VACATION_AFTER_END)
     await storage.save_session(message.chat.id, await state.get_data())
 
@@ -1402,17 +1483,21 @@ async def process_vacation_after_end(message: Message, state: FSMContext):
         await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
         return
     
-    user_id = (await state.get_data()).get("vacation_user_id")
+    user_id = message.chat.id
     
     if user_id:
         user_data = await storage.get_user(user_id)
         start_date = user_data.get('vacation_start')
         
+        if not start_date:
+            await message.answer("❌ Ошибка: не найдена дата начала поездки. Пожалуйста, начните процесс заново.")
+            return
+            
         if not await validate_date_range(start_date, date_str):
             await message.answer("❌ Дата завершения должна быть после даты начала. Пожалуйста, введите корректную дату:")
             return
         
-        await storage.update_user(user_id, {"vacation_end": date_str})
+        await storage.update_user(str(user_id), {"vacation_end": date_str})
         await message.answer("💬 Добавьте комментарий к поездке (необязательно, или /skip для пропуска):")
         await state.set_state(RegistrationStates.VACATION_AFTER_COMMENT)
     await storage.save_session(message.chat.id, await state.get_data())
@@ -1420,10 +1505,10 @@ async def process_vacation_after_end(message: Message, state: FSMContext):
 @router.message(RegistrationStates.VACATION_AFTER_COMMENT, F.text)
 async def process_vacation_after_comment(message: Message, state: FSMContext):
     comment = message.text.strip() if message.text.strip() != "/skip" else ""
-    user_id = (await state.get_data()).get("vacation_user_id")
+    user_id = message.chat.id
     
     if user_id:
-        await storage.update_user(user_id, {
+        await storage.update_user(str(user_id), {
             "vacation_comment": comment,
             "vacation_tennis": True,
             "vacation_pending": False
