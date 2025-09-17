@@ -50,6 +50,7 @@ class GameOfferStates(StatesGroup):
     GAME_COUNTRY_INPUT = State()
     GAME_CITY = State()
     GAME_CITY_INPUT = State()
+    GAME_DISTRICT = State()
     GAME_DATE = State()
     GAME_DATE_MANUAL = State()
     GAME_TIME = State()
@@ -125,6 +126,11 @@ class SearchPartnerStates(StatesGroup):
     SEARCH_ERROR = State()
     SEARCH_OTHER_COUNTRIES = State()
     SEARCH_OTHER_CITIES = State()
+    SEARCH_DISTRICT = State()
+    # Специальные фильтры для знакомств
+    SEARCH_AGE_RANGE = State()
+    SEARCH_DATING_GOAL = State()
+    SEARCH_DISTANCE = State()
 
 class BrowseOffersStates(StatesGroup):
     SELECT_COUNTRY = State()

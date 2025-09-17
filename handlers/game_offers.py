@@ -66,7 +66,7 @@ def get_next_game_step(sport: str, current_step: str) -> str:
         elif current_step == "date":
             return "time"
         elif current_step == "time":
-            return "comment"  # Пропускаем тип игры, оплату, счет
+            return "comment"  # Сразу к комментарию
         else:
             return "done"
     
@@ -100,11 +100,13 @@ def get_game_comment_prompt(sport: str) -> str:
         if sport == "☕️Бизнес-завтрак":
             return "💬 Опишите, какие проекты вам интересны для обсуждения или ваше предложение по бизнесу:"
         elif sport == "🍻По пиву":
-            return "💬 Опишите, что вы хотели бы посмотреть или обсудить за пивом:"
+            return "💬 Опишите, чтобы вы хотели посмотреть или обсудить за пивом, возможно какое-то событие в мире спорта:"
     elif category == "dating":
         return "💬 Расскажите о себе и что вы ищете:"
     elif category == "outdoor_sport":
-        return "💬 Опишите, что вы планируете делать и где встретиться:"
+        # Получаем текст из конфигурации профиля
+        about_me_text = config.get("about_me_text", "💬 О себе:")
+        return about_me_text
     else:  # court_sport
         return "💬 Добавьте комментарий к игре (или введите /skip для пропуска):"
 from utils.validate import validate_time, validate_date
@@ -160,7 +162,7 @@ async def show_single_offer(callback: types.CallbackQuery, state: FSMContext):
         f"🎾 Предложение #{game['id']} ({current_index + 1}/{len(active_games)})",
         f"🏆 Вид спорта: {sport}",
         f"🌍 Страна: {game.get('country', '—')}",
-        f"🏙 Город: {game.get('city', '—')}"
+        f"🏙 Город: {game.get('city', '—')}"+f" - {game.get('district', '')}" if game.get('district') else ''
     ]
     
     # Получаем конфигурацию для вида спорта
@@ -447,18 +449,20 @@ async def process_game_country_input(message: types.Message, state: FSMContext):
 
 async def ask_for_game_city(message: types.Message, state: FSMContext, country: str):
     """Запрос города для игры"""
+    cities = cities_data.get(country, [])
+    buttons = []
+    
     if country == "🇷🇺 Россия":
-        # Для России показываем округа Москвы и основные города
-        buttons = []
-        for district in moscow_districts:
-            buttons.append([InlineKeyboardButton(text=district, callback_data=f"gamecity_{district}")])
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="gamecity_other")])
-    else:
-        cities = cities_data.get(country, [])
-        buttons = []
-        for city in cities[:5]:  # Показываем первые 5 городов
+        # Для России показываем основные города
+        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
+        for city in main_russian_cities:
             buttons.append([InlineKeyboardButton(text=city, callback_data=f"gamecity_{city}")])
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="gamecity_other")])
+    else:
+        # Для других стран показываем первые 5 городов
+        for city in cities[:5]:
+            buttons.append([InlineKeyboardButton(text=city, callback_data=f"gamecity_{city}")])
+    
+    buttons.append([InlineKeyboardButton(text="Другой город", callback_data="gamecity_other")])
 
     try:
         await message.edit_text(
@@ -473,6 +477,40 @@ async def ask_for_game_city(message: types.Message, state: FSMContext, country: 
     
     await state.set_state(GameOfferStates.GAME_CITY)
 
+async def ask_for_game_district(message: types.Message, state: FSMContext):
+    """Запрос округа для Москвы"""
+    moscow_districts = ["ЦАО", "САО", "СВАО", "ВАО", "ЮВАО", "ЮАО", "ЮЗАО", "ЗАО", "СЗАО", "ТиНАО"]
+    
+    buttons = []
+    row = []
+    for i, district in enumerate(moscow_districts):
+        row.append(InlineKeyboardButton(text=district, callback_data=f"gamedistrict_{district}"))
+        if (i + 1) % 3 == 0 or i == len(moscow_districts) - 1:
+            buttons.append(row)
+            row = []
+    
+    try:
+        await message.edit_text(
+            "🏘️ Выберите округ в Москве:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+    except:
+        await message.answer(
+            "🏘️ Выберите округ в Москве:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+    
+    await state.set_state(GameOfferStates.GAME_DISTRICT)
+
+@router.callback_query(GameOfferStates.GAME_DISTRICT, F.data.startswith("gamedistrict_"))
+async def process_game_district(callback: types.CallbackQuery, state: FSMContext):
+    district = callback.data.split("_", maxsplit=1)[1]
+    await state.update_data(game_district=district)
+    
+    # Переходим к следующему шагу
+    await process_city_selected(callback.message, state)
+    await callback.answer()
+
 @router.callback_query(GameOfferStates.GAME_CITY, F.data.startswith("gamecity_"))
 async def process_game_city(callback: types.CallbackQuery, state: FSMContext):
     city = callback.data.split("_", maxsplit=1)[1]
@@ -481,6 +519,9 @@ async def process_game_city(callback: types.CallbackQuery, state: FSMContext):
     if city == "other":
         await callback.message.edit_text("🏙 Введите название города:", reply_markup=None)
         await state.set_state(GameOfferStates.GAME_CITY_INPUT)
+    elif city == "Москва":
+        # Для Москвы показываем выбор округа
+        await ask_for_game_district(callback.message, state)
     else:
         # Переходим к следующему шагу
         await process_city_selected(callback.message, state)
@@ -601,7 +642,7 @@ async def offer_game_command(message: types.Message, state: FSMContext):
     texts = get_sport_texts(sport)
     await show_current_data(
         message, state,
-        f"🌍 Выберите страну для {texts['city_prompt'].lower()}:",
+        f"🌍 Выберите страну для {texts['city_prompt'].lower()}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(GameOfferStates.GAME_COUNTRY)
@@ -937,6 +978,7 @@ async def create_game_offer(message: types.Message, state: FSMContext):
         "sport": sport,
         "country": user_data.get('game_country'),
         "city": user_data.get('game_city'),
+        "district": user_data.get('game_district'),
         "comment": user_data.get('game_comment')
     }
     

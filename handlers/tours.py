@@ -8,7 +8,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE
-from config.profile import sport_type, countries, cities_data
+from config.profile import sport_type, countries, cities_data, get_sport_config
 from models.states import BrowseToursStates, CreateTourStates
 from services.channels import send_tour_to_channel
 from utils.utils import create_user_profile_link, format_tour_date
@@ -21,32 +21,42 @@ router = Router()
 async def browse_tours_start(message: types.Message, state: FSMContext):
     """Начало просмотра туров - выбор спорта"""
     # Создаем клавиатуру с видами спорта
-    builder = InlineKeyboardBuilder()
+    buttons = []
     
     # Добавляем кнопку "Любой вид спорта" первой
-    builder.row(InlineKeyboardButton(
+    buttons.append([InlineKeyboardButton(
         text="🎾 Любой вид спорта",
         callback_data="toursport_any"
-    ))
+    )])
     
-    # Добавляем остальные виды спорта
-    for sport in sport_type: 
-        builder.add(InlineKeyboardButton(
+    # Добавляем остальные виды спорта в 3 ряда
+    row = []
+    for i, sport in enumerate(sport_type):
+        row.append(InlineKeyboardButton(
             text=sport,
             callback_data=f"toursport_{sport}"
         ))
+        if (i + 1) % 3 == 0 or i == len(sport_type) - 1:
+            buttons.append(row)
+            row = []
     
-    builder.adjust(1, 2)
+    # Добавляем кнопку создания тура
+    buttons.append([InlineKeyboardButton(
+        text="Создать тур",
+        callback_data="create_tour_from_menu"
+    )])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     try:
         await message.edit_text(
             "🎯 Выберите вид спорта для поиска туров:",
-            reply_markup=builder.as_markup()
+            reply_markup=keyboard
         )
     except:
         await message.answer(
             "🎯 Выберите вид спорта для поиска туров:",
-            reply_markup=builder.as_markup()
+            reply_markup=keyboard
         )
     await state.set_state(BrowseToursStates.SELECT_SPORT)
     await state.update_data(page=0)
@@ -55,32 +65,42 @@ async def browse_tours_start(message: types.Message, state: FSMContext):
 async def browse_tours_start_callback(callback: types.CallbackQuery, state: FSMContext):
     """Начало просмотра туров - выбор спорта"""
     # Создаем клавиатуру с видами спорта
-    builder = InlineKeyboardBuilder()
+    buttons = []
     
     # Добавляем кнопку "Любой вид спорта" первой
-    builder.row(InlineKeyboardButton(
+    buttons.append([InlineKeyboardButton(
         text="🎾 Любой вид спорта",
         callback_data="toursport_any"
-    ))
+    )])
     
-    # Добавляем остальные виды спорта
-    for sport in sport_type: 
-        builder.add(InlineKeyboardButton(
+    # Добавляем остальные виды спорта в 3 ряда
+    row = []
+    for i, sport in enumerate(sport_type):
+        row.append(InlineKeyboardButton(
             text=sport,
             callback_data=f"toursport_{sport}"
         ))
+        if (i + 1) % 3 == 0 or i == len(sport_type) - 1:
+            buttons.append(row)
+            row = []
     
-    builder.adjust(1, 2)
+    # Добавляем кнопку создания тура
+    buttons.append([InlineKeyboardButton(
+        text="Создать тур",
+        callback_data="create_tour_from_menu"
+    )])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     try:
         await callback.message.edit_text(
             "🎯 Выберите вид спорта для поиска туров:",
-            reply_markup=builder.as_markup()
+            reply_markup=keyboard
         )
     except:
         await callback.message.answer(
             "🎯 Выберите вид спорта для поиска туров:",
-            reply_markup=builder.as_markup()
+            reply_markup=keyboard
         )
     await state.set_state(BrowseToursStates.SELECT_SPORT)
     await state.update_data(page=0)
@@ -504,9 +524,70 @@ async def back_to_tours_list(callback: types.CallbackQuery, state: FSMContext):
     await show_tours_page(callback.message, state)
     await callback.answer()
 
+@router.callback_query(F.data == "create_tour_from_menu")
+async def start_create_tour_from_menu(callback: types.CallbackQuery, state: FSMContext):
+    """Начало создания тура из главного меню туров"""
+    # Получаем профиль пользователя для проверки вида спорта
+    user_id = callback.from_user.id
+    user_data = await storage.get_user(user_id) or {}
+    sport = user_data.get('sport', '🎾Большой теннис')
+    config = get_sport_config(sport)
+    
+    # Проверяем, поддерживает ли вид спорта туры
+    if not config.get("has_vacation", True):
+        await callback.message.edit_text(
+            f"❌ Для вида спорта {sport} туры недоступны.\n\n"
+            "Туры доступны только для видов спорта, где можно найти партнёра на время отдыха.\n\n"
+            "Поддерживаемые виды спорта:\n"
+            "🎾 Большой теннис\n"
+            "🏓 Настольный теннис\n"
+            "🏸 Бадминтон\n"
+            "🏖️ Пляжный теннис\n"
+            "🎾 Падл-теннис\n"
+            "🥎 Сквош\n"
+            "🏆 Пиклбол"
+        )
+        await callback.answer()
+        return
+    
+    # Создаем клавиатуру с кнопками стран
+    buttons = []
+    for country in countries[:5]:
+        buttons.append([InlineKeyboardButton(text=f"{country}", callback_data=f"create_tour_country_{country}")])
+    buttons.append([InlineKeyboardButton(text="🌎 Другая страна", callback_data="create_tour_other_country")])
+
+    try:
+        await callback.message.edit_text(
+            "🌍 Выберите страну отдыха:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+    except:
+        await callback.message.answer(
+            "🌍 Выберите страну отдыха:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+    
+    await state.set_state(CreateTourStates.SELECT_COUNTRY)
+    await callback.answer()
+
 @router.callback_query(F.data.startswith("createTour"))
 async def start_create_tour(callback: types.CallbackQuery, state: FSMContext):
     """Начало создания тура с выбором страны"""
+    # Получаем профиль пользователя для проверки вида спорта
+    user_id = callback.from_user.id
+    user_data = await storage.get_user(user_id) or {}
+    sport = user_data.get('sport', '🎾Большой теннис')
+    config = get_sport_config(sport)
+    
+    # Проверяем, поддерживает ли вид спорта туры
+    if not config.get("has_vacation", True):
+        await callback.message.edit_text(
+            f"❌ Для вида спорта {sport} туры недоступны.\n\n"
+            "Туры доступны только для видов спорта, где можно найти партнёра на время отдыха."
+        )
+        await callback.answer()
+        return
+    
     # Создаем клавиатуру с кнопками стран
     buttons = []
     for country in countries[:5]:

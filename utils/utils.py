@@ -18,18 +18,22 @@ async def get_users_by_location(search_type=None, country=None, city=None, sport
     for user_id, profile in users.items():
         if not profile.get('show_in_search', True):
             continue
-            
+        
+        if sport_type and profile.get('sport') != sport_type:
+            continue
+        
         # Фильтр по типу поиска
         if search_type == "coaches" and profile.get('role') != "Тренер":
             continue
         elif search_type == "players" and profile.get('role') != "Игрок":
             continue
         elif search_type == "partner":
-            # Для поиска партнера проверяем роль только если она нужна для данного вида спорта
-            user_sport = profile.get('sport', '🎾Большой теннис')
-            config = get_sport_config(user_sport)
-            if config.get("has_role", True) and profile.get('role') != "Игрок":
-                continue
+            # Для знакомств не проверяем роль, для остальных видов спорта проверяем
+            if sport_type not in ["🍒Знакомства", "🍻По пиву", "☕️Бизнес-завтрак"]:
+                user_sport = profile.get('sport', '🎾Большой теннис')
+                config = get_sport_config(user_sport)
+                if config.get("has_role", True) and profile.get('role') != "Игрок":
+                    continue
             
         # Фильтр по стране
         if country and profile.get('country') != country:
@@ -98,11 +102,12 @@ async def count_users_by_location(search_type=None, country=None, city=None, spo
         elif search_type == "players" and profile.get('role') != "Игрок":
             continue
         elif search_type == "partner":
-            # Для поиска партнера проверяем роль только если она нужна для данного вида спорта
-            user_sport = profile.get('sport', '🎾Большой теннис')
-            config = get_sport_config(user_sport)
-            if config.get("has_role", True) and profile.get('role') != "Игрок":
-                continue
+            # Для знакомств не проверяем роль, для остальных видов спорта проверяем
+            if sport_type != "🍒Знакомства":
+                user_sport = profile.get('sport', '🎾Большой теннис')
+                config = get_sport_config(user_sport)
+                if config.get("has_role", True) and profile.get('role') != "Игрок":
+                    continue
             
         # Фильтр по стране
         if country and profile.get('country') != country:
@@ -119,6 +124,90 @@ async def count_users_by_location(search_type=None, country=None, city=None, spo
         count += 1
     
     return count
+
+async def get_top_cities(search_type=None, country=None, sport_type=None, limit=7, exclude_cities=None) -> List[Tuple[str, int]]:
+    """
+    Получает топ городов с количеством пользователей, исключая указанные города
+    """
+    users = await storage.load_users()
+    city_counts = defaultdict(int)
+    
+    # Список городов для исключения
+    if exclude_cities is None:
+        exclude_cities = []
+    
+    for user_id, profile in users.items():
+        if not profile.get('show_in_search', True):
+            continue
+            
+        # Фильтр по типу поиска
+        if search_type == "coaches" and profile.get('role') != "Тренер":
+            continue
+        elif search_type == "players" and profile.get('role') != "Игрок":
+            continue
+        elif search_type == "partner":
+            # Для знакомств не проверяем роль, для остальных видов спорта проверяем
+            if sport_type != "🍒Знакомства":
+                user_sport = profile.get('sport', '🎾Большой теннис')
+                config = get_sport_config(user_sport)
+                if config.get("has_role", True) and profile.get('role') != "Игрок":
+                    continue
+            
+        # Фильтр по стране
+        if country and profile.get('country') != country:
+            continue
+            
+        # Фильтр по виду спорта (только для партнера)
+        if search_type == "partner" and sport_type and profile.get('sport') != sport_type:
+            continue
+            
+        user_city = profile.get('city')
+        if user_city and user_city not in exclude_cities:
+            city_counts[user_city] += 1
+    
+    # Сортируем по количеству пользователей и возвращаем топ
+    sorted_cities = sorted(city_counts.items(), key=lambda x: x[1], reverse=True)
+    return sorted_cities[:limit]
+
+async def get_top_countries(search_type=None, sport_type=None, limit=7, exclude_countries=None) -> List[Tuple[str, int]]:
+    """
+    Получает топ стран с количеством пользователей, исключая указанные страны
+    """
+    users = await storage.load_users()
+    country_counts = defaultdict(int)
+    
+    # Список стран для исключения
+    if exclude_countries is None:
+        exclude_countries = []
+    
+    for user_id, profile in users.items():
+        if not profile.get('show_in_search', True):
+            continue
+            
+        # Фильтр по типу поиска
+        if search_type == "coaches" and profile.get('role') != "Тренер":
+            continue
+        elif search_type == "players" and profile.get('role') != "Игрок":
+            continue
+        elif search_type == "partner":
+            # Для знакомств не проверяем роль, для остальных видов спорта проверяем
+            if sport_type != "🍒Знакомства":
+                user_sport = profile.get('sport', '🎾Большой теннис')
+                config = get_sport_config(user_sport)
+                if config.get("has_role", True) and profile.get('role') != "Игрок":
+                    continue
+            
+        # Фильтр по виду спорта (только для партнера)
+        if search_type == "partner" and sport_type and profile.get('sport') != sport_type:
+            continue
+            
+        user_country = profile.get('country')
+        if user_country and user_country not in exclude_countries:
+            country_counts[user_country] += 1
+    
+    # Сортируем по количеству пользователей и возвращаем топ
+    sorted_countries = sorted(country_counts.items(), key=lambda x: x[1], reverse=True)
+    return sorted_countries[:limit]
 
 async def calculate_age(birth_date_str: str) -> int:
     try:

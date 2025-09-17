@@ -615,7 +615,13 @@ async def process_city_selection(callback: types.CallbackQuery, state: FSMContex
     city = callback.data.split("_", 2)[2]
     
     if city == "Москва":
-        buttons = [[InlineKeyboardButton(text=district, callback_data=f"edit_district_{district}")] for district in moscow_districts]
+        buttons = []
+        row = []
+        for i, district in enumerate(moscow_districts):
+            row.append(InlineKeyboardButton(text=district, callback_data=f"edit_district_{district}"))
+            if (i + 1) % 3 == 0 or i == len(moscow_districts) - 1:
+                buttons.append(row)
+                row = []
         await callback.message.edit_text(
             "🏙 Выберите округ Москвы:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
