@@ -321,8 +321,9 @@ def escape_markdown(text: str) -> str:
     """Экранирует специальные символы Markdown"""
     if not text:
         return ""
-    # Экранируем специальные символы Markdown
-    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    # Экранируем только критически важные символы Markdown
+    # Убираем избыточное экранирование символов, которые не ломают разметку
+    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '=', '|', '{', '}']
     for char in special_chars:
         text = text.replace(char, f'\\{char}')
     return text
@@ -335,7 +336,7 @@ async def create_user_profile_link(user_data: dict, user_id: str, additional=Tru
     # Экранируем имена для безопасности
     first_name = escape_markdown(first_name)
     last_name = escape_markdown(last_name)
-    username = escape_markdown(username)
+    # Не экранируем username, так как он используется в ссылках
     
     if user_data.get('player_level'):
         level = user_data.get('player_level')
@@ -347,7 +348,7 @@ async def create_user_profile_link(user_data: dict, user_id: str, additional=Tru
         rating = "Тренер"
 
     if additional:
-        return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})\n@{username} NTRP {level} \\({rating}\\)"
+        return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})\n@{username} NTRP {level} ({rating})"
     else:
         return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
 

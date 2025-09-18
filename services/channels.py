@@ -13,10 +13,6 @@ async def send_registration_notification(message: types.Message, profile: dict):
         district = profile.get('district', '')
         if district:
             city = f"{city} - {district}"
-            
-        username_text = "\n"
-        if profile.get('username'):
-            username_text = f"✉️ @{profile.get('username')}\n\n"
         
         role = profile.get('role', 'Игрок')
         sport = profile.get('sport', '🎾Большой теннис')
@@ -27,22 +23,20 @@ async def send_registration_notification(message: types.Message, profile: dict):
             price = escape_markdown(str(profile.get('price', 0)))
             country = escape_markdown(profile.get('country', ''))
             registration_text = (
-                "👨‍🏫 *Новый тренер присоединился к платформе\\!*\n\n"
+                "👨‍🏫 *Новый тренер присоединился к платформе!*\n\n"
                 f"🏆 *Тренер:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n"
-                f"💰 *Стоимость:* {price} руб\\./тренировка\n"
-                f"📍 *Местоположение:* {escape_markdown(city)} \\({country}\\)\n"
-                f"{username_text}"
+                f"💰 *Стоимость:* {price} руб./тренировка\n"
+                f"📍 *Местоположение:* {escape_markdown(city)} ({country})\n"
                 f"#тренер"
             )
         else:
             player_level = escape_markdown(profile.get('player_level', 'Не указан'))
             country = escape_markdown(profile.get('country', ''))
             registration_text = (
-                "🎾 *Новый игрок присоединился к сообществу\\!*\n\n"
+                "🎾 *Новый игрок присоединился к сообществу!*\n\n"
                 f"👤 *Игрок:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n" 
                 f"💪 *Уровень игры:* {player_level}\n"
-                f"📍 *Местоположение:* {escape_markdown(city)} \\({country}\\)\n"
-                f"{username_text}"
+                f"📍 *Местоположение:* {escape_markdown(city)} ({country})\n"
                 f"#игрок"
             )
         
@@ -93,7 +87,7 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
         
         score_escaped = escape_markdown(score)
         game_text = (
-            "🎾 *Завершена одиночная игра\\!*\n\n"
+            "🎾 *Завершена одиночная игра!*\n\n"
             f"🥇 *Победитель:* {winner_link}\n"
             f"🥈 *Проигравший:* {loser_link}\n\n"
             f"📊 *Счет:* {score_escaped}\n\n"
@@ -134,7 +128,7 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
         
         score_escaped = escape_markdown(score)
         game_text = (
-            "🎾 *Завершена парная игра\\!*\n\n"
+            "🎾 *Завершена парная игра!*\n\n"
             f"🥇 *Победившая команда:* {winner_team}\n"
             f"🥈 *Проигравшая команда:* {loser_team}\n\n"
             f"📊 *Счет:* {score_escaped}\n\n"
@@ -192,7 +186,13 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
         if category == "dating":
             # Для знакомств
             city = game_data.get('city', '—')
+            district = game_data.get('district', '')
             country = game_data.get('country', '')
+            
+            # Добавляем округ к городу если есть
+            if district:
+                city = f"{city} - {district}"
+            
             location = f"{city}, {country}" if country else city
             
             location_escaped = escape_markdown(location)
@@ -222,21 +222,33 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
             # Для встреч
             if sport == "☕️Бизнес-завтрак":
                 city = game_data.get('city', '—')
+                district = game_data.get('district', '')
                 country = game_data.get('country', '')
+                
+                # Добавляем округ к городу если есть
+                if district:
+                    city = f"{city} - {district}"
+                
                 location = f"{city}, {country}" if country else city
                 location_escaped = escape_markdown(location)
                 date_escaped = escape_markdown(game_data.get('date', '—'))
                 time_escaped = escape_markdown(game_data.get('time', '—'))
                 
                 offer_text = (
-                    f"☕️ *Предложение бизнес\\-завтрака*\n\n"
+                    f"☕️ *Предложение бизнес-завтрака*\n\n"
                     f"👤 {profile_link}\n"
                     f"📍 *Место:* {location_escaped}\n"
                     f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
                 )
             else:  # По пиву
                 city = game_data.get('city', '—')
+                district = game_data.get('district', '')
                 country = game_data.get('country', '')
+                
+                # Добавляем округ к городу если есть
+                if district:
+                    city = f"{city} - {district}"
+                
                 location = f"{city}, {country}" if country else city
                 location_escaped = escape_markdown(location)
                 date_escaped = escape_markdown(game_data.get('date', '—'))
@@ -251,7 +263,13 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
         elif category == "outdoor_sport":
             # Для активных видов спорта
             city = game_data.get('city', '—')
+            district = game_data.get('district', '')
             country = game_data.get('country', '')
+            
+            # Добавляем округ к городу если есть
+            if district:
+                city = f"{city} - {district}"
+            
             location = f"{city}, {country}" if country else city
             location_escaped = escape_markdown(location)
             date_escaped = escape_markdown(game_data.get('date', '—'))
@@ -268,7 +286,13 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
         else:  # court_sport
             # Для спортивных видов с кортами
             city = game_data.get('city', '—')
+            district = game_data.get('district', '')
             country = game_data.get('country', '')
+            
+            # Добавляем округ к городу если есть
+            if district:
+                city = f"{city} - {district}"
+            
             location = f"{city}, {country}" if country else city
             location_escaped = escape_markdown(location)
             date_escaped = escape_markdown(game_data.get('date', '—'))
@@ -339,16 +363,24 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         
         # Формируем текст тура
         sport_escaped = escape_markdown(sport)
-        vacation_city = escape_markdown(user_data.get('vacation_city', '—'))
-        vacation_country = escape_markdown(user_data.get('vacation_country', '—'))
+        vacation_city = user_data.get('vacation_city', '—')
+        vacation_district = user_data.get('vacation_district', '')
+        vacation_country = user_data.get('vacation_country', '—')
+        
+        # Добавляем округ к городу если есть
+        if vacation_district:
+            vacation_city = f"{vacation_city} - {vacation_district}"
+        
+        vacation_city_escaped = escape_markdown(vacation_city)
+        vacation_country_escaped = escape_markdown(vacation_country)
         vacation_start = escape_markdown(user_data.get('vacation_start', ''))
         vacation_end = escape_markdown(user_data.get('vacation_end', ''))
         
         tour_text = (
             f"✈️ *Тур по {sport_escaped}*\n\n"
             f"👤 {profile_link}\n"
-            f"🌍 *Направление:* {vacation_city}, {vacation_country}\n"
-            f"📅 *Даты:* {vacation_start} \\- {vacation_end}"
+            f"🌍 *Направление:* {vacation_city_escaped}, {vacation_country_escaped}\n"
+            f"📅 *Даты:* {vacation_start} - {vacation_end}"
         )
         
         if user_data.get('vacation_comment'):
@@ -397,7 +429,8 @@ async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[s
             
         username_text = "\n"
         if user_data.get('username'):
-            username_text = f"✉️ @{user_data.get('username')}\n\n"
+            username = user_data.get('username')
+            username_text = f"✉️ @{username}\n\n"
         
         role = user_data.get('role', 'Игрок')
         channel_id = channels_id[user_data.get('sport')]
