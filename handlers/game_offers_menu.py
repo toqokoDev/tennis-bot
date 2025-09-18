@@ -58,7 +58,27 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
     
     # Создаем клавиатуру с кнопками стран
     buttons = []
-    for country, count in country_stats.items():
+    
+    # Сортируем страны: Россия всегда первая, остальные по убыванию количества предложений
+    sorted_countries = sorted(country_stats.items(), key=lambda x: x[1], reverse=True)
+    
+    # Выделяем Россию и ставим её первой
+    russia_count = None
+    other_countries = []
+    
+    for country, count in sorted_countries:
+        if country == "🇷🇺 Россия":
+            russia_count = (country, count)
+        else:
+            other_countries.append((country, count))
+    
+    # Формируем итоговый список: Россия первая, остальные по убыванию
+    final_countries = []
+    if russia_count:
+        final_countries.append(russia_count)
+    final_countries.extend(other_countries)
+    
+    for country, count in final_countries:
         buttons.append([
             InlineKeyboardButton(
                 text=f"{country} ({count} предложений)",
@@ -765,7 +785,27 @@ async def back_to_country_selection(callback: types.CallbackQuery, state: FSMCon
     
     # Создаем клавиатуру с кнопками стран
     buttons = []
-    for country, count in country_stats.items():
+    
+    # Сортируем страны: Россия всегда первая, остальные по убыванию количества предложений
+    sorted_countries = sorted(country_stats.items(), key=lambda x: x[1], reverse=True)
+    
+    # Выделяем Россию и ставим её первой
+    russia_count = None
+    other_countries = []
+    
+    for country, count in sorted_countries:
+        if country == "🇷🇺 Россия":
+            russia_count = (country, count)
+        else:
+            other_countries.append((country, count))
+    
+    # Формируем итоговый список: Россия первая, остальные по убыванию
+    final_countries = []
+    if russia_count:
+        final_countries.append(russia_count)
+    final_countries.extend(other_countries)
+    
+    for country, count in final_countries:
         buttons.append([
             InlineKeyboardButton(
                 text=f"{country} ({count} предложений)",
