@@ -644,16 +644,16 @@ async def show_search_results_list(message: types.Message, state: FSMContext, pa
         gender_icon = "👨" if gender_profile == 'Мужской' else "👩" if gender_profile == 'Женский' else '👤'
         
         if profile.get('player_level') and profile.get('rating_points'):
-            display_name = f"{profile.get('player_level')} lvl ({profile.get('rating_points')})"
+            display_name = f"{profile.get('player_level')} ({profile.get('rating_points')} lvl)"
         else:
             display_name = ""
 
         if search_type == "coaches":
             lesson_price = profile.get('price')
 
-            name = f"{gender_icon} {name} {age} лет | {lesson_price} руб."
+            name = f"{gender_icon} {name} {age} лет {lesson_price} руб."
         else:
-            name = f"{gender_icon} {name} {age} лет | {display_name})"
+            name = f"{gender_icon} {name} {age} лет {display_name}"
             
         builder.add(InlineKeyboardButton(
             text=name,
