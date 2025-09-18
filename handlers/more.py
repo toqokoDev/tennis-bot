@@ -653,7 +653,7 @@ async def show_search_results_list(message: types.Message, state: FSMContext, pa
 
             name = f"{gender_icon} {name} {age} лет | {lesson_price} руб."
         else:
-            name = f"{gender_icon} {name} {age} лет | {display_name})"
+            name = f"{gender_icon} {name} {age} лет | {display_name}"
             
         builder.add(InlineKeyboardButton(
             text=name,
