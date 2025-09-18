@@ -918,9 +918,9 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
         
         # Добавляем уровень и рейтинг только если они есть
         if player_level and rating_points:
-            display_name += f" | {player_level} lvl ({rating_points})"
+            display_name += f" {player_level} ({rating_points} lvl)"
         elif player_level:
-            display_name += f" | {player_level}"
+            display_name += f" {player_level}"
             
         builder.add(InlineKeyboardButton(
             text=display_name,
