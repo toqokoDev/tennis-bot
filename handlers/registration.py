@@ -389,7 +389,7 @@ async def process_city_selection(callback: types.CallbackQuery, state: FSMContex
 async def process_district_selection(callback: types.CallbackQuery, state: FSMContext):
     district = callback.data.split("_", maxsplit=1)[1]
     await state.update_data(city=district.split("-")[0].strip())
-    await state.update_data(district=district.split("-")[1].strip())
+    await state.update_data(district=district.strip())
     await ask_for_role(callback.message, state)
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
