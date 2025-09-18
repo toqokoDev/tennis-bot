@@ -172,6 +172,7 @@ async def get_top_cities(search_type=None, country=None, sport_type=None, limit=
 async def get_top_countries(search_type=None, sport_type=None, limit=7, exclude_countries=None) -> List[Tuple[str, int]]:
     """
     Получает топ стран с количеством пользователей, исключая указанные страны
+    Россия всегда будет первой в списке
     """
     users = await storage.load_users()
     country_counts = defaultdict(int)
@@ -205,9 +206,26 @@ async def get_top_countries(search_type=None, sport_type=None, limit=7, exclude_
         if user_country and user_country not in exclude_countries:
             country_counts[user_country] += 1
     
-    # Сортируем по количеству пользователей и возвращаем топ
+    # Сортируем по количеству пользователей, но Россия всегда первая
     sorted_countries = sorted(country_counts.items(), key=lambda x: x[1], reverse=True)
-    return sorted_countries[:limit]
+    
+    # Выделяем Россию и ставим её первой
+    russia_count = None
+    other_countries = []
+    
+    for country, count in sorted_countries:
+        if country == "🇷🇺 Россия":
+            russia_count = (country, count)
+        else:
+            other_countries.append((country, count))
+    
+    # Формируем итоговый список: Россия первая, остальные по убыванию
+    result = []
+    if russia_count:
+        result.append(russia_count)
+    result.extend(other_countries)
+    
+    return result[:limit]
 
 async def calculate_age(birth_date_str: str) -> int:
     try:

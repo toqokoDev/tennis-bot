@@ -210,7 +210,7 @@ def create_sport_keyboard(pref: str = "partner_sport_"):
     
     return builder.as_markup()
 
-countries = list(cities_data.keys())
+countries = ["🇷🇺 Россия"] + [country for country in cities_data.keys() if country != "🇷🇺 Россия"]
 
 # Конфигурация полей для каждого вида спорта
 SPORT_FIELD_CONFIG = {
