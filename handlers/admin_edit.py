@@ -1,3 +1,4 @@
+from calendar import c
 from datetime import datetime
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
@@ -519,6 +520,7 @@ async def admin_process_city_selection(callback: types.CallbackQuery, state: FSM
         return
     
     city = callback.data.split("_", 3)[3]
+    await state.update_data(city=city)
     
     if city == "Москва":
         buttons = []
@@ -543,8 +545,11 @@ async def admin_process_district_selection(callback: types.CallbackQuery, state:
         await callback.answer("❌ Нет прав администратора")
         return
     
+    data = await state.get_data()
+    city = data.get('city', '')
+    
     district = callback.data.split("_", 3)[3]
-    await admin_save_location(callback, district, state)
+    await admin_save_location(callback, city, state, district)
     await callback.answer()
 
 @admin_edit_router.callback_query(AdminEditProfileStates.CITY, F.data == "adminProfile_edit_other_city")
@@ -567,7 +572,7 @@ async def admin_process_city_input(message: types.Message, state: FSMContext):
     city = message.text.strip()
     await admin_save_location_message(message, city, state)
 
-async def admin_save_location(callback: types.CallbackQuery, city: str, state: FSMContext):
+async def admin_save_location(callback: types.CallbackQuery, city: str, state: FSMContext, district: str = ''):
     data = await state.get_data()
     user_id = data.get('admin_edit_user_id')
     
@@ -584,6 +589,7 @@ async def admin_save_location(callback: types.CallbackQuery, city: str, state: F
         
         users[user_id]['country'] = country
         users[user_id]['city'] = city
+        users[user_id]['district'] = district
         await storage.save_users(users)
         
         try:

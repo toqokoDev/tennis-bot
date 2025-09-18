@@ -251,7 +251,7 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         
         # Время
         time = offer.get('time', '-')
-        district = offer.get('district', '')
+        district = '' if offer.get('district', '') == None else offer.get('district', '')
         
         # Получаем информацию о виде спорта для краткого описания
         sport = offer.get('sport', '🎾Большой теннис')
