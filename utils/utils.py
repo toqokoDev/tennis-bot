@@ -312,9 +312,9 @@ async def create_user_profile_link(user_data: dict, user_id: str, additional=Tru
         rating = "Тренер"
 
     if additional:
-        return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})\n@{username} NTRP {level} (lvl. {rating})"
+        return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})\n@{username} NTRP {level} ({rating})"
     else:
-        return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})\n@{username}"
+        return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
 
 async def format_tour_date(date_str):
     if not date_str or date_str == '-':

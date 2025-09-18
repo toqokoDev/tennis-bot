@@ -26,18 +26,18 @@ async def send_registration_notification(message: types.Message, profile: dict):
         if role == "Тренер":
             registration_text = (
                 "👨‍🏫 *Новый тренер присоединился к платформе!*\n\n"
-                f"🏆 {await create_user_profile_link(profile, profile.get('telegram_id'))}\n"
-                f"💰 {profile.get('price', 0)} руб./тренировка\n"
-                f"📍 {city} ({profile.get('country', '')})\n"
+                f"🏆 *Тренер:* {await create_user_profile_link(profile, profile.get('telegram_id'))}\n"
+                f"💰 *Стоимость:* {profile.get('price', 0)} руб./тренировка\n"
+                f"📍 *Местоположение:* {city} ({profile.get('country', '')})\n"
                 f"{username_text}"
                 f"#тренер"
             )
         else:
             registration_text = (
                 "🎾 *Новый игрок присоединился к сообществу!*\n\n"
-                f"👤 {await create_user_profile_link(profile, profile.get('telegram_id'))}\n" 
-                f"💪 {profile.get('player_level', 'Не указан')} уровень игры\n"
-                f"📍 {city} ({profile.get('country', '')})\n"
+                f"👤 *Игрок:* {await create_user_profile_link(profile, profile.get('telegram_id'))}\n" 
+                f"💪 *Уровень игры:* {profile.get('player_level', 'Не указан')}\n"
+                f"📍 *Местоположение:* {city} ({profile.get('country', '')})\n"
                 f"{username_text}"
                 f"#игрок"
             )
@@ -89,8 +89,9 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
         
         game_text = (
             "🎾 *Завершена одиночная игра!*\n\n"
-            f"{winner_link} выиграл у {loser_link}\n\n"
-            f"📊 Счет: {score}\n\n"
+            f"🥇 *Победитель:* {winner_link}\n"
+            f"🥈 *Проигравший:* {loser_link}\n\n"
+            f"📊 *Счет:* {score}\n\n"
             f"#игра"
         )
 
@@ -128,8 +129,9 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
         
         game_text = (
             "🎾 *Завершена парная игра!*\n\n"
-            f"{winner_team} выиграли у {loser_team}\n\n"
-            f"📊 Счет: {score}\n\n"
+            f"🥇 *Победившая команда:* {winner_team}\n"
+            f"🥈 *Проигравшая команда:* {loser_team}\n\n"
+            f"📊 *Счет:* {score}\n\n"
             f"#игра"
         )
 
@@ -183,65 +185,85 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
         # Формируем текст в зависимости от категории
         if category == "dating":
             # Для знакомств
+            city = game_data.get('city', '—')
+            country = game_data.get('country', '')
+            location = f"{city}, {country}" if country else city
+            
             offer_text = (
                 f"💕 *Анкета для знакомств*\n\n"
                 f"👤 {profile_link}\n"
-                f"📍 {game_data.get('city', '—')}\n"
-                f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
+                f"📍 *Место:* {location}\n"
+                f"📅 *Дата и время:* {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
             )
             
             # Добавляем поля знакомств
             if game_data.get('dating_goal'):
-                offer_text += f"💕 Цель: {game_data.get('dating_goal')}\n"
+                offer_text += f"💕 *Цель знакомства:* {game_data.get('dating_goal')}\n"
             
             if game_data.get('dating_interests'):
                 interests = ', '.join(game_data.get('dating_interests', []))
-                offer_text += f"🎯 Интересы: {interests}\n"
+                offer_text += f"🎯 *Интересы:* {interests}\n"
             
             if game_data.get('dating_additional'):
-                offer_text += f"📝 О себе: {game_data.get('dating_additional')}\n"
+                offer_text += f"📝 *О себе:* {game_data.get('dating_additional')}\n"
         elif category == "meeting":
             # Для встреч
             if sport == "☕️Бизнес-завтрак":
+                city = game_data.get('city', '—')
+                country = game_data.get('country', '')
+                location = f"{city}, {country}" if country else city
+                
                 offer_text = (
                     f"☕️ *Предложение бизнес-завтрака*\n\n"
                     f"👤 {profile_link}\n"
-                    f"📍 {game_data.get('city', '—')}\n"
-                    f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
+                    f"📍 *Место:* {location}\n"
+                    f"📅 *Дата и время:* {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
                 )
             else:  # По пиву
+                city = game_data.get('city', '—')
+                country = game_data.get('country', '')
+                location = f"{city}, {country}" if country else city
+                
                 offer_text = (
                     f"🍻 *Предложение встречи за пивом*\n\n"
                     f"👤 {profile_link}\n"
-                    f"📍 {game_data.get('city', '—')}\n"
-                    f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
+                    f"📍 *Место:* {location}\n"
+                    f"📅 *Дата и время:* {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
                 )
         elif category == "outdoor_sport":
             # Для активных видов спорта
+            city = game_data.get('city', '—')
+            country = game_data.get('country', '')
+            location = f"{city}, {country}" if country else city
+            
             offer_text = (
                 f"🏃 *Предложение активности*\n\n"
                 f"👤 {profile_link}\n"
-                f"📍 {game_data.get('city', '—')}\n"
-                f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
-                f"🎯 {sport}\n"
+                f"📍 *Место:* {location}\n"
+                f"📅 *Дата и время:* {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
+                f"🎯 *Вид спорта:* {sport}\n"
             )
         else:  # court_sport
             # Для спортивных видов с кортами
+            city = game_data.get('city', '—')
+            country = game_data.get('country', '')
+            location = f"{city}, {country}" if country else city
+            
             offer_text = (
                 f"🎾 *Предложение игры*\n\n"
                 f"👤 {profile_link}\n"
-                f"📍 {game_data.get('city', '—')}\n"
-                f"📅 {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
-                f"🎯 {sport} • {game_data.get('type', '—')}\n"
-                f"💳 {game_data.get('payment_type', '—')}"
+                f"📍 *Место:* {location}\n"
+                f"📅 *Дата и время:* {game_data.get('date', '—')} в {game_data.get('time', '—')}\n"
+                f"🎯 *Вид спорта:* {sport} • {game_data.get('type', '—')}\n"
+                f"💳 *Оплата:* {game_data.get('payment_type', '—')}"
             )
             
             if game_data.get('competitive'):
-                offer_text += f"\n🏆 На счет"
+                offer_text += f"\n🏆 *Тип игры:* На счет"
         
         # Добавляем комментарий
         if game_data.get('comment'):
-            offer_text += f"\n💬 {game_data['comment']}"
+            offer_text += f"\n💬 *Комментарий:* {game_data['comment']}"
         
         # Добавляем хештег
         if category == "dating":
@@ -290,13 +312,12 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         tour_text = (
             f"✈️ *Тур по {sport}*\n\n"
             f"👤 {profile_link}\n"
-            f"📍 Откуда: {user_data.get('city', '—')}, {user_data.get('country', '—')}\n"
-            f"🌍 Куда: {user_data.get('vacation_city', '—')}, {user_data.get('vacation_country', '—')}\n"
-            f"📅 Даты: {user_data.get('vacation_start')} - {user_data.get('vacation_end')}\n"
+            f"🌍 *Направление:* {user_data.get('vacation_city', '—')}, {user_data.get('vacation_country', '—')}\n"
+            f"📅 *Даты:* {user_data.get('vacation_start')} - {user_data.get('vacation_end')}"
         )
         
         if user_data.get('vacation_comment'):
-            tour_text += f"\n💬 {user_data['vacation_comment']}"
+            tour_text += f"\n💬 *Комментарий:* {user_data['vacation_comment']}"
         
         tour_text += "\n\n#тур"
         
@@ -349,18 +370,18 @@ async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[s
         if role == "Тренер":
             profile_text = (
                 "👨‍🏫 <b>Новый тренер присоединился к платформе!</b>\n\n"
-                f"🏆 {await create_user_profile_link(user_data, user_id)}\n"
-                f"💰 {user_data.get('price', 0)} руб./тренировка\n"
-                f"📍 {city} ({user_data.get('country', '')})\n"
+                f"🏆 <b>Тренер:</b> {await create_user_profile_link(user_data, user_id)}\n"
+                f"💰 <b>Стоимость:</b> {user_data.get('price', 0)} руб./тренировка\n"
+                f"📍 <b>Местоположение:</b> {city} ({user_data.get('country', '')})\n"
                 f"{username_text}"
                 f"#тренер"
             )
         else:
             profile_text = (
                 "🎾 <b>Новый игрок присоединился к сообществу!</b>\n\n"
-                f"👤 {await create_user_profile_link(user_data, user_id)}\n" 
-                f"💪 {user_data.get('player_level', 'Не указан')} уровень игры\n"
-                f"📍 {city} ({user_data.get('country', '')})\n"
+                f"👤 <b>Игрок:</b> {await create_user_profile_link(user_data, user_id)}\n" 
+                f"💪 <b>Уровень игры:</b> {user_data.get('player_level', 'Не указан')}\n"
+                f"📍 <b>Местоположение:</b> {city} ({user_data.get('country', '')})\n"
                 f"{username_text}"
                 f"#игрок"
             )

@@ -8,7 +8,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE
-from config.profile import sport_type, countries, cities_data, get_sport_config
+from config.profile import create_sport_keyboard, sport_type, countries, cities_data, get_sport_config
 from models.states import BrowseToursStates, CreateTourStates
 from services.channels import send_tour_to_channel
 from utils.utils import create_user_profile_link, format_tour_date
@@ -20,43 +20,31 @@ router = Router()
 @router.message(F.text == "✈️ Туры")
 async def browse_tours_start(message: types.Message, state: FSMContext):
     """Начало просмотра туров - выбор спорта"""
-    # Создаем клавиатуру с видами спорта
-    buttons = []
+    builder = InlineKeyboardBuilder()
+
+    builder.row(InlineKeyboardButton(
+        text="Предложить тур",
+        callback_data="create_tour_from_menu"
+    ))
     
-    # Добавляем кнопку "Любой вид спорта" первой
-    buttons.append([InlineKeyboardButton(
+    builder.row(InlineKeyboardButton(
         text="🎾 Любой вид спорта",
         callback_data="toursport_any"
-    )])
+    ))
     
-    # Добавляем остальные виды спорта в 3 ряда
-    row = []
-    for i, sport in enumerate(sport_type):
-        row.append(InlineKeyboardButton(
-            text=sport,
-            callback_data=f"toursport_{sport}"
-        ))
-        if (i + 1) % 3 == 0 or i == len(sport_type) - 1:
-            buttons.append(row)
-            row = []
-    
-    # Добавляем кнопку создания тура
-    buttons.append([InlineKeyboardButton(
-        text="Создать тур",
-        callback_data="create_tour_from_menu"
-    )])
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    sport_keyboard = create_sport_keyboard(pref="toursport_")
+    for row in sport_keyboard.inline_keyboard:
+        builder.row(*row)
 
     try:
         await message.edit_text(
             "🎯 Выберите вид спорта для поиска туров:",
-            reply_markup=keyboard
+            reply_markup=builder.as_markup()
         )
     except:
         await message.answer(
             "🎯 Выберите вид спорта для поиска туров:",
-            reply_markup=keyboard
+            reply_markup=builder.as_markup()
         )
     await state.set_state(BrowseToursStates.SELECT_SPORT)
     await state.update_data(page=0)
@@ -64,43 +52,31 @@ async def browse_tours_start(message: types.Message, state: FSMContext):
 @router.callback_query(F.data == "tours_back_to_sport")
 async def browse_tours_start_callback(callback: types.CallbackQuery, state: FSMContext):
     """Начало просмотра туров - выбор спорта"""
-    # Создаем клавиатуру с видами спорта
-    buttons = []
-    
-    # Добавляем кнопку "Любой вид спорта" первой
-    buttons.append([InlineKeyboardButton(
-        text="🎾 Любой вид спорта",
-        callback_data="toursport_any"
-    )])
-    
-    # Добавляем остальные виды спорта в 3 ряда
-    row = []
-    for i, sport in enumerate(sport_type):
-        row.append(InlineKeyboardButton(
-            text=sport,
-            callback_data=f"toursport_{sport}"
-        ))
-        if (i + 1) % 3 == 0 or i == len(sport_type) - 1:
-            buttons.append(row)
-            row = []
-    
-    # Добавляем кнопку создания тура
-    buttons.append([InlineKeyboardButton(
-        text="Создать тур",
+    builder = InlineKeyboardBuilder()
+
+    builder.row(InlineKeyboardButton(
+        text="Предложить тур",
         callback_data="create_tour_from_menu"
-    )])
+    ))
+
+    builder.row(InlineKeyboardButton(
+        text="Любой вид спорта",
+        callback_data="toursport_any"
+    ))
     
-    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    sport_keyboard = create_sport_keyboard(pref="toursport_")
+    for row in sport_keyboard.inline_keyboard:
+        builder.row(*row)
 
     try:
         await callback.message.edit_text(
             "🎯 Выберите вид спорта для поиска туров:",
-            reply_markup=keyboard
+            reply_markup=builder.as_markup()
         )
     except:
         await callback.message.answer(
             "🎯 Выберите вид спорта для поиска туров:",
-            reply_markup=keyboard
+            reply_markup=builder.as_markup()
         )
     await state.set_state(BrowseToursStates.SELECT_SPORT)
     await state.update_data(page=0)
@@ -115,6 +91,10 @@ async def select_tour_sport(callback: types.CallbackQuery, state: FSMContext):
     
     # Создаем клавиатуру с кнопками всех стран
     buttons = []
+    buttons.append([InlineKeyboardButton(
+        text="Предложить тур",
+        callback_data="create_tour_from_menu"
+    )])
     for country in countries:
         buttons.append([
             InlineKeyboardButton(
@@ -162,27 +142,27 @@ async def select_tour_country(callback: types.CallbackQuery, state: FSMContext):
     
     # Создаем клавиатуру с кнопками городов
     buttons = []
+    buttons.append([InlineKeyboardButton(
+        text="Предложить тур",
+        callback_data="create_tour_from_menu"
+    )])
     
     # Если есть туры в этой стране, показываем города с турами
     if city_stats:
         for city, count in city_stats.items():
             buttons.append([
                 InlineKeyboardButton(
-                    text=f"🏙 {city} ({count} туров)",
+                    text=f"{city} ({count} туров)",
                     callback_data=f"tourcity_{city}"
                 )
             ])
     else:
-        # Если нет туров, показываем основные города страны
-        if country == "🇷🇺 Россия":
-            main_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
-        else:
-            main_cities = cities_data.get(country, [])
+        main_cities = cities_data.get(country, [])
         
         for city in main_cities[:5]:  # Показываем первые 5 городов
             buttons.append([
                 InlineKeyboardButton(
-                    text=f"🏙 {city}",
+                    text=f"{city} (0 туров)",
                     callback_data=f"tourcity_{city}"
                 )
             ])
@@ -191,16 +171,10 @@ async def select_tour_country(callback: types.CallbackQuery, state: FSMContext):
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
-    if city_stats:
-        await callback.message.edit_text(
-            f"🏙 Выберите город в {country} для {sport}:",
-            reply_markup=keyboard
-        )
-    else:
-        await callback.message.edit_text(
-            f"🏙 Выберите город в {country} (пока нет активных туров):",
-            reply_markup=keyboard
-        )
+    await callback.message.edit_text(
+        f"🏙 Выберите город в {country}",
+        reply_markup=keyboard
+    )
     
     await state.set_state(BrowseToursStates.SELECT_CITY)
     await callback.answer()
@@ -233,13 +207,17 @@ async def select_tour_country_from_input(message: types.Message, state: FSMConte
     
     # Создаем клавиатуру с кнопками городов
     buttons = []
+    buttons.append([InlineKeyboardButton(
+        text="Предложить тур",
+        callback_data="create_tour_from_menu"
+    )])
     
     # Если есть туры в этой стране, показываем города с турами
     if city_stats:
         for city, count in city_stats.items():
             buttons.append([
                 InlineKeyboardButton(
-                    text=f"🏙 {city} ({count} туров)",
+                    text=f"{city} ({count} туров)",
                     callback_data=f"tourcity_{city}"
                 )
             ])
@@ -249,7 +227,7 @@ async def select_tour_country_from_input(message: types.Message, state: FSMConte
         for city in main_cities[:5]:  # Показываем первые 5 городов
             buttons.append([
                 InlineKeyboardButton(
-                    text=f"🏙 {city}",
+                    text=f"{city} (0 туров)",
                     callback_data=f"tourcity_{city}"
                 )
             ])
@@ -258,16 +236,10 @@ async def select_tour_country_from_input(message: types.Message, state: FSMConte
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
-    if city_stats:
-        await message.answer(
-            f"🏙 Выберите город в {country} для {sport}:",
-            reply_markup=keyboard
-        )
-    else:
-        await message.answer(
-            f"🏙 Выберите город в {country} (пока нет активных туров):",
-            reply_markup=keyboard
-        )
+    await message.answer(
+        f"🏙 Выберите город в {country}:",
+        reply_markup=keyboard
+    )
     
     await state.set_state(BrowseToursStates.SELECT_CITY)
 
@@ -418,8 +390,8 @@ async def show_tours_page(message: types.Message, state: FSMContext):
         ))
     
     builder.row(InlineKeyboardButton(
-        text="🎾 Найти партнера на время отдыха",
-        callback_data="createTour"
+        text="Предложить тур",
+        callback_data="create_tour_from_menu"
     ))
     
     # Кнопки навигации
@@ -510,7 +482,7 @@ async def view_tour_details(callback: types.CallbackQuery, state: FSMContext):
             )]
             ,
             [InlineKeyboardButton(
-                text="🎾 Найти партнера на время отдыха", callback_data="createTour"
+                text="Предложить тур", callback_data="create_tour_from_menu"
             )]
         ]
     )
@@ -633,23 +605,18 @@ async def process_create_tour_country_input(message: Message, state: FSMContext)
 
 async def ask_for_create_tour_city(message: types.Message, state: FSMContext, country: str):
     """Запрос города для создания тура"""
-    if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"create_tour_city_{city}")] for city in main_russian_cities]
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="create_tour_other_city")])
-    else:
-        cities = cities_data.get(country, [])
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"create_tour_city_{city}")] for city in cities[:5]]
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="create_tour_other_city")])
+    cities = cities_data.get(country, [])
+    buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"create_tour_city_{city}")] for city in cities[:5]]
+    buttons.append([InlineKeyboardButton(text="Другой город", callback_data="create_tour_other_city")])
 
     try:
         await message.edit_text(
-            f"🏙 Выберите город отдыха в стране: {country}",
+            f"🏙 Выберите город отдыха:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     except:
         await message.answer(
-            f"🏙 Выберите город отдыха в стране: {country}",
+            f"🏙 Выберите город отдыха:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     
