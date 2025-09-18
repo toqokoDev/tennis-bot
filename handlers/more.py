@@ -637,19 +637,23 @@ async def show_search_results_list(message: types.Message, state: FSMContext, pa
     builder = InlineKeyboardBuilder()
     
     for user_id, profile in current_results:
-        name = f"{profile.get('first_name', '')} {profile.get('last_name', '')}".strip()
+        name = f"{profile.get('first_name', '')[0]}. {profile.get('last_name', '')}".strip()
         
-        name = f"{profile.get('first_name', '')} {profile.get('last_name', '')}".strip()
         age = await calculate_age(profile.get('birth_date', '05.05.2000'))
         gender_profile = profile.get('gender', '')
         gender_icon = "👨" if gender_profile == 'Мужской' else "👩" if gender_profile == 'Женский' else '👤'
         
+        if profile.get('player_level') and profile.get('rating_points'):
+            display_name = f"{profile.get('player_level')} lvl ({profile.get('rating_points')})"
+        else:
+            display_name = ""
+
         if search_type == "coaches":
             lesson_price = profile.get('price')
 
-            name = f"{gender_icon} {name} ({age} лет) | {lesson_price} руб."
+            name = f"{gender_icon} {name} {age} лет | {lesson_price} руб."
         else:
-            name = f"{gender_icon} {name} ({age} лет) | {profile.get('player_level', '')} ({profile.get('rating_points', '')})"
+            name = f"{gender_icon} {name} {age} лет | {display_name})"
             
         builder.add(InlineKeyboardButton(
             text=name,
