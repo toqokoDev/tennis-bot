@@ -388,7 +388,7 @@ async def process_city_selection(callback: types.CallbackQuery, state: FSMContex
 @router.callback_query(RegistrationStates.CITY, F.data.startswith("district_"))
 async def process_district_selection(callback: types.CallbackQuery, state: FSMContext):
     district = callback.data.split("_", maxsplit=1)[1]
-    await state.update_data(city=district.split("-")[0].strip())
+    await state.update_data(city="Москва")
     await state.update_data(district=district.strip())
     await ask_for_role(callback.message, state)
     await callback.answer()
