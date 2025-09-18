@@ -9,7 +9,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config.config import SUBSCRIPTION_PRICE, BOT_USERNAME
-from config.profile import PRICE_RANGES, cities_data, sport_type, countries
+from config.profile import PRICE_RANGES, cities_data, create_sport_keyboard, sport_type, countries
 from models.states import SearchStates
 from services.storage import storage
 from utils.admin import is_admin
@@ -143,44 +143,24 @@ async def process_search_country(callback: types.CallbackQuery, state: FSMContex
     data = await state.get_data()
     search_type = data.get('search_type')
     
-    if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
-        buttons = []
-        for city in main_russian_cities:
-            count = await count_users_by_location(search_type, country, city)
-            buttons.append([InlineKeyboardButton(
-                text=f"{city} ({count})", 
-                callback_data=f"search_city_{city}"
-            )])
-        
-        counts = []
-        for c in main_russian_cities:
-            counts.append(await count_users_by_location(search_type, country, c))
-            
-        count_other = await count_users_by_location(search_type, country) - sum(counts)
+    cities = cities_data.get(country, [])
+    buttons = []
+    for city in cities:
+        count = await count_users_by_location(search_type, country, city)
         buttons.append([InlineKeyboardButton(
-            text=f"🏙 Другие города ({count_other})", 
+            text=f"{city} ({count})", 
+            callback_data=f"search_city_{city}"
+        )])
+
+    # Получаем количество пользователей в других городах
+    other_cities = await get_top_cities(search_type=search_type, country=country, exclude_cities=cities)
+    other_cities_count = sum(count for city, count in other_cities)
+    
+    if other_cities_count > 0:
+        buttons.append([InlineKeyboardButton(
+            text=f"🏙 Другие города ({other_cities_count})", 
             callback_data="search_other_city"
         )])
-    else:
-        cities = cities_data.get(country, [])
-        buttons = []
-        for city in cities:
-            count = await count_users_by_location(search_type, country, city)
-            buttons.append([InlineKeyboardButton(
-                text=f"{city} ({count})", 
-                callback_data=f"search_city_{city}"
-            )])
-
-        # Получаем количество пользователей в других городах
-        other_cities = await get_top_cities(search_type=search_type, country=country, exclude_cities=cities)
-        other_cities_count = sum(count for city, count in other_cities)
-        
-        if other_cities_count > 0:
-            buttons.append([InlineKeyboardButton(
-                text=f"🏙 Другие города ({other_cities_count})", 
-                callback_data="search_other_city"
-            )])
     
     buttons.append([InlineKeyboardButton(
         text="⬅️ Назад к странам", 
@@ -285,10 +265,7 @@ async def process_search_other_city(callback: types.CallbackQuery, state: FSMCon
     search_type_text = "тренеров" if search_type == "coaches" else "игроков"
     
     # Определяем основные города для исключения
-    if country == "Россия":
-        exclude_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
-    else:
-        exclude_cities = cities_data.get(country, [])
+    exclude_cities = cities_data.get(country, [])
     
     # Получаем топ-7 городов в выбранной стране, исключая основные
     top_cities = await get_top_cities(search_type=search_type, country=country, exclude_cities=exclude_cities)
@@ -309,6 +286,7 @@ async def process_search_other_city(callback: types.CallbackQuery, state: FSMCon
         f"🏙 Топ городов в {country} с {search_type_text}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
+    await state.set_state(SearchStates.SEARCH_RESULTS)
     await callback.answer()
 
 @router.callback_query(F.data == "back_to_countries")
@@ -404,25 +382,21 @@ async def show_sport_types(message: Union[types.Message, types.CallbackQuery], s
         message = message.message
     
     builder = InlineKeyboardBuilder()
-    
+
     builder.row(InlineKeyboardButton(
-        text="🏆 Любой вид спорта",
+        text="Все виды спорта",
         callback_data="sport_any"
     ))
-
-    for sport in sport_type:
-        builder.add(InlineKeyboardButton(
-            text=sport,
-            callback_data=f"sport_{sport}"
-        ))
     
-    builder.adjust(1, 2)
+    sport_keyboard = create_sport_keyboard(pref="sport_")
+    for row in sport_keyboard.inline_keyboard:
+        builder.row(*row)
     
-    # Кнопка возврата
     builder.row(InlineKeyboardButton(
         text="⬅️ Назад к меню",
         callback_data="back_to_main"
     ))
+
     try:
         await message.edit_text(
             "🏆 Выберите вид спорта:",
@@ -771,44 +745,24 @@ async def handle_back_to_cities(callback: types.CallbackQuery, state: FSMContext
     country = data.get('search_country')
     search_type = data.get('search_type')
     
-    if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
-        buttons = []
-        for city in main_russian_cities:
-            count = await count_users_by_location(search_type, country, city)
-            buttons.append([InlineKeyboardButton(
-                text=f"🏙 {city} ({count})", 
-                callback_data=f"search_city_{city}"
-            )])
-        
-        # Получаем количество пользователей в других городах
-        other_cities = await get_top_cities(search_type=search_type, country=country, exclude_cities=main_russian_cities)
-        other_cities_count = sum(count for city, count in other_cities)
-        
-        if other_cities_count > 0:
-            buttons.append([InlineKeyboardButton(
-                text=f"🏙 Другие города ({other_cities_count})", 
-                callback_data="search_other_city"
-            )])
-    else:
-        cities = cities_data.get(country, [])
-        buttons = []
-        for city in cities:
-            count = await count_users_by_location(search_type, country, city)
-            buttons.append([InlineKeyboardButton(
-                text=f"🏙 {city} ({count})", 
-                callback_data=f"search_city_{city}"
-            )])
-        
-        # Получаем количество пользователей в других городах
-        other_cities = await get_top_cities(search_type=search_type, country=country, exclude_cities=cities)
-        other_cities_count = sum(count for city, count in other_cities)
-        
-        if other_cities_count > 0:
-            buttons.append([InlineKeyboardButton(
-                text=f"🏙 Другие города ({other_cities_count})", 
-                callback_data="search_other_city"
-            )])
+    cities = cities_data.get(country, [])
+    buttons = []
+    for city in cities:
+        count = await count_users_by_location(search_type, country, city)
+        buttons.append([InlineKeyboardButton(
+            text=f"{city} ({count})", 
+            callback_data=f"search_city_{city}"
+        )])
+    
+    # Получаем количество пользователей в других городах
+    other_cities = await get_top_cities(search_type=search_type, country=country, exclude_cities=cities)
+    other_cities_count = sum(count for city, count in other_cities)
+    
+    if other_cities_count > 0:
+        buttons.append([InlineKeyboardButton(
+            text=f"🏙 Другие города ({other_cities_count})", 
+            callback_data="search_other_city"
+        )])
     
     buttons.append([InlineKeyboardButton(
         text="⬅️ Назад к странам", 

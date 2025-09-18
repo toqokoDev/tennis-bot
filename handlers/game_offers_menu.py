@@ -8,7 +8,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE, SUBSCRIPTION_PRICE
-from config.profile import sport_type, get_sport_config
+from config.profile import create_sport_keyboard, sport_type, get_sport_config
 from services.storage import storage
 from utils.admin import is_admin
 from models.states import BrowseOffersStates, RespondToOfferStates
@@ -19,20 +19,9 @@ router = Router()
 @router.message(F.text == "⏱ Предложение игр")
 async def browse_offers_start(message: types.Message, state: FSMContext):
     """Начало просмотра предложенных игр - выбор вида спорта"""
-    # Создаем клавиатуру с видами спорта
-    buttons = []
-    row = []
-    for i, sport in enumerate(sport_type):
-        row.append(InlineKeyboardButton(text=sport, callback_data=f"offersport_{sport}"))
-        if (i + 1) % 3 == 0 or i == len(sport_type) - 1:
-            buttons.append(row)
-            row = []
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-    
     await message.answer(
         "Выберите вид спорта:",
-        reply_markup=keyboard
+        reply_markup=create_sport_keyboard(pref="offersport_")
     )
     await state.set_state(BrowseOffersStates.SELECT_SPORT)
     await state.update_data(page=0)
@@ -61,7 +50,7 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             f"❌ На данный момент нет активных предложений игр в {sport_type_selected} от других пользователей.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🎾 Предложить", callback_data="new_offer")],
+                [InlineKeyboardButton(text="Предложить игру", callback_data=f"new_offer_{sport_type_selected}")],
                 [InlineKeyboardButton(text="🔙 Назад к выбору спорта", callback_data="back_to_sport_selection")]
             ])
         )
@@ -76,10 +65,9 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
                 callback_data=f"offercountry_{country}"
             )
         ])
-    
-    # Добавляем кнопку возврата
+
     buttons.append([
-        InlineKeyboardButton(text="🎾 Предложить", callback_data="new_offer")
+        InlineKeyboardButton(text="Предложить игру", callback_data=f"new_offer_{sport_type_selected}")
     ])
 
     buttons.append([
@@ -132,13 +120,13 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
     for city, count in city_stats.items():
         buttons.append([
             InlineKeyboardButton(
-                text=f"🏙 {city} ({count} предложений)",
+                text=f"{city} ({count} предложений)",
                 callback_data=f"offercity_{city}"
             )
         ])
     
     buttons.append([
-        InlineKeyboardButton(text="🎾 Предложить", callback_data="new_offer")
+        InlineKeyboardButton(text="Предложить игру", callback_data=f"new_offer_{sport_type_selected}")
     ])
     # Добавляем кнопку возврата
     buttons.append([
@@ -183,7 +171,7 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
                         'user_name': user_name,
                         'player_level': user_data.get('player_level'),
                         'gender': user_data.get('gender'),
-                        'district': user_data.get('district'),
+                        'district': game.get('district'),
                         'game_id': game.get('id'),
                         'country': game.get('country'),
                         'city': game.get('city'),
@@ -289,7 +277,7 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         builder.row(*nav_buttons)
     
     # Кнопка для предложения новой игры
-    builder.row(InlineKeyboardButton(text="🎾 Предложить", callback_data="new_offer"))
+    builder.row(InlineKeyboardButton(text="Предложить игру", callback_data=f"new_offer_{sport_type_selected}"))
     
     # Кнопка возврата к выбору города
     builder.row(InlineKeyboardButton(text="🔙 Назад к выбору города", callback_data="back_to_city_selection"))
@@ -366,7 +354,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
         text = (
             f"{sport}\n"
             f"👤 {user_name} {username_str}\n"
-            f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+            f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
             f"📅 Дата: {game.get('date', '—')}\n"
             f"⏰ Время: {game.get('time', '—')}\n"
         )
@@ -382,7 +370,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
@@ -390,7 +378,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
@@ -400,7 +388,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
@@ -409,7 +397,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
@@ -417,7 +405,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n" 
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
@@ -425,7 +413,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
@@ -433,7 +421,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
             )
@@ -443,70 +431,65 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
                 f"🔍 Тип: {game.get('type', '—')}\n"
                 f"💳 Оплата: {game.get('payment_type', '—')}\n"
                 f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
-                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
             )
         elif sport == "🏓Настольный теннис":
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
                 f"🔍 Тип: {game.get('type', '—')}\n"
                 f"💳 Оплата: {game.get('payment_type', '—')}\n"
                 f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
-                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
             )
         elif sport == "🏸Бадминтон":
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
                 f"🔍 Тип: {game.get('type', '—')}\n"
                 f"💳 Оплата: {game.get('payment_type', '—')}\n"
                 f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
-                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
             )
         elif sport == "🏖️Пляжный теннис":
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
                 f"🔍 Тип: {game.get('type', '—')}\n"
                 f"💳 Оплата: {game.get('payment_type', '—')}\n"
                 f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
-                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
             )
         elif sport == "🎾Падл-теннис":
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
                 f"🔍 Тип: {game.get('type', '—')}\n"
                 f"💳 Оплата: {game.get('payment_type', '—')}\n"
                 f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
-                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
             )
         elif sport == "🥎Сквош":
             text = (
@@ -520,35 +503,32 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"🔍 Тип: {game.get('type', '—')}\n"
                 f"💳 Оплата: {game.get('payment_type', '—')}\n"
                 f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
-                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
             )
         elif sport == "🏆Пиклбол":
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
                 f"🔍 Тип: {game.get('type', '—')}\n"
                 f"💳 Оплата: {game.get('payment_type', '—')}\n"
                 f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
-                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
             )
         else:
             text = (
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
-                f"🌍 {game.get('country', '—')}, {game.get('city', '—')}\n"
+                f"🌍 {game.get('country', '—')}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📊 Сыграно матчей: {user_data.get('games_played', 0)}\n\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
                 f"⏰ Время: {game.get('time', '—')}\n"
                 f"🔍 Тип: {game.get('type', '—')}\n"
                 f"💳 Оплата: {game.get('payment_type', '—')}\n"
                 f"🏆 На счет: {'Да' if game.get('competitive') else 'Нет'}\n"
-                f"🔄 Повтор: {'Да' if game.get('repeat') else 'Нет'}\n"
             )
     
     if game.get('comment'):
@@ -746,20 +726,9 @@ async def process_respond_comment(message: types.Message, state: FSMContext):
 @router.callback_query(F.data == "back_to_sport_selection")
 async def back_to_sport_selection(callback: types.CallbackQuery, state: FSMContext):
     """Возврат к выбору вида спорта"""
-    # Создаем клавиатуру с видами спорта
-    buttons = []
-    row = []
-    for i, sport in enumerate(sport_type):
-        row.append(InlineKeyboardButton(text=sport, callback_data=f"offersport_{sport}"))
-        if (i + 1) % 3 == 0 or i == len(sport_type) - 1:
-            buttons.append(row)
-            row = []
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-    
     await callback.message.edit_text(
         "🎯 Выберите вид спорта для просмотра предложений игр:",
-        reply_markup=keyboard
+        reply_markup=create_sport_keyboard(pref="offersport_")
     )
     await state.set_state(BrowseOffersStates.SELECT_SPORT)
     await callback.answer()
@@ -777,18 +746,18 @@ async def back_to_country_selection(callback: types.CallbackQuery, state: FSMCon
     country_stats = {}
     for user_id, user_data in users.items():
         if user_data.get('games'):
-            country = user_data.get('country', '')
-            if country:
-                active_games = [game for game in user_data['games'] 
-                               if game.get('active', True) and game.get('sport') == sport_type_selected]
-                if active_games:
-                    country_stats[country] = country_stats.get(country, 0) + len(active_games)
+            for game in user_data['games']:
+                if (game.get('active', True) and 
+                    game.get('sport') == sport_type_selected and
+                    game.get('country')):
+                    country = game.get('country')
+                    country_stats[country] = country_stats.get(country, 0) + 1
     
     if not country_stats:
         await callback.message.edit_text(
             f"❌ На данный момент нет активных предложений игр в {sport_type_selected} от других пользователей.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🎾 Предложить", callback_data="new_offer")],
+                [InlineKeyboardButton(text="Предложить игру", callback_data=f"new_offer_{sport_type_selected}")],
                 [InlineKeyboardButton(text="🔙 Назад к выбору спорта", callback_data="back_to_sport_selection")]
             ])
         )
@@ -803,6 +772,10 @@ async def back_to_country_selection(callback: types.CallbackQuery, state: FSMCon
                 callback_data=f"offercountry_{country}"
             )
         ])
+    
+    buttons.append([
+        InlineKeyboardButton(text="Предложить игру", callback_data=f"new_offer_{sport_type_selected}")
+    ])
     
     # Добавляем кнопку возврата
     buttons.append([
@@ -853,11 +826,15 @@ async def back_to_city_selection(callback: types.CallbackQuery, state: FSMContex
     for city, count in city_stats.items():
         buttons.append([
             InlineKeyboardButton(
-                text=f"🏙 {city} ({count} предложений)",
+                text=f"{city} ({count} предложений)",
                 callback_data=f"offercity_{city}"
             )
         ])
     
+    buttons.append([
+        InlineKeyboardButton(text="Предложить игру", callback_data=f"new_offer_{sport_type_selected}")
+    ])
+
     # Добавляем кнопку возврата
     buttons.append([
         InlineKeyboardButton(text="🔙 Назад к выбору страны", callback_data="back_to_country_selection")

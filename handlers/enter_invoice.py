@@ -499,12 +499,12 @@ async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMCo
     await callback.message.edit_text(
         f"Команды сформированы:\n\n"
         f"Команда 1 (ваша):\n"
-        f"• {await create_user_profile_link(current_user, current_user.get('telegram_id'))}\n" 
-        f"• {await create_user_profile_link(partner, partner.get('telegram_id'))}\n"
+        f"• {await create_user_profile_link(current_user, current_user.get('telegram_id'), additional=False)}\n" 
+        f"• {await create_user_profile_link(partner, partner.get('telegram_id'), additional=False)}\n"
         f"Средний рейтинг: {team1_avg:.0f}\n\n"
         f"Команда 2:\n"
-        f"• {await create_user_profile_link(opponent1, opponent1.get('telegram_id'))}\n"
-        f"• {await create_user_profile_link(opponent2, opponent2.get('telegram_id'))}\n"
+        f"• {await create_user_profile_link(opponent1, opponent1.get('telegram_id'), additional=False)}\n"
+        f"• {await create_user_profile_link(opponent2, opponent2.get('telegram_id'), additional=False)}\n"
         f"Средний рейтинг: {team2_avg:.0f}\n\n"
         f"Выберите счет 1-го сета:",
         reply_markup=keyboard, 
@@ -549,9 +549,9 @@ async def handle_single_opponent_selection(callback: types.CallbackQuery, state:
     
     keyboard = create_set_score_keyboard(1)
     
-    await callback.message.edit_text(
+    await callback.message.edit_text( 
         f"Вы выбрали соперника:\n"
-        f"👤 {await create_user_profile_link(opponent, opponent.get('telegram_id', ''))}\n\n"
+        f"👤 {await create_user_profile_link(opponent, opponent.get('telegram_id', ''), additional=False)}\n\n"
         f"Ваш рейтинг: {current_user.get('rating_points', 0)}\n\n"
         f"Выберите счет 1-го сета:",
         reply_markup=keyboard, 
@@ -889,8 +889,8 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
 
         # Текст результата
         # Показываем сверху победителя
-        winner_name_link = await create_user_profile_link(winner_user, pid(winner_user) or "")
-        loser_name_link = await create_user_profile_link(loser_user, pid(loser_user) or "")
+        winner_name_link = await create_user_profile_link(winner_user, pid(winner_user) or "", additional=False)
+        loser_name_link = await create_user_profile_link(loser_user, pid(loser_user) or "", additional=False)
 
         result_text = (
             f"🎯 Одиночная игра\n\n"
@@ -970,7 +970,7 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         # Готовим текст результата
         async def line_player(player_dict: dict) -> str:
             _id = pid(player_dict) or ""
-            name_link = await create_user_profile_link(player_dict, _id)
+            name_link = await create_user_profile_link(player_dict, _id, additional=False)
             old_val = old_ratings.get(_id, rating_of(player_dict))
             delta = rating_changes_for_game.get(_id, 0.0)
             new_val = old_val + delta
@@ -980,11 +980,11 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         result_text = (
             f"👥 Парная игра\n\n"
             f"Команда 1:\n"
-            f"• {await create_user_profile_link(current_user, current_id)}\n"
-            f"• {await create_user_profile_link(partner, pid_partner)}\n\n"
+            f"• {await create_user_profile_link(current_user, current_id, additional=False)}\n"
+            f"• {await create_user_profile_link(partner, pid_partner, additional=False)}\n\n"
             f"Команда 2:\n"
-            f"• {await create_user_profile_link(opponent1, pid_op1)}\n"
-            f"• {await create_user_profile_link(opponent2, pid_op2)}\n\n"
+            f"• {await create_user_profile_link(opponent1, pid_op1, additional=False)}\n"
+            f"• {await create_user_profile_link(opponent2, pid_op2, additional=False)}\n\n"
             f"📊 Счёт: {score}\n\n"
             f"📈 Изменение рейтинга:\n"
         )
@@ -1132,7 +1132,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
                     opponent_user = users[opponent_id]
                     current_user = users[current_user_id]
                     
-                    opponent_link = await create_user_profile_link(current_user, current_user_id)
+                    opponent_link = await create_user_profile_link(current_user, current_user_id, additional=False)
                     
                     # Определяем результат для соперника
                     if winner_side == "team1":
@@ -1166,13 +1166,11 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
             ]
             
             current_user = users[current_user_id]
-            current_user_link = await create_user_profile_link(current_user, current_user_id)
             
             for player_id, role in players_to_notify:
                 if player_id in users:
                     try:
                         player_user = users[player_id]
-                        player_link = await create_user_profile_link(player_user, player_id)
                         
                         # Формируем список всех игроков со ссылками
                         all_players = []
@@ -1182,7 +1180,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
                                     data.get('opponent2', {}).get('telegram_id')]:
                             if p_id in users:
                                 p_user = users[p_id]
-                                all_players.append(await create_user_profile_link(p_user, p_id))
+                                all_players.append(await create_user_profile_link(p_user, p_id, additional=False))
                         
                         players_list = "\n".join(all_players)
                         
@@ -1715,7 +1713,7 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
         history_text += f"👤 Игрок:\n"
         history_text += f"• {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n" 
         history_text += f"👤 Соперник:\n"
-        history_text += f"• {await create_user_profile_link(opponent, opponent.get('telegram_id'))}\n\n"
+        history_text += f"• {await create_user_profile_link(opponent, opponent.get('telegram_id'), additional=False)}\n\n"
         
     else:
         # Для парной игры
@@ -1730,12 +1728,12 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
         opponent1 = users.get(opponents[0], {})
         opponent2 = users.get(opponents[1], {})
         
-        teammate_name = await create_user_profile_link(teammate, teammate_id)
-        opponent1_name = await create_user_profile_link(opponent1, opponents[0])
-        opponent2_name = await create_user_profile_link(opponent2, opponents[1])
+        teammate_name = await create_user_profile_link(teammate, teammate_id, additional=False)
+        opponent1_name = await create_user_profile_link(opponent1, opponents[0], additional=False)
+        opponent2_name = await create_user_profile_link(opponent2, opponents[1], additional=False)
         
         history_text += f"👥 Команда 1:\n"
-        history_text += f"• {await create_user_profile_link(target_user, target_user.get('telegram_id', ''))}\n"
+        history_text += f"• {await create_user_profile_link(target_user, target_user.get('telegram_id', ''), additional=False)}\n"
         history_text += f"• {teammate_name}\n\n"
         history_text += f"👥 Команда 2:\n"
         history_text += f"• {opponent1_name}\n"

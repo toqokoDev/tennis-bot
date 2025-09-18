@@ -15,7 +15,7 @@ from aiogram.types import (
 
 from config.paths import BASE_DIR, PHOTOS_DIR
 from config.profile import (
-    moscow_districts, player_levels, tennis_levels, table_tennis_levels, 
+    create_sport_keyboard, moscow_districts, player_levels, tennis_levels, table_tennis_levels, 
     base_keyboard, cities_data, sport_type, countries, SPORT_FIELD_CONFIG,
     DATING_GOALS, DATING_INTERESTS, DATING_ADDITIONAL_FIELDS, get_sport_config, get_sport_texts, get_base_keyboard
 )
@@ -266,26 +266,11 @@ async def process_phone(message: Message, state: FSMContext):
         return
 
     await state.update_data(phone=phone)
-    
-    msg = await message.answer(
-        "🎾 Выберите вид спорта:",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    await state.update_data(prev_msg_id=msg.message_id)
-
-    # Кнопки выбора вида спорта
-    buttons = []
-    row = []
-    for i, sport in enumerate(sport_type):
-        row.append(InlineKeyboardButton(text=sport, callback_data=f"sport_{sport}"))
-        if (i + 1) % 2 == 0 or i == len(sport_type) - 1:
-            buttons.append(row)
-            row = []
 
     await show_current_data(
         message, state,
         "🎾 Выберите вид спорта:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        reply_markup=create_sport_keyboard(pref="sport_")
     )
     await state.set_state(RegistrationStates.SPORT)
     await storage.save_session(message.chat.id, await state.get_data())
@@ -364,14 +349,9 @@ async def process_city_input(message: Message, state: FSMContext):
     await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_city(message: types.Message, state: FSMContext, country: str):
-    if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"city_{city}")] for city in main_russian_cities]
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="other_city")])
-    else:
-        cities = cities_data.get(country, [])
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"city_{city}")] for city in cities]
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="other_city")])
+    cities = cities_data.get(country, [])
+    buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"city_{city}")] for city in cities]
+    buttons.append([InlineKeyboardButton(text="Другой город", callback_data="other_city")])
 
     await show_current_data(
         message, state,
@@ -929,14 +909,9 @@ async def process_vacation_city_input(message: Message, state: FSMContext):
     await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_vacation_city(message: types.Message, state: FSMContext, country: str):
-    if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in main_russian_cities]
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="vacation_other_city")])
-    else:
-        cities = cities_data.get(country, [])
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in cities]
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="vacation_other_city")])
+    cities = cities_data.get(country, [])
+    buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in cities]
+    buttons.append([InlineKeyboardButton(text="Другой город", callback_data="vacation_other_city")])
 
     await show_current_data(
         message, state,

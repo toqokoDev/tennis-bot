@@ -7,7 +7,7 @@ from aiogram.types import (
 )
 
 from config.paths import BASE_DIR, PHOTOS_DIR
-from config.profile import moscow_districts, cities_data, countries, sport_type
+from config.profile import create_sport_keyboard, moscow_districts, cities_data, countries, sport_type
 from models.states import AdminEditProfileStates, RegistrationStates
 from services.storage import storage
 from utils.admin import is_admin
@@ -150,16 +150,7 @@ async def admin_edit_field_handler(callback: types.CallbackQuery, state: FSMCont
         await state.set_state(AdminEditProfileStates.COUNTRY)
     elif field == "sport":
         # Создаем клавиатуру для выбора вида спорта
-        buttons = []
-        row = []
-        for i, sport in enumerate(sport_type):
-            row.append(InlineKeyboardButton(text=sport, callback_data=f"adminProfile_edit_sport_{sport}"))
-            if (i + 1) % 2 == 0 or i == len(sport_type) - 1:
-                buttons.append(row)
-                row = []
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback.message.answer("🎾 Выберите вид спорта:", reply_markup=keyboard)
+        await callback.message.answer("🎾 Выберите вид спорта:", reply_markup=create_sport_keyboard(pref="adminProfile_edit_sport_"))
         await state.set_state(AdminEditProfileStates.SPORT)
     elif field == "role":
         buttons = [
@@ -505,14 +496,9 @@ async def admin_ask_for_city(message: types.Message, state: FSMContext, country:
     data = await state.get_data()
     country = data.get('country', country)
     
-    if country == "Россия":
-        main_russian_cities = ["Москва", "Санкт-Петербург", "Новосибирск", "Краснодар", "Екатеринбург", "Казань"]
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"adminProfile_edit_city_{city}")] for city in main_russian_cities]
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="adminProfile_edit_other_city")])
-    else:
-        cities = cities_data.get(country, [])
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"adminProfile_edit_city_{city}")] for city in cities]
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data="adminProfile_edit_other_city")])
+    cities = cities_data.get(country, [])
+    buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"adminProfile_edit_city_{city}")] for city in cities]
+    buttons.append([InlineKeyboardButton(text="Другой город", callback_data="adminProfile_edit_other_city")])
 
     try:
         await message.edit_text(
