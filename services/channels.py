@@ -26,7 +26,7 @@ async def send_registration_notification(message: types.Message, profile: dict):
         if role == "Тренер":
             registration_text = (
                 "👨‍🏫 *Новый тренер присоединился к платформе!*\n\n"
-                f"🏆 *Тренер:* {await create_user_profile_link(profile, profile.get('telegram_id'))}\n"
+                f"🏆 *Тренер:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n"
                 f"💰 *Стоимость:* {profile.get('price', 0)} руб./тренировка\n"
                 f"📍 *Местоположение:* {city} ({profile.get('country', '')})\n"
                 f"{username_text}"
@@ -35,7 +35,7 @@ async def send_registration_notification(message: types.Message, profile: dict):
         else:
             registration_text = (
                 "🎾 *Новый игрок присоединился к сообществу!*\n\n"
-                f"👤 *Игрок:* {await create_user_profile_link(profile, profile.get('telegram_id'))}\n" 
+                f"👤 *Игрок:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n" 
                 f"💪 *Уровень игры:* {profile.get('player_level', 'Не указан')}\n"
                 f"📍 *Местоположение:* {city} ({profile.get('country', '')})\n"
                 f"{username_text}"
