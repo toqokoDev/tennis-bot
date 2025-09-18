@@ -15,7 +15,7 @@ from services.channels import send_game_notification_to_channel
 from services.storage import storage
 from utils.admin import is_admin
 from utils.media import save_media_file
-from utils.utils import calculate_new_ratings, create_user_profile_link, search_users
+from utils.utils import calculate_age, calculate_new_ratings, create_user_profile_link, search_users
 
 def format_rating(rating: float) -> str:
     """Форматирует рейтинг, убирая лишние нули после запятой"""
@@ -29,7 +29,7 @@ router = Router()
 last_message_ids = {}
 
 # Создание inline клавиатуры для выбора пользователей
-def create_users_inline_keyboard(users_list: List[tuple], action: str, page: int = 0, has_more: bool = False) -> InlineKeyboardMarkup:
+async def create_users_inline_keyboard(users_list: List[tuple], action: str, page: int = 0, has_more: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     users_per_page = 8
     
@@ -37,9 +37,19 @@ def create_users_inline_keyboard(users_list: List[tuple], action: str, page: int
     end_idx = min(start_idx + users_per_page, len(users_list))
     
     for user_id, user_data in users_list[start_idx:end_idx]:
-        name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}"
-        rating = user_data.get('rating_points', 0)
-        btn_text = f"{name} ({rating})"
+        name = f"{user_data.get('first_name', '')[0]}. {user_data.get('last_name', '')}".strip()
+        
+        age = await calculate_age(user_data.get('birth_date', '05.05.2000'))
+        gender_profile = user_data.get('gender', '')
+        gender_icon = "👨" if gender_profile == 'Мужской' else "👩" if gender_profile == 'Женский' else '👤'
+        
+        if user_data.get('player_level') and user_data.get('rating_points'):
+            display_name = f"{user_data.get('player_level')} ({user_data.get('rating_points')} lvl)"
+        else:
+            display_name = ""
+
+        btn_text = f"{gender_icon} {name} {age} лет {display_name}"
+
         builder.button(text=btn_text, callback_data=f"{action}:{user_id}")
     
     builder.adjust(1)
@@ -287,7 +297,7 @@ async def handle_opponent_search(message: types.Message, state: FSMContext):
     await state.update_data(opponent_search=search_query)
     await state.set_state(AddScoreState.selecting_opponent)
     
-    keyboard = create_users_inline_keyboard(matching_users, "select_opponent")
+    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent")
     msg = await message.answer("Выберите соперника из списка:", reply_markup=keyboard)
     save_message_id(message.chat.id, msg.message_id)
 
@@ -312,7 +322,7 @@ async def handle_partner_search(message: types.Message, state: FSMContext):
     await state.update_data(partner_search=search_query)
     await state.set_state(AddScoreState.searching_partner)
     
-    keyboard = create_users_inline_keyboard(matching_users, "select_partner")
+    keyboard = await create_users_inline_keyboard(matching_users, "select_partner")
     msg = await message.answer("Выберите партнера из списка:", reply_markup=keyboard)
     save_message_id(message.chat.id, msg.message_id)
 
@@ -380,7 +390,7 @@ async def handle_opponent1_search(message: types.Message, state: FSMContext):
     await state.update_data(opponent1_search=search_query)
     await state.set_state(AddScoreState.selecting_opponent1)
     
-    keyboard = create_users_inline_keyboard(matching_users, "select_opponent1")
+    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent1")
     msg = await message.answer("Выберите первого соперника из списка:", reply_markup=keyboard)
     save_message_id(message.chat.id, msg.message_id)
 
@@ -449,7 +459,7 @@ async def handle_opponent2_search(message: types.Message, state: FSMContext):
     await state.update_data(opponent2_search=search_query)
     await state.set_state(AddScoreState.selecting_opponent2)
     
-    keyboard = create_users_inline_keyboard(matching_users, "select_opponent2")
+    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent2")
     msg = await message.answer("Выберите второго соперника из списка:", reply_markup=keyboard)
     save_message_id(message.chat.id, msg.message_id)
 
@@ -708,7 +718,8 @@ async def handle_photo(message: types.Message, state: FSMContext):
     # Удаляем сообщение с просьбой отправить фото
     try:
         await message.delete()
-        await message.answer("Загрузка фото...")
+        msg = await message.answer("Загрузка фото...")
+        await state.update_data(media_message_id=msg.message_id)
     except:
         pass
     
@@ -723,21 +734,14 @@ async def handle_video(message: types.Message, state: FSMContext):
     # Удаляем сообщение с просьбой отправить видео
     try:
         await message.delete()
-        await message.answer("Загрузка видео...")
+        msg = await message.answer("Загрузка видео...")
+        await state.update_data(media_message_id=msg.message_id)
     except:
         pass
     
     await confirm_score(message, state)
 
 async def confirm_score(message_or_callback: Union[types.Message, types.CallbackQuery], state: FSMContext):
-    """
-    Подтверждение счета: пересчёт рейтингов, формирование итогового сообщения,
-    сохранение игры в историю и обновление пользователей.
-    Исправления:
-      - Всегда фиксируем старые рейтинги ДО любых изменений.
-      - rating_changes в game_data считаем на основе разницы (новый - старый), а не по данным уже перезаписанных объектов.
-      - Аккуратно обновляем users[...] без перезаписи whole-объектов deep copy.
-    """
     # Разворачиваем message/callback
     if isinstance(message_or_callback, types.CallbackQuery):
         message = message_or_callback.message
@@ -750,6 +754,8 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
 
     # Данные состояния
     data = await state.get_data()
+    media_message_id = data.get('media_message_id')
+    
     game_type: str = data.get('game_type')            # 'single' | 'double'
     score = data.get('score')
     sets = data.get('sets')
@@ -991,7 +997,7 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
 
         # Добавляем строки с изменениями для всех игроков (в порядке победители, потом проигравшие)
         for p in (winner_team + loser_team):
-            result_text += line_player(p) + "\n"
+            result_text += await line_player(p) + "\n"
 
         # Для обратных действий (если у вас где-то есть откат) сохраню old_ratings в state
         await state.update_data(old_ratings=old_ratings)
@@ -1059,6 +1065,11 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             )
         else:
             await message.answer(result_text, reply_markup=keyboard, parse_mode="Markdown")
+
+    try:
+        await bot.delete_message(message.chat.id, media_message_id)
+    except:
+        pass
 
 @router.callback_query(F.data.startswith("confirm:"))
 async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMContext):
@@ -1399,7 +1410,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         matching_users = await search_users(search_query, exclude_ids=[current_user_id])
         
         if matching_users:
-            keyboard = create_users_inline_keyboard(matching_users, "select_partner")
+            keyboard = await create_users_inline_keyboard(matching_users, "select_partner")
             await callback.message.edit_text("Выберите партнера из списка:", reply_markup=keyboard)
         else:
             await callback.message.edit_text(
@@ -1428,7 +1439,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id])
         
         if matching_users:
-            keyboard = create_users_inline_keyboard(matching_users, "select_opponent1")
+            keyboard = await create_users_inline_keyboard(matching_users, "select_opponent1")
             await callback.message.edit_text("Выберите первого соперника из списка:", reply_markup=keyboard)
         else:
             await callback.message.edit_text(
@@ -1460,7 +1471,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
             matching_users = await search_users(search_query, exclude_ids=[current_user_id])
             
             if matching_users:
-                keyboard = create_users_inline_keyboard(matching_users, "select_opponent")
+                keyboard = await create_users_inline_keyboard(matching_users, "select_opponent")
                 await callback.message.edit_text("Выберите соперника из списка:", reply_markup=keyboard)
             else:
                 await callback.message.edit_text(
@@ -1485,7 +1496,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
                 matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
                 
                 if matching_users:
-                    keyboard = create_users_inline_keyboard(matching_users, "select_opponent2")
+                    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent2")
                     await callback.message.edit_text("Выберите второго соперника из списка:", reply_markup=keyboard)
                 else:
                     await callback.message.edit_text(
@@ -1506,7 +1517,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
                 matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id])
                 
                 if matching_users:
-                    keyboard = create_users_inline_keyboard(matching_users, "select_opponent1")
+                    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent1")
                     await callback.message.edit_text("Выберите первого соперника из списка:", reply_markup=keyboard)
                 else:
                     await callback.message.edit_text(
@@ -1548,7 +1559,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
         matching_users = await search_users(search_query, exclude_ids=[current_user_id])
         
         has_more = len(matching_users) > (page + 1) * 8
-        keyboard = create_users_inline_keyboard(matching_users, action, page, has_more)
+        keyboard = await create_users_inline_keyboard(matching_users, action, page, has_more)
         await callback.message.edit_reply_markup(reply_markup=keyboard)
     
     elif action == "select_partner":
@@ -1557,7 +1568,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
         matching_users = await search_users(search_query, exclude_ids=[current_user_id])
         
         has_more = len(matching_users) > (page + 1) * 8
-        keyboard = create_users_inline_keyboard(matching_users, action, page, has_more)
+        keyboard = await create_users_inline_keyboard(matching_users, action, page, has_more)
         await callback.message.edit_reply_markup(reply_markup=keyboard)
     
     elif action == "select_opponent1":
@@ -1567,7 +1578,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
         matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id])
         
         has_more = len(matching_users) > (page + 1) * 8
-        keyboard = create_users_inline_keyboard(matching_users, action, page, has_more)
+        keyboard = await create_users_inline_keyboard(matching_users, action, page, has_more)
         await callback.message.edit_reply_markup(reply_markup=keyboard)
     
     elif action == "select_opponent2":
@@ -1578,7 +1589,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
         matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
         
         has_more = len(matching_users) > (page + 1) * 8
-        keyboard = create_users_inline_keyboard(matching_users, action, page, has_more)
+        keyboard = await create_users_inline_keyboard(matching_users, action, page, has_more)
         await callback.message.edit_reply_markup(reply_markup=keyboard)
     
     await callback.answer()

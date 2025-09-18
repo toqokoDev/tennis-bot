@@ -67,7 +67,8 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
     other_countries = []
     
     for country, count in sorted_countries:
-        if country == "🇷🇺 Россия":
+        # Проверяем различные варианты написания России
+        if ("🇷🇺" in country and "Россия" in country) or country == "🇷🇺 Россия":
             russia_count = (country, count)
         else:
             other_countries.append((country, count))
@@ -794,7 +795,8 @@ async def back_to_country_selection(callback: types.CallbackQuery, state: FSMCon
     other_countries = []
     
     for country, count in sorted_countries:
-        if country == "🇷🇺 Россия":
+        # Проверяем различные варианты написания России
+        if ("🇷🇺" in country and "Россия" in country) or country == "🇷🇺 Россия":
             russia_count = (country, count)
         else:
             other_countries.append((country, count))
