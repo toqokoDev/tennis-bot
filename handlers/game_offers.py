@@ -1054,7 +1054,7 @@ async def create_game_offer(message: types.Message, state: FSMContext):
         f"🎮 *Предложение #{game_id}*",
         f"🏆 *Вид спорта:* {sport}",
         f"🌍 *Страна:* {game_data.get('country', '—')}",
-        f"🏙 *Город:* {game_data.get('city', '—')}"
+        f"🏙 *Город:* {game_data.get('city', '—')}"+f" - {game_data.get('district', '')}" if game_data.get('district') else ''
     ]
     
     # Получаем конфигурацию для вида спорта
@@ -1144,7 +1144,7 @@ async def list_my_games(message: types.Message, state: FSMContext):
         f"🎾 *{texts['offer_prefix']} #{game['id']}* (1/{len(active_games)})\n",
         f"🏆 *Вид спорта:* {sport}",
         f"🌍 *Страна:* {game.get('country', '—')}",
-        f"🏙 *Город:* {game.get('city', '—')}"
+        f"🏙 *Город:* {game.get('city', '—')}"+f" - {game.get('district', '')}" if game.get('district') else ''
     ]
     
     # Получаем конфигурацию для вида спорта

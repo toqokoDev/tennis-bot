@@ -507,12 +507,12 @@ async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMCo
     keyboard = create_set_score_keyboard(1)
     
     await callback.message.edit_text(
-        f"Команды сформированы:\n\n"
-        f"Команда 1 (ваша):\n"
+        f"Пары сформированы:\n\n"
+        f"Пара 1 (ваша):\n"
         f"• {await create_user_profile_link(current_user, current_user.get('telegram_id'), additional=False)}\n" 
         f"• {await create_user_profile_link(partner, partner.get('telegram_id'), additional=False)}\n"
         f"Средний рейтинг: {team1_avg:.0f}\n\n"
-        f"Команда 2:\n"
+        f"Пара 2:\n"
         f"• {await create_user_profile_link(opponent1, opponent1.get('telegram_id'), additional=False)}\n"
         f"• {await create_user_profile_link(opponent2, opponent2.get('telegram_id'), additional=False)}\n"
         f"Средний рейтинг: {team2_avg:.0f}\n\n"
@@ -985,10 +985,10 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
 
         result_text = (
             f"👥 Парная игра\n\n"
-            f"Команда 1:\n"
+            f"Пара 1:\n"
             f"• {await create_user_profile_link(current_user, current_id, additional=False)}\n"
             f"• {await create_user_profile_link(partner, pid_partner, additional=False)}\n\n"
-            f"Команда 2:\n"
+            f"Пара 2:\n"
             f"• {await create_user_profile_link(opponent1, pid_op1, additional=False)}\n"
             f"• {await create_user_profile_link(opponent2, pid_op2, additional=False)}\n\n"
             f"📊 Счёт: {score}\n\n"
@@ -1743,10 +1743,10 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
         opponent1_name = await create_user_profile_link(opponent1, opponents[0], additional=False)
         opponent2_name = await create_user_profile_link(opponent2, opponents[1], additional=False)
         
-        history_text += f"👥 Команда 1:\n"
+        history_text += f"👥 Пара 1:\n"
         history_text += f"• {await create_user_profile_link(target_user, target_user.get('telegram_id', ''), additional=False)}\n"
         history_text += f"• {teammate_name}\n\n"
-        history_text += f"👥 Команда 2:\n"
+        history_text += f"👥 Пара 2:\n"
         history_text += f"• {opponent1_name}\n"
         history_text += f"• {opponent2_name}\n\n"
     
