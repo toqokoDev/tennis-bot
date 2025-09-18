@@ -651,9 +651,9 @@ async def show_search_results_list(message: types.Message, state: FSMContext, pa
         if search_type == "coaches":
             lesson_price = profile.get('price')
 
-            name = f"{gender_icon} {name} {age} лет | {lesson_price} руб."
+            name = f"{gender_icon} {name} {age} лет {lesson_price} руб."
         else:
-            name = f"{gender_icon} {name} {age} лет | {display_name}"
+            name = f"{gender_icon} {name} {age} лет {display_name}"
             
         builder.add(InlineKeyboardButton(
             text=name,
