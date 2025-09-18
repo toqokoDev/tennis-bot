@@ -29,7 +29,7 @@ async def show_current_data(message: types.Message, state: FSMContext, text: str
     await state.update_data(prev_msg_id=msg.message_id)
     await storage.save_session(message.from_user.id, await state.get_data())
 
-async def show_profile(message: types.Message, profile: dict):
+async def show_profile(message: types.Message, profile: dict, back_button=False):
     caption_lines = []
     
     # Добавляем username
@@ -179,6 +179,9 @@ async def show_profile(message: types.Message, profile: dict):
         if is_user_admin:
             admin_buttons.append([InlineKeyboardButton(text="✏️ Редактировать чужой профиль", callback_data=f"admin_edit_profile:{profile_user_id}")])
             keyboard_buttons = admin_buttons + keyboard_buttons
+
+    if back_button:
+        keyboard_buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="partner_back_to_results")])
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 

@@ -132,16 +132,16 @@ def create_sport_keyboard(pref: str = "partner_sport_"):
     builder = InlineKeyboardBuilder()
     
     # Большой теннис - полная ширина
-    builder.row(InlineKeyboardButton(
-        text="🎾Большой теннис",
-        callback_data=f"{pref}🎾Большой теннис"
-    ))
-    
-    # Настольный теннис - полная ширина
-    builder.row(InlineKeyboardButton(
-        text="🏓Настольный теннис",
-        callback_data=f"{pref}🏓Настольный теннис"
-    ))
+    builder.row(
+        InlineKeyboardButton(
+            text="🎾Большой теннис",
+            callback_data=f"{pref}🎾Большой теннис"
+        ),
+        InlineKeyboardButton(
+            text="🏓Настольный теннис",
+            callback_data=f"{pref}🏓Настольный теннис"
+        )
+    )
     
     # Бадминтон, пляжный теннис - 2 в ряд
     builder.row(
@@ -212,8 +212,6 @@ def create_sport_keyboard(pref: str = "partner_sport_"):
     )
     
     return builder.as_markup()
-
-
 
 countries = list(cities_data.keys())
 

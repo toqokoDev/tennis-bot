@@ -181,20 +181,26 @@ async def show_district_selection(message: Union[types.Message, types.CallbackQu
     
     builder = InlineKeyboardBuilder()
     
-    # Добавляем кнопку "Любой округ"
+    # Добавляем кнопку "Любой округ" на всю ширину
     builder.row(InlineKeyboardButton(
         text="🏘️ Любой округ",
         callback_data="partner_district_any"
     ))
     
-    # Добавляем округа Москвы
-    for district in moscow_districts:
-        builder.add(InlineKeyboardButton(
-            text=district,
-            callback_data=f"partner_district_{district}"
-        ))
-    
-    builder.adjust(3)
+    # Добавляем округа Москвы по 3 в ряд
+    for i, district in enumerate(moscow_districts):
+        if i % 3 == 0:
+            # Начинаем новую строку каждые 3 кнопки
+            builder.row(InlineKeyboardButton(
+                text=district,
+                callback_data=f"partner_district_{district}"
+            ))
+        else:
+            # Добавляем кнопку в текущую строку
+            builder.add(InlineKeyboardButton(
+                text=district,
+                callback_data=f"partner_district_{district}"
+            ))
     
     builder.row(InlineKeyboardButton(
         text="⬅️ Назад к городам",
@@ -947,12 +953,24 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
     gender_text = f", пол: {gender}" if gender else ""
     level_text = f", уровень: {level}" if level else ""
     
-    await message.edit_text(
-        f"🔍 Найдено {len(results)} партнеров в городе {city} ({country}){sport_text}{gender_text}{level_text}:\n\n"
-        f"Страница {page + 1} из {total_pages}\n\n"
-        "Выберите профиль для просмотра:",
-        reply_markup=builder.as_markup()
-    )
+    try:
+        await message.edit_text(
+            f"🔍 Найдено {len(results)} партнеров в городе {city} ({country}){sport_text}{gender_text}{level_text}:\n\n"
+                f"Страница {page + 1} из {total_pages}\n\n"
+                "Выберите профиль для просмотра:",
+                reply_markup=builder.as_markup()
+            )
+    except:
+        try:
+            await message.delete()
+        except:
+            pass
+        await message.answer(
+            f"🔍 Найдено {len(results)} партнеров в городе {city} ({country}){sport_text}{gender_text}{level_text}:\n\n"
+                f"Страница {page + 1} из {total_pages}\n\n"
+                "Выберите профиль для просмотра:",
+                reply_markup=builder.as_markup()
+            )
     
     await state.update_data(current_page=page)
     await state.set_state(SearchPartnerStates.SEARCH_RESULTS)
@@ -967,87 +985,13 @@ async def handle_show_profile_partner(callback: types.CallbackQuery, state: FSMC
         await callback.answer("❌ Профиль не найден")
         return
     
-    # Показываем краткую информацию о профиле
-    name = f"{profile.get('first_name', '')} {profile.get('last_name', '')}".strip()
-    age = await calculate_age(profile.get('birth_date', '01.01.2000'))
-    gender = profile.get('gender', '')
-    city = profile.get('city', '')
-    country = profile.get('country', '')
-    sport = profile.get('sport', '')
-    level = profile.get('player_level', '')
-    rating = profile.get('rating_points', '')
-    
-    # Формируем краткую информацию
-    profile_text = f"👤 **{name}**\n"
-    profile_text += f"🎂 Возраст: {age} лет\n"
-    profile_text += f"👫 Пол: {gender}\n"
-    profile_text += f"📍 Местоположение: {city}, {country}\n"
-    profile_text += f"🎾 Вид спорта: {sport}\n"
-    
-    if level:
-        profile_text += f"🎯 Уровень: {level}"
-        if rating:
-            profile_text += f" ({rating} очков)"
-        profile_text += "\n"
-    
-    # Добавляем дополнительную информацию для знакомств
-    if sport == "🍒Знакомства":
-        dating_goal = profile.get('dating_goal', '')
-        if dating_goal:
-            profile_text += f"💕 Цель знакомств: {dating_goal}\n"
-        
-        interests = profile.get('dating_interests', [])
-        if interests:
-            profile_text += f"🎨 Интересы: {', '.join(interests)}\n"
-    
-    # Добавляем информацию о встрече для бизнес-завтраков и по пиву
-    if sport in ["☕️Бизнес-завтрак", "🍻По пиву"]:
-        meeting_time = profile.get('meeting_time', '')
-        if meeting_time:
-            profile_text += f"⏰ Время встречи: {meeting_time}\n"
-    
-    profile_text += f"\n💬 {profile.get('about_me', 'Информация не указана')}"
-    
-    # Создаем кнопки
-    builder = InlineKeyboardBuilder()
-    builder.add(InlineKeyboardButton(
-        text="👁️ Полный профиль",
-        callback_data=f"partner_full_profile_{user_id}"
-    ))
+    try:
+        await callback.message.delete()
+    except:
+        pass
 
-    builder.add(InlineKeyboardButton(
-        text="⬅️ Назад к результатам",
-        callback_data="partner_back_to_results"
-    ))
-    builder.adjust(1)
-    
-    await callback.message.edit_text(
-        profile_text,
-        reply_markup=builder.as_markup(),
-        parse_mode="Markdown"
-    )
-    await callback.answer()
-
-@router.callback_query(SearchPartnerStates.SEARCH_RESULTS, F.data.startswith("partner_full_profile_"))
-async def handle_full_profile_partner(callback: types.CallbackQuery, state: FSMContext):
-    user_id = int(callback.data.split("_", 3)[3])
-    
-    profile = await storage.get_user(user_id)
-    if not profile:
-        await callback.answer("❌ Профиль не найден")
-        return
-    
-    # Показываем полный профиль
-    await show_profile(callback.message, profile)
-    
-    # Добавляем кнопку возврата
-    back_button = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="⬅️ Назад к краткому профилю", callback_data=f"partner_show_profile_{user_id}")
-    ]])
-    
-    await callback.message.edit_reply_markup(reply_markup=back_button)
-    await callback.answer()
-
+    # Показываем полный профиль сразу
+    await show_profile(callback.message, profile, back_button=True)
 
 @router.callback_query(SearchPartnerStates.SEARCH_RESULTS, F.data == "partner_back_to_results")
 async def handle_back_to_results_partner(callback: types.CallbackQuery, state: FSMContext):
