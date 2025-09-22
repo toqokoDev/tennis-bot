@@ -6,6 +6,12 @@ from config.paths import BASE_DIR
 from config.profile import channels_id, tour_channel_id
 from utils.utils import create_user_profile_link, escape_markdown
 
+def format_rating(rating: float) -> str:
+    """Форматирует рейтинг, убирая лишние нули после запятой"""
+    if rating == int(rating):
+        return str(int(rating))
+    return f"{rating:.1f}".rstrip('0').rstrip('.')
+
 async def send_registration_notification(message: types.Message, profile: dict):
     """Отправляет уведомление о новой регистрации в канал"""
     try:
@@ -139,11 +145,46 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             winner_link, loser_link = player2_link, player1_link
         
         score_escaped = escape_markdown(score)
+        
+        # Получаем изменения рейтинга
+        rating_changes = data.get('rating_changes', {})
+        old_ratings = data.get('old_ratings', {})
+        
+        # Отладочная информация
+        print(f"DEBUG: rating_changes = {rating_changes}")
+        print(f"DEBUG: old_ratings = {old_ratings}")
+        print(f"DEBUG: player1_id = {player1_id}, player2_id = {player2_id}")
+        
+        # Определяем победителя и проигравшего
+        if winner_side == "team1":
+            winner_id, loser_id = player1_id, player2_id
+            winner_name, loser_name = player1.get('first_name', ''), player2.get('first_name', '')
+        else:
+            winner_id, loser_id = player2_id, player1_id
+            winner_name, loser_name = player2.get('first_name', ''), player1.get('first_name', '')
+        
+        # Получаем старые рейтинги и изменения
+        winner_old = old_ratings.get(winner_id, 0.0)
+        loser_old = old_ratings.get(loser_id, 0.0)
+        winner_change = rating_changes.get(winner_id, 0.0)
+        loser_change = rating_changes.get(loser_id, 0.0)
+        
+        # Вычисляем новые рейтинги
+        winner_new = winner_old + winner_change
+        loser_new = loser_old + loser_change
+        
+        # Форматируем строки изменений
+        winner_change_str = f"+{format_rating(winner_change)}" if winner_change > 0 else f"{format_rating(winner_change)}"
+        loser_change_str = f"+{format_rating(loser_change)}" if loser_change > 0 else f"{format_rating(loser_change)}"
+        
         game_text = (
             "🎾 *Завершена одиночная игра!*\n\n"
             f"🥇 *Победитель:* {winner_link}\n"
             f"🥈 *Проигравший:* {loser_link}\n\n"
             f"📊 *Счет:* {score_escaped}\n\n"
+            f"📈 *Изменение рейтинга:*\n"
+            f"• {winner_name}: {format_rating(winner_old)} → {format_rating(winner_new)} ({winner_change_str})\n"
+            f"• {loser_name}: {format_rating(loser_old)} → {format_rating(loser_new)} ({loser_change_str})\n\n"
             f"#игра"
         )
 
@@ -151,7 +192,7 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
         for pl in (player1, player2):
             if pl.get("photo_path"):
                 media_group.append(
-                    types.InputMediaPhoto(media=open(pl["photo_path"], "rb"))
+                    types.InputMediaPhoto(media=FSInputFile(BASE_DIR / pl["photo_path"]))
                 )
         
     else:
@@ -180,11 +221,60 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             loser_team = f"{team1_player1_link} и {team1_player2_link}"
         
         score_escaped = escape_markdown(score)
+        
+        # Получаем изменения рейтинга для всех игроков
+        rating_changes = data.get('rating_changes', {})
+        old_ratings = data.get('old_ratings', {})
+        
+        # Отладочная информация
+        print(f"DEBUG DOUBLE: rating_changes = {rating_changes}")
+        print(f"DEBUG DOUBLE: old_ratings = {old_ratings}")
+        print(f"DEBUG DOUBLE: team1_player1_id = {team1_player1_id}, team1_player2_id = {team1_player2_id}")
+        print(f"DEBUG DOUBLE: team2_player1_id = {team2_player1_id}, team2_player2_id = {team2_player2_id}")
+        
+        # Определяем команды и их данные
+        if winner_side == "team1":
+            winner_players = [team1_player1, team1_player2]
+            winner_links = [team1_player1_link, team1_player2_link]
+            winner_ids = [team1_player1_id, team1_player2_id]
+            loser_players = [team2_player1, team2_player2]
+            loser_links = [team2_player1_link, team2_player2_link]
+            loser_ids = [team2_player1_id, team2_player2_id]
+        else:
+            winner_players = [team2_player1, team2_player2]
+            winner_links = [team2_player1_link, team2_player2_link]
+            winner_ids = [team2_player1_id, team2_player2_id]
+            loser_players = [team1_player1, team1_player2]
+            loser_links = [team1_player1_link, team1_player2_link]
+            loser_ids = [team1_player1_id, team1_player2_id]
+        
+        # Формируем строки изменений рейтинга
+        rating_changes_text = "📈 *Изменение рейтинга:*\n"
+        
+        # Добавляем изменения для победившей команды
+        for player, player_id in zip(winner_players, winner_ids):
+            player_name = player.get('first_name', '')
+            old_rating = old_ratings.get(player_id, 0.0)
+            rating_change = rating_changes.get(player_id, 0.0)
+            new_rating = old_rating + rating_change
+            change_str = f"+{format_rating(rating_change)}" if rating_change > 0 else f"{format_rating(rating_change)}"
+            rating_changes_text += f"• {player_name}: {format_rating(old_rating)} → {format_rating(new_rating)} ({change_str})\n"
+        
+        # Добавляем изменения для проигравшей команды
+        for player, player_id in zip(loser_players, loser_ids):
+            player_name = player.get('first_name', '')
+            old_rating = old_ratings.get(player_id, 0.0)
+            rating_change = rating_changes.get(player_id, 0.0)
+            new_rating = old_rating + rating_change
+            change_str = f"+{format_rating(rating_change)}" if rating_change > 0 else f"{format_rating(rating_change)}"
+            rating_changes_text += f"• {player_name}: {format_rating(old_rating)} → {format_rating(new_rating)} ({change_str})\n"
+        
         game_text = (
             "🎾 *Завершена парная игра!*\n\n"
-            f"🥇 *Победившая команда:* {winner_team}\n"
-            f"🥈 *Проигравшая команда:* {loser_team}\n\n"
+            f"🥇 *Победившая команда:* {winner_links[0]} и {winner_links[1]}\n"
+            f"🥈 *Проигравшая команда:* {loser_links[0]} и {loser_links[1]}\n\n"
             f"📊 *Счет:* {score_escaped}\n\n"
+            f"{rating_changes_text}\n"
             f"#игра"
         )
 
@@ -192,7 +282,7 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
         for pl in (team1_player1, team1_player2, team2_player1, team2_player2):
             if pl.get("photo_path"):
                 media_group.append(
-                    types.InputMediaPhoto(media=open(pl["photo_path"], "rb"))
+                    types.InputMediaPhoto(media=FSInputFile(BASE_DIR / pl["photo_path"]))
                 )
 
     # --- Отправка в канал ---

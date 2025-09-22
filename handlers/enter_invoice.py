@@ -877,7 +877,9 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             # Для state (если используется дальше)
             await state.update_data(
                 rating_change=rating_changes_for_game[current_id],
-                opponent_rating_change=rating_changes_for_game[op_id]
+                opponent_rating_change=rating_changes_for_game[op_id],
+                rating_changes=rating_changes_for_game,
+                old_ratings=old_ratings
             )
         else:
             # Соперник — победитель
@@ -890,7 +892,9 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
 
             await state.update_data(
                 rating_change=rating_changes_for_game[current_id],
-                opponent_rating_change=rating_changes_for_game[op_id]
+                opponent_rating_change=rating_changes_for_game[op_id],
+                rating_changes=rating_changes_for_game,
+                old_ratings=old_ratings
             )
 
         # Текст результата
@@ -1000,7 +1004,7 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             result_text += await line_player(p) + "\n"
 
         # Для обратных действий (если у вас где-то есть откат) сохраню old_ratings в state
-        await state.update_data(old_ratings=old_ratings)
+        await state.update_data(old_ratings=old_ratings, rating_changes=rating_changes_for_game)
 
     # ---- Сохранение игры в историю ----
     # Формируем списки игроков по командам
@@ -1239,6 +1243,9 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         
         # Отправляем уведомление в канал о завершенной игре
         try:
+            # Добавляем данные об изменениях рейтинга для отображения в канале
+            data['rating_changes'] = data.get('rating_changes', {})
+            data['old_ratings'] = data.get('old_ratings', {})
             await send_game_notification_to_channel(callback.bot, data, users, current_user_id)
         except Exception as e:
             print(f"Ошибка при отправке уведомления в канал: {e}")
