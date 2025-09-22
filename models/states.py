@@ -22,16 +22,10 @@ class RegistrationStates(StatesGroup):
     CITY_INPUT = State()
     PROFILE_COMMENT = State()
     DEFAULT_PAYMENT = State()
-    CREATE_GAME_OFFER = State()
     VACATION_COUNTRY = State()
     VACATION_COUNTRY_INPUT = State()
     VACATION_CITY = State()
     VACATION_CITY_INPUT = State()
-    VACATION_AFTER_COUNTRY = State()
-    VACATION_AFTER_CITY = State()
-    VACATION_AFTER_START = State()
-    VACATION_AFTER_END = State()
-    VACATION_AFTER_COMMENT = State()
     
     # Новые поля для знакомств
     DATING_GOAL = State()

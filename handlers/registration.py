@@ -17,7 +17,8 @@ from config.paths import BASE_DIR, PHOTOS_DIR
 from config.profile import (
     create_sport_keyboard, moscow_districts, player_levels, tennis_levels, table_tennis_levels, 
     base_keyboard, cities_data, sport_type, countries, SPORT_FIELD_CONFIG,
-    DATING_GOALS, DATING_INTERESTS, DATING_ADDITIONAL_FIELDS, get_sport_config, get_sport_texts, get_base_keyboard
+    DATING_GOALS, DATING_INTERESTS, DATING_ADDITIONAL_FIELDS, get_sport_config, get_sport_texts, get_base_keyboard,
+    channels_usernames
 )
 
 from models.states import RegistrationStates
@@ -105,6 +106,58 @@ def get_missing_fields_text(missing_fields: list, sport: str) -> str:
         missing_text.append(f"• {field_names.get(field, field)}")
     
     return "\n".join(missing_text)
+
+async def show_registration_success(message: types.Message, profile: dict):
+    """Показывает сообщение об успешной регистрации с кнопками"""
+    sport = profile.get("sport", "🎾Большой теннис")
+    config = get_sport_config(sport)
+    texts = get_sport_texts(sport)
+    channel_username = channels_usernames.get(sport, "")
+    
+    # Формируем сообщение
+    success_text = f"✅ <b>Регистрация завершена!</b>\n\n"
+    success_text += f"Добро пожаловать в сообщество {sport}!\n\n"
+    
+    if channel_username:
+        success_text += f"📢 <b>Подписывайтесь на наш канал с новостями:</b>\n"
+        success_text += f"@{channel_username}\n\n"
+    
+    success_text += "Выберите действие:"
+    
+    # Создаем кнопки
+    buttons = []
+    
+    # Кнопка "Предложить игру"
+    buttons.append([InlineKeyboardButton(
+        text=texts.get("offer_button", "🎾 Предложить игру"), 
+        callback_data="new_offer"
+    )])
+    
+    # Кнопка "Создать тур" (только для видов спорта с has_vacation=True)
+    if config.get("has_vacation", False):
+        buttons.append([InlineKeyboardButton(
+            text="✈️ Создать тур", 
+            callback_data="create_tour"
+        )])
+    
+    # Кнопка "Главное меню"
+    buttons.append([InlineKeyboardButton(
+        text="🏠 Главное меню", 
+        callback_data="main_menu"
+    )])
+    
+    try:
+        await message.edit_text(
+            success_text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+    except:
+        await message.answer(
+            success_text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
 
 # ---------- Команды и логика ----------
 @router.message(Command("start"))
@@ -267,6 +320,11 @@ async def process_phone(message: Message, state: FSMContext):
 
     await state.update_data(phone=phone)
 
+    await message.answer(
+        "✅ Номер телефона получен!",
+        reply_markup=ReplyKeyboardRemove()
+    )
+
     await show_current_data(
         message, state,
         "🎾 Выберите вид спорта:",
@@ -274,6 +332,7 @@ async def process_phone(message: Message, state: FSMContext):
     )
     await state.set_state(RegistrationStates.SPORT)
     await storage.save_session(message.chat.id, await state.get_data())
+    
 
 @router.callback_query(RegistrationStates.SPORT, F.data.startswith("sport_"))
 async def process_sport_selection(callback: types.CallbackQuery, state: FSMContext):
@@ -314,7 +373,7 @@ async def process_birth_date(message: Message, state: FSMContext):
 
     await show_current_data(
         message, state,
-        "🌍 Выберите страну:",
+        "🌍 Выберите Вашу страну:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.COUNTRY)
@@ -355,7 +414,7 @@ async def ask_for_city(message: types.Message, state: FSMContext, country: str):
 
     await show_current_data(
         message, state,
-        f"🏙 Выберите город в стране: {country}",
+        f"🏙 Выберите Ваш город в стране: {country}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.CITY)
@@ -575,13 +634,8 @@ async def process_player_level(callback: types.CallbackQuery, state: FSMContext)
     user_data = await state.get_data()
     sport = user_data.get("sport")
     levels_dict = get_levels_for_sport(sport)
-    description = levels_dict.get(level, {}).get('desc', '')
-    await state.update_data(player_level=level)
 
-    await callback.message.edit_text(
-        f"🏆 Ваш уровень: {level}\n\n{description}",
-        reply_markup=None
-    )
+    await state.update_data(player_level=level)
     
     await ask_for_gender(callback.message, state)
     await callback.answer()
@@ -601,6 +655,8 @@ async def process_gender_selection(callback: types.CallbackQuery, state: FSMCont
         await ask_for_dating_goals(callback.message, state)
     elif config.get("has_about_me", True):
         await ask_for_profile_comment(callback.message, state)
+    elif config.get("has_meeting_time", False):
+        await ask_for_meeting_time(callback.message, state)
     else:
         await ask_for_photo(callback.message, state)
     
@@ -613,8 +669,15 @@ async def ask_for_profile_comment(message: types.Message, state: FSMContext):
     sport = user_data.get("sport")
     config = get_sport_config(sport)
     
+    # Используем about_me_text если есть, иначе comment_text
+    about_me_text = config.get("about_me_text")
     comment_text = config.get("comment_text", "• Комментарий:")
-    await message.edit_text(f"{comment_text} (или /skip для пропуска):", reply_markup=None)
+    
+    if about_me_text:
+        await message.edit_text(f"{about_me_text} (или /skip для пропуска):", reply_markup=None)
+    else:
+        await message.edit_text(f"{comment_text} (или /skip для пропуска):", reply_markup=None)
+    
     await state.set_state(RegistrationStates.PROFILE_COMMENT)
     await storage.save_session(message.chat.id, await state.get_data())
 
@@ -725,7 +788,7 @@ async def process_dating_interest(callback: types.CallbackQuery, state: FSMConte
     for interest in DATING_INTERESTS:
         text = f"{'✅' if interest in selected_interests else '⬜'} {interest}"
         buttons.append([InlineKeyboardButton(text=text, callback_data=f"dating_interest_{interest}")])
-    buttons.append([InlineKeyboardButton(text="✅ Готово", callback_data="dating_interests_done")])
+    buttons.append([InlineKeyboardButton(text="Готово", callback_data="dating_interests_done")])
     
     await callback.message.edit_text(
         interests_text,
@@ -778,7 +841,11 @@ async def ask_for_meeting_time(message: types.Message, state: FSMContext):
     config = get_sport_config(sport)
     
     meeting_text = config.get("meeting_time_text", "Напишите место, конкретный день и время или дни недели и временные промежутки, когда вам удобно встретиться.")
-    await message.answer(meeting_text)
+    try:
+        await message.edit_text(meeting_text)
+    except:
+        await message.answer(meeting_text)
+
     await state.set_state(RegistrationStates.MEETING_TIME)
     await storage.save_session(message.chat.id, await state.get_data())
 
@@ -874,7 +941,7 @@ async def process_vacation_tennis(callback: types.CallbackQuery, state: FSMConte
         await state.set_state(RegistrationStates.VACATION_COUNTRY)
     else:
         await state.update_data(vacation_tennis=False)
-        await ask_for_create_game(callback.message, state)
+        await complete_registration_without_profile(callback.message, state)
     
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
@@ -911,7 +978,7 @@ async def process_vacation_city_input(message: Message, state: FSMContext):
 async def ask_for_vacation_city(message: types.Message, state: FSMContext, country: str):
     cities = cities_data.get(country, [])
     buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in cities]
-    buttons.append([InlineKeyboardButton(text="Другой город", callback_data="vacation_other_city")])
+    buttons.append([InlineKeyboardButton(text="Другой город", callback_data="vacation_o ther_city")])
 
     await show_current_data(
         message, state,
@@ -980,8 +1047,8 @@ async def process_vacation_comment(message: Message, state: FSMContext):
     # Автоматически устанавливаем vacation_tennis=True
     await state.update_data(vacation_tennis=True)
     
-    # Переходим к созданию игры
-    await ask_for_create_game(message, state)
+    # Завершаем регистрацию
+    await complete_registration_without_profile(message, state)
     await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_default_payment(message: types.Message, state: FSMContext):
@@ -990,7 +1057,7 @@ async def ask_for_default_payment(message: types.Message, state: FSMContext):
     config = get_sport_config(sport)
     
     if not config.get("has_payment", True):
-        await ask_for_create_game(message, state)
+        await complete_registration_without_profile(message, state)
         return
     
     buttons = [
@@ -1061,11 +1128,8 @@ async def complete_registration_without_profile(message: types.Message, state: F
     # Отправляем уведомление о регистрации
     await send_registration_notification(message, profile)
     
-    # Сообщение о завершении регистрации
-    await message.edit_text("✅ Регистрация завершена!")
-    
-    # Сначала спрашиваем про тур
-    await ask_for_vacation_after_registration(message, user_id)
+    # Показываем сообщение об успешной регистрации
+    await show_registration_success(message, profile)
 
 async def create_user_profile(user_id: int, username: str, user_state: dict) -> dict:
     """Создает профиль пользователя с учетом вида спорта"""
@@ -1127,395 +1191,31 @@ async def create_user_profile(user_id: int, username: str, user_state: dict) -> 
     # Поля для тура будут добавлены позже, после регистрации
     return profile
 
-async def ask_for_create_game(message: types.Message, state: FSMContext):
-    """Спрашивает пользователя, хочет ли он создать игру после регистрации"""
-    # Получаем данные пользователя для определения вида спорта
-    user_data = await state.get_data()
-    sport = user_data.get('sport', '🎾Большой теннис')
-    texts = get_sport_texts(sport)
-    
-    buttons = [
-        [InlineKeyboardButton(text=f"✅ Да, {texts['offer_button'].lower()}", callback_data="registerTonew_offer")],
-        [InlineKeyboardButton(text="❌ Нет, позже", callback_data="skip_offer")]
-    ]
-    await show_current_data(
-        message, state,
-        f"Хотите сразу {texts['offer_button'].lower()} на конкретный день и время?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await state.set_state(RegistrationStates.CREATE_GAME_OFFER)
-    await storage.save_session(message.chat.id, await state.get_data())
+# ---------- Обработчики кнопок после регистрации ----------
 
-@router.callback_query(RegistrationStates.CREATE_GAME_OFFER, F.data == "registerTonew_offer")
-async def process_create_game_offer(callback: types.CallbackQuery, state: FSMContext):
-    """Пользователь хочет создать игру - завершаем регистрацию и переходим к созданию игры"""
-    user_id = callback.message.chat.id
-    username = callback.message.chat.username
-
-    user_state = await state.get_data()
-    profile = await create_user_profile(user_id, username, user_state)
-
-    referral_id = user_state.get('referral_id')
-    if referral_id and await storage.is_user_registered(referral_id):
-        # Обновляем статистику реферера
-        referrer_data = await storage.get_user(referral_id) or {}
-        referrals_count = referrer_data.get('referrals_invited', 0) + 1
-        
-        await storage.update_user(referral_id, {
-            'referrals_invited': referrals_count
-        })
-        
-        # Проверяем, достиг ли реферер 5 приглашений
-        if referrals_count >= 5:
-            # Дарим подписку на 1 месяц
-            await storage.update_user(referral_id, {
-                'active': True,
-                'until': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
-                'activated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            })
-            
-            # Уведомляем реферера
-            try:
-                await callback.message.bot.send_message(
-                    referral_id,
-                    "🎉 Поздравляем! Вы пригласили 5 друзей и получили бесплатную подписку на 1 месяц!"
-                )
-            except:
-                pass
-            
-    await storage.save_user(user_id, profile)
-    await state.clear()
-    await storage.delete_session(user_id)
-
-    # Отправляем уведомление о регистрации
-    await send_registration_notification(callback.message, profile)
-    
-    # Получаем тексты для вида спорта
-    texts = get_sport_texts(profile.get('sport', '🎾Большой теннис'))
-    
-    # Спрашиваем про тур после регистрации
-    await ask_for_vacation_after_registration(callback.message, user_id)
-    
-    # Переходим к созданию игры
-    await callback.message.edit_text(
-        f"✅ Регистрация завершена! Теперь вы можете {texts['offer_button'].lower()}.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=texts["offer_button"], callback_data="new_offer")]])
+@router.callback_query(F.data == "create_tour")
+async def process_create_tour_after_registration(callback: types.CallbackQuery):
+    """Обрабатывает нажатие кнопки 'Создать тур' после регистрации"""
+    # Здесь можно добавить логику создания тура
+    await callback.message.answer(
+        "✈️ Функция создания тура будет доступна в главном меню.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")
+        ]])
     )
     await callback.answer()
 
-@router.callback_query(RegistrationStates.CREATE_GAME_OFFER, F.data == "skip_offer")
-async def process_skip_game_offer(callback: types.CallbackQuery, state: FSMContext):
-    """Пользователь не хочет создавать игру - завершаем регистрацию и показываем профиль"""
+@router.callback_query(F.data == "main_menu")
+async def process_main_menu_after_registration(callback: types.CallbackQuery):
+    """Обрабатывает нажатие кнопки 'Главное меню' после регистрации"""
     user_id = callback.message.chat.id
-    username = callback.message.chat.username
-
-    user_state = await state.get_data()
-    profile = await create_user_profile(user_id, username, user_state)
-
-    referral_id = user_state.get('referral_id')
-    if referral_id and await storage.is_user_registered(referral_id):
-        # Обновляем статистику реферера
-        referrer_data = await storage.get_user(referral_id) or {}
-        referrals_count = referrer_data.get('referrals_invited', 0) + 1
-        
-        await storage.update_user(referral_id, {
-            'referrals_invited': referrals_count
-        })
-        
-        # Проверяем, достиг ли реферер 5 приглашений
-        if referrals_count >= 5:
-            await storage.update_user(referral_id, {
-                'active': True,
-                'until': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
-                'activated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            })
-            
-            # Уведомляем реферера
-            try:
-                await callback.message.bot.send_message(
-                    referral_id,
-                    "🎉 Поздравляем! Вы пригласили 5 друзей и получили бесплатную подписку на 1 месяц!"
-                )
-            except:
-                pass
-
-    await storage.save_user(user_id, profile)
-    await state.clear()
-    await storage.delete_session(user_id)
-
-    # Отправляем уведомление о регистрации
-    await send_registration_notification(callback.message, profile)
+    profile = await storage.get_user(user_id) or {}
+    sport = profile.get('sport', '🎾Большой теннис')
+    keyboard = get_base_keyboard(sport)
     
-    # Спрашиваем про тур после регистрации
-    await ask_for_vacation_after_registration(callback.message, user_id)
-    
-    # Показываем профиль пользователя
-    await show_profile(callback.message, profile)
-    await callback.answer()
-
-async def ask_for_vacation_after_registration(message: types.Message, user_id: int):
-    """Спрашивает о туре после завершения регистрации"""
-    buttons = [
-        [InlineKeyboardButton(text="✅ Да", callback_data=f"vacation_after_yes_{user_id}")],
-        [InlineKeyboardButton(text="❌ Нет", callback_data=f"vacation_after_no_{user_id}")]
-    ]
-    
-    await message.answer(
-        "✈️ Хотите найти партнёра на время отдыха?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-
-async def ask_for_create_game_after_vacation(message: types.Message, user_id: int):
-    """Спрашивает пользователя, хочет ли он создать игру после завершения тура"""
-    # Получаем данные пользователя для определения вида спорта
-    user_data = await storage.get_user(user_id) or {}
-    sport = user_data.get('sport', '🎾Большой теннис')
-    texts = get_sport_texts(sport)
-    
-    buttons = [
-        [InlineKeyboardButton(text=f"✅ Да, {texts['offer_button'].lower()}", callback_data=f"registerTonew_offer_{user_id}")],
-        [InlineKeyboardButton(text="❌ Нет, позже", callback_data=f"skip_offer_{user_id}")]
-    ]
-    
-    await message.answer(
-        f"🎾 Хотите сразу {texts['offer_button'].lower()} на конкретный день и время?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-
-@router.callback_query(F.data.startswith("vacation_after_"))
-async def process_vacation_after_registration(callback: types.CallbackQuery):
-    """Обрабатывает ответ о туре после регистрации"""
-    data_parts = callback.data.split("_")
-    choice = data_parts[2]
-    
-    # Определяем user_id в зависимости от структуры callback_data
-    if choice in ["yes", "no"]:
-        user_id = callback.message.chat.id
-    else:
-        # Для других случаев user_id находится в конце
-        user_id = int(data_parts[-1])
-    
-    if choice == "yes":
-        # Сохраняем намерение заполнить информацию о туре
-        await storage.update_user(str(user_id), {"vacation_pending": True})
-        
-        # Спрашиваем страну отдыха
-        buttons = []
-        for country in countries[:5]:
-            # Экранируем callback_data для стран с эмодзи
-            country_escaped = country.replace(" ", "_").replace("🇷🇺", "RU").replace("🇺🇸", "US").replace("🇩🇪", "DE").replace("🇫🇷", "FR").replace("🇬🇧", "GB")
-            buttons.append([InlineKeyboardButton(text=f"{country}", callback_data=f"vacation_country_select_{country_escaped}_{user_id}")])
-        buttons.append([InlineKeyboardButton(text="🌎 Другая страна", callback_data=f"vacation_country_other_{user_id}")])
-
-        await callback.message.edit_text(
-            "🌍 Выберите страну отдыха:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-        )
-    else:
-        await callback.message.edit_text("✅ Хорошо! Вы всегда можете добавить информацию о поездке позже через меню профиля.")
-        # После отказа от тура сразу предлагаем создать игру
-        await ask_for_create_game_after_vacation(callback.message, user_id)
-    
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("vacation_country_select_"))
-async def process_vacation_country_select(callback: types.CallbackQuery):
-    """Обрабатывает выбор страны отдыха после регистрации"""
-    data_parts = callback.data.split("_")
-    # user_id всегда в конце, country - все между "select" и user_id
-    user_id = callback.message.chat.id
-    country_escaped = "_".join(data_parts[3:-1])
-    
-    # Восстанавливаем оригинальное название страны
-    country_mapping = {
-        "RU": "🇷🇺 Россия",
-        "US": "🇺🇸 США", 
-        "DE": "🇩🇪 Германия",
-        "FR": "🇫🇷 Франция",
-        "GB": "🇬🇧 Великобритания"
-    }
-    
-    # Ищем точное совпадение в маппинге
-    country = country_mapping.get(country_escaped)
-    if not country:
-        # Если не найдено, восстанавливаем из escaped версии
-        country = country_escaped.replace("_", " ").replace("RU", "🇷🇺").replace("US", "🇺🇸").replace("DE", "🇩🇪").replace("FR", "🇫🇷").replace("GB", "🇬🇧")
-    
-    await storage.update_user(str(user_id), {"vacation_country": country})
-    
-    # Спрашиваем город
-    cities = cities_data.get(country, [])
-    if cities:
-        buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_select_{city}_{user_id}")] for city in cities]
-        buttons.append([InlineKeyboardButton(text="Другой город", callback_data=f"vacation_city_other_{user_id}")])
-        
-        await callback.message.edit_text(
-            f"🏙 Выберите город отдыха в стране: {country}",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-        )
-    else:
-        await callback.message.edit_text(
-            f"🏙 Введите название города отдыха в стране: {country}",
-            reply_markup=None
-        )
-
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("vacation_city_select_"))
-async def process_vacation_city_select(callback: types.CallbackQuery, state: FSMContext):
-    """Обрабатывает выбор города отдыха после регистрации"""
-    data_parts = callback.data.split("_")
-    # user_id всегда в конце, city - все между "select" и user_id
-    user_id = callback.message.chat.id
-    city = "_".join(data_parts[3:-1])
-    
-    await storage.update_user(str(user_id), {"vacation_city": city})
-    await state.update_data(vacation_user_id=user_id)
-    
-    # Спрашиваем дату начала
-    await callback.message.edit_text(
-        "📅 Введите дату начала поездки (формат: ДД.ММ.ГГГГ):",
-        reply_markup=None
-    )
-    await state.set_state(RegistrationStates.VACATION_AFTER_START)
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("vacation_city_other_"))
-async def process_vacation_city_other(callback: types.CallbackQuery, state: FSMContext):
-    """Обрабатывает ввод другого города отдыха после регистрации"""
-    user_id = callback.message.chat.id
-    await state.update_data(vacation_user_id=user_id)
-    await callback.message.edit_text("🏙 Введите название города отдыха:", reply_markup=None)
-    await state.set_state(RegistrationStates.VACATION_AFTER_CITY)
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("vacation_country_other_"))
-async def process_vacation_country_other(callback: types.CallbackQuery, state: FSMContext):
-    """Обрабатывает ввод другой страны отдыха после регистрации"""
-    user_id = callback.message.chat.id
-    await state.update_data(vacation_user_id=user_id)
-    await callback.message.edit_text("🌍 Введите название страны отдыха:", reply_markup=None)
-    await state.set_state(RegistrationStates.VACATION_AFTER_COUNTRY)
-    await callback.answer()
-
-@router.message(RegistrationStates.VACATION_AFTER_COUNTRY, F.text)
-async def process_vacation_after_country_input(message: Message, state: FSMContext):
-    country = message.text.strip()
-    user_id = message.chat.id
-    
-    if user_id:
-        await storage.update_user(str(user_id), {"vacation_country": country})
-        
-        # Спрашиваем город в зависимости от страны
-        cities = cities_data.get(country, [])
-        if cities:
-            buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_select_{city}_{user_id}")] for city in cities]
-            buttons.append([InlineKeyboardButton(text="Другой город", callback_data=f"vacation_city_other_{user_id}")])
-            
-            await message.answer(
-                f"🏙 Выберите город отдыха в стране: {country}",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-            )
-        else:
-            await message.answer("🏙 Введите название города отдыха:")
-            await state.set_state(RegistrationStates.VACATION_AFTER_CITY)
-    await storage.save_session(message.chat.id, await state.get_data())
-
-@router.message(RegistrationStates.VACATION_AFTER_CITY, F.text)
-async def process_vacation_after_city_input(message: Message, state: FSMContext):
-    city = message.text.strip()
-    user_id = message.chat.id
-    
-    if user_id:
-        await storage.update_user(str(user_id), {"vacation_city": city})
-        await message.answer("📅 Введите дату начала поездки (формат: ДД.ММ.ГГГГ):")
-        await state.set_state(RegistrationStates.VACATION_AFTER_START)
-    await storage.save_session(message.chat.id, await state.get_data())
-
-@router.message(RegistrationStates.VACATION_AFTER_START, F.text)
-async def process_vacation_after_start(message: Message, state: FSMContext):
-    date_str = message.text.strip()
-    if not await validate_date(date_str):
-        await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
-        return
-    
-    if not await validate_future_date(date_str):
-        await message.answer("❌ Дата начала отдыха должна быть в будущем. Пожалуйста, введите корректную дату:")
-        return
-    
-    user_id = message.chat.id
-    
-    if user_id:
-        await storage.update_user(str(user_id), {"vacation_start": date_str, "vacation_tennis": True})
-        await message.answer("📅 Введите дату завершения поездки (формат: ДД.ММ.ГГГГ):")
-        await state.set_state(RegistrationStates.VACATION_AFTER_END)
-    await storage.save_session(message.chat.id, await state.get_data())
-
-@router.message(RegistrationStates.VACATION_AFTER_END, F.text)
-async def process_vacation_after_end(message: Message, state: FSMContext):
-    date_str = message.text.strip()
-    if not await validate_date(date_str):
-        await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
-        return
-    
-    user_id = message.chat.id
-    
-    if user_id:
-        user_data = await storage.get_user(user_id)
-        start_date = user_data.get('vacation_start')
-        
-        if not start_date:
-            await message.answer("❌ Ошибка: не найдена дата начала поездки. Пожалуйста, начните процесс заново.")
-            return
-            
-        if not await validate_date_range(start_date, date_str):
-            await message.answer("❌ Дата завершения должна быть после даты начала. Пожалуйста, введите корректную дату:")
-            return
-        
-        await storage.update_user(str(user_id), {"vacation_end": date_str})
-        await message.answer("💬 Добавьте комментарий к поездке (необязательно, или /skip для пропуска):")
-        await state.set_state(RegistrationStates.VACATION_AFTER_COMMENT)
-    await storage.save_session(message.chat.id, await state.get_data())
-
-@router.message(RegistrationStates.VACATION_AFTER_COMMENT, F.text)
-async def process_vacation_after_comment(message: Message, state: FSMContext):
-    comment = message.text.strip() if message.text.strip() != "/skip" else ""
-    user_id = message.chat.id
-    
-    if user_id:
-        await storage.update_user(str(user_id), {
-            "vacation_comment": comment,
-            "vacation_tennis": True,
-            "vacation_pending": False
-        })
-        await message.answer("✅ Информация о поездке сохранена! Теперь другие пользователи смогут найти вас как партнера для игры во время отдыха.")
-        await state.clear()
-        
-        # После заполнения тура предлагаем создать игру
-        await ask_for_create_game_after_vacation(message, user_id)
-    await storage.save_session(message.chat.id, await state.get_data())
-
-@router.callback_query(F.data.startswith("registerTonew_offer_"))
-async def process_create_game_offer_after_vacation(callback: types.CallbackQuery):
-    """Пользователь хочет создать игру после завершения тура"""
-    user_id = int(callback.data.split("_")[-1])
-    user_data = await storage.get_user(user_id) or {}
-    sport = user_data.get('sport', '🎾Большой теннис')
-    texts = get_sport_texts(sport)
-    
-    # Переходим к созданию игры
-    await callback.message.edit_text(
-        f"✅ Отлично! Теперь вы можете {texts['offer_button'].lower()}.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=texts["offer_button"], callback_data="new_offer")]])
+    await callback.message.answer(
+        "🏠 Главное меню",
+        reply_markup=keyboard
     )
     await callback.answer()
 
-@router.callback_query(F.data.startswith("skip_offer_"))
-async def process_skip_game_offer_after_vacation(callback: types.CallbackQuery):
-    """Пользователь не хочет создавать игру после завершения тура"""
-    user_id = int(callback.data.split("_")[-1])
-    user_data = await storage.get_user(user_id) or {}
-    
-    # Показываем профиль пользователя
-    await show_profile(callback.message, user_data)
-    await callback.answer()

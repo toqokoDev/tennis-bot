@@ -122,6 +122,23 @@ channels_id = {
     "☕️Бизнес-завтрак": "-1003009416582"
 }
 
+channels_usernames = {
+    "🎾Большой теннис": "tennisplaycom",
+    "🏓Настольный теннис": "tabletennis_play",
+    "🏸Бадминтон": "badminton_play",
+    "🏖️Пляжный теннис": "beachtennis_play",
+    "🎾Падл-теннис": "padeltennis_play",
+    "🥎Сквош": "squashplay",
+    "🏆Пиклбол": "pickleball_play",
+    "⛳Гольф": "golf_partner",
+    "🏃‍♂️‍➡️Бег": "run_partner",
+    "🏋️‍♀️Фитнес": "fitness_partners",
+    "🚴Вело": "velo_partner",
+    "🍻По пиву": "beer_partner",
+    "🍒Знакомства": "dating_sport",
+    "☕️Бизнес-завтрак": "business_partnery"
+}
+
 tour_channel_id = "-1002972370826"
 
 def create_sport_keyboard(pref: str = "partner_sport_"):

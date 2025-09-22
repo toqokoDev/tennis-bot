@@ -215,7 +215,7 @@ async def admin_edit_field_handler(callback: types.CallbackQuery, state: FSMCont
         buttons = []
         for i, interest in enumerate(DATING_INTERESTS):
             buttons.append([InlineKeyboardButton(text=interest, callback_data=f"adint_{i}")])
-        buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="adint_done")])
+        buttons.append([InlineKeyboardButton(text="Завершить выбор", callback_data="adint_done")])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.answer("🎯 Выберите интересы (можно несколько):", reply_markup=keyboard)
@@ -826,7 +826,7 @@ async def admin_process_dating_interest_edit(callback: types.CallbackQuery, stat
             buttons.append([InlineKeyboardButton(text=f"✅ {interest_text}", callback_data=f"adint_{i}")])
         else:
             buttons.append([InlineKeyboardButton(text=interest_text, callback_data=f"adint_{i}")])
-    buttons.append([InlineKeyboardButton(text="✅ Завершить выбор", callback_data="adint_done")])
+    buttons.append([InlineKeyboardButton(text="Завершить выбор", callback_data="adint_done")])
     
     await callback.message.edit_text(
         "🎯 Выберите интересы (можно несколько):",

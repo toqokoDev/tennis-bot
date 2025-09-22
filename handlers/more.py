@@ -96,34 +96,8 @@ async def handle_all_players(callback: types.CallbackQuery, state: FSMContext):
             await state.clear()
             return
     
-    buttons = []
-    for country in countries[:5]:
-        count = await count_users_by_location("players", country)
-        buttons.append([InlineKeyboardButton(
-            text=f"{country} ({count})", 
-            callback_data=f"search_country_{country}"
-        )])
-    
-    # Получаем количество пользователей в других странах
-    other_countries = await get_top_countries(search_type="players", exclude_countries=countries[:5])
-    other_countries_count = sum(count for country, count in other_countries)
-    
-    if other_countries_count > 0:
-        buttons.append([InlineKeyboardButton(
-            text=f"🌎 Другие страны ({other_countries_count})", 
-            callback_data="search_other_country"
-        )])
-    
-    buttons.append([InlineKeyboardButton(
-        text="⬅️ Назад", 
-        callback_data="back_to_main"
-    )])
-
-    await callback.message.edit_text(
-        "🌍 Выберите страну для поиска игроков:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-    await state.set_state(SearchStates.SEARCH_COUNTRY)
+    # Показываем выбор вида спорта для игроков
+    await show_sport_types_for_players(callback.message, state)
     await callback.answer()
 
 @router.callback_query(F.data == "find_coach")
@@ -377,7 +351,44 @@ async def back_to_countries_from_input(callback: types.CallbackQuery, state: FSM
     await state.set_state(SearchStates.SEARCH_COUNTRY)
     await callback.answer()
 
+async def show_sport_types_for_players(message: Union[types.Message, types.CallbackQuery], state: FSMContext):
+    """Показывает выбор вида спорта для игроков"""
+    if isinstance(message, types.CallbackQuery):
+        message = message.message
+    
+    builder = InlineKeyboardBuilder()
+
+    builder.row(InlineKeyboardButton(
+        text="Все виды спорта",
+        callback_data="players_sport_any"
+    ))
+    
+    sport_keyboard = create_sport_keyboard(pref="players_sport_")
+    for row in sport_keyboard.inline_keyboard:
+        builder.row(*row)
+    
+    builder.row(InlineKeyboardButton(
+        text="⬅️ Назад к меню",
+        callback_data="back_to_main"
+    ))
+
+    try:
+        await message.edit_text(
+            "🏆 Выберите вид спорта для поиска игроков:",
+            reply_markup=builder.as_markup()
+        )
+    except:
+        try:
+            await message.delete()
+        except:
+            await message.answer(
+            "🏆 Выберите вид спорта для поиска игроков:",
+            reply_markup=builder.as_markup()
+        )
+    await state.set_state(SearchStates.SEARCH_SPORT)
+
 async def show_sport_types(message: Union[types.Message, types.CallbackQuery], state: FSMContext):
+    """Показывает выбор вида спорта для тренеров"""
     if isinstance(message, types.CallbackQuery):
         message = message.message
     
@@ -412,8 +423,50 @@ async def show_sport_types(message: Union[types.Message, types.CallbackQuery], s
         )
     await state.set_state(SearchStates.SEARCH_SPORT)
 
+@router.callback_query(SearchStates.SEARCH_SPORT, F.data.startswith("players_sport_"))
+async def process_players_sport_selection(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка выбора вида спорта для игроков"""
+    if callback.data == "players_sport_any":
+        await state.update_data(sport_type=None)
+    else:
+        sport_type = callback.data.split("_", 2)[2]
+        await state.update_data(sport_type=sport_type)
+    
+    # После выбора вида спорта переходим к выбору страны для игроков
+    data = await state.get_data()
+    buttons = []
+    for country in countries[:5]:
+        count = await count_users_by_location("players", country, sport_type=data.get('sport_type'))
+        buttons.append([InlineKeyboardButton(
+            text=f"{country} ({count})", 
+            callback_data=f"search_country_{country}"
+        )])
+    
+    # Получаем количество пользователей в других странах
+    other_countries = await get_top_countries(search_type="players", exclude_countries=countries[:5], sport_type=data.get('sport_type'))
+    other_countries_count = sum(count for country, count in other_countries)
+    
+    if other_countries_count > 0:
+        buttons.append([InlineKeyboardButton(
+            text=f"🌎 Другие страны ({other_countries_count})", 
+            callback_data="search_other_country"
+        )])
+    
+    buttons.append([InlineKeyboardButton(
+        text="⬅️ Назад к виду спорта", 
+        callback_data="back_to_players_sport"
+    )])
+
+    await callback.message.edit_text(
+        "🌍 Выберите страну для поиска игроков:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await state.set_state(SearchStates.SEARCH_COUNTRY)
+    await callback.answer()
+
 @router.callback_query(SearchStates.SEARCH_SPORT, F.data.startswith("sport_"))
 async def process_sport_selection(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка выбора вида спорта для тренеров"""
     if callback.data == "sport_any":
         await state.update_data(sport_type=None)
     else:
@@ -564,8 +617,8 @@ async def perform_search(message: Union[types.Message, types.CallbackQuery], sta
             continue
             
         if profile.get('country') == country and profile.get('city') == city:
-            # Для тренеров проверяем вид спорта
-            if search_type == "coaches" and sport_type:
+            # Проверяем вид спорта для игроков и тренеров
+            if sport_type:
                 profile_sport = profile.get('sport')
                 if not profile_sport or profile_sport != sport_type:
                     continue
@@ -785,6 +838,11 @@ async def handle_back_to_cities(callback: types.CallbackQuery, state: FSMContext
 @router.callback_query(SearchStates.SEARCH_COUNTRY, F.data == "back_to_price_range")
 async def handle_back_to_price_range(callback: types.CallbackQuery, state: FSMContext):
     await show_price_ranges(callback.message, state)
+    await callback.answer()
+
+@router.callback_query(SearchStates.SEARCH_COUNTRY, F.data == "back_to_players_sport")
+async def handle_back_to_players_sport(callback: types.CallbackQuery, state: FSMContext):
+    await show_sport_types_for_players(callback.message, state)
     await callback.answer()
 
 @router.callback_query(SearchStates.SEARCH_RESULTS, F.data == "back_to_sport")

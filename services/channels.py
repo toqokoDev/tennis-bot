@@ -9,6 +9,8 @@ from utils.utils import create_user_profile_link, escape_markdown
 async def send_registration_notification(message: types.Message, profile: dict):
     """Отправляет уведомление о новой регистрации в канал"""
     try:
+        from config.profile import get_sport_config
+        
         city = profile.get('city', '—')
         district = profile.get('district', '')
         if district:
@@ -17,6 +19,10 @@ async def send_registration_notification(message: types.Message, profile: dict):
         role = profile.get('role', 'Игрок')
         sport = profile.get('sport', '🎾Большой теннис')
         channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Получаем конфигурацию для вида спорта
+        config = get_sport_config(sport)
+        category = config.get("category", "court_sport")
 
         # Разное оформление для тренеров и игроков
         if role == "Тренер":
@@ -27,18 +33,65 @@ async def send_registration_notification(message: types.Message, profile: dict):
                 f"🏆 *Тренер:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n"
                 f"💰 *Стоимость:* {price} руб./тренировка\n"
                 f"📍 *Местоположение:* {escape_markdown(city)} ({country})\n"
-                f"#тренер"
             )
         else:
-            player_level = escape_markdown(profile.get('player_level', 'Не указан'))
             country = escape_markdown(profile.get('country', ''))
             registration_text = (
                 "🎾 *Новый игрок присоединился к сообществу!*\n\n"
                 f"👤 *Игрок:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n" 
-                f"💪 *Уровень игры:* {player_level}\n"
-                f"📍 *Местоположение:* {escape_markdown(city)} ({country})\n"
-                f"#игрок"
             )
+            
+            # Добавляем уровень игры только если он указан
+            if profile.get('player_level'):
+                player_level = escape_markdown(profile.get('player_level'))
+                registration_text += f"💪 *Уровень игры:* {player_level}\n"
+            
+            registration_text += f"📍 *Местоположение:* {escape_markdown(city)} ({country})\n"
+        
+        # Добавляем дополнительные поля в зависимости от вида спорта
+        if category == "dating":
+            # Для знакомств
+            if profile.get('dating_goal'):
+                dating_goal = escape_markdown(profile.get('dating_goal'))
+                registration_text += f"💕 *Цель знакомства:* {dating_goal}\n"
+            
+            if profile.get('dating_interests'):
+                interests = ', '.join(profile.get('dating_interests', []))
+                interests_escaped = escape_markdown(interests)
+                registration_text += f"🎯 *Интересы:* {interests_escaped}\n"
+            
+            if profile.get('dating_additional'):
+                dating_additional = escape_markdown(profile.get('dating_additional'))
+                registration_text += f"📝 *О себе:* {dating_additional}\n"
+            
+            registration_text += "\n#знакомства"
+            
+        elif category == "meeting":
+            # Для встреч
+            if sport == "☕️Бизнес-завтрак":
+                if profile.get('meeting_time'):
+                    meeting_time = escape_markdown(profile.get('meeting_time'))
+                    registration_text += f"☕️ *Время встречи:* {meeting_time}\n"
+                registration_text += "\n#бизнес_завтрак"
+            else:  # По пиву
+                if profile.get('meeting_time'):
+                    meeting_time = escape_markdown(profile.get('meeting_time'))
+                    registration_text += f"🍻 *Время встречи:* {meeting_time}\n"
+                registration_text += "\n#встречи"
+                
+        elif category == "outdoor_sport":
+            # Для активных видов спорта
+            if profile.get('profile_comment'):
+                comment = escape_markdown(profile.get('profile_comment'))
+                registration_text += f"💬 *О себе:* {comment}\n"
+            registration_text += "\n#активность"
+            
+        else:  # court_sport
+            # Для спортивных видов с кортами
+            if profile.get('profile_comment'):
+                comment = escape_markdown(profile.get('profile_comment'))
+                registration_text += f"💬 *О себе:* {comment}\n"
+            registration_text += "\n#игрок"
         
         if profile.get('photo_path'):
             await message.bot.send_photo(
@@ -422,6 +475,8 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
 async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]):
     """Отправляет анкету пользователя в канал (для регистрации)"""
     try:
+        from config.profile import get_sport_config
+        
         city = user_data.get('city', '—')
         district = user_data.get('district', '')
         if district:
@@ -433,7 +488,12 @@ async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[s
             username_text = f"✉️ @{username}\n\n"
         
         role = user_data.get('role', 'Игрок')
-        channel_id = channels_id[user_data.get('sport')]
+        sport = user_data.get('sport', '🎾Большой теннис')
+        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Получаем конфигурацию для вида спорта
+        config = get_sport_config(sport)
+        category = config.get("category", "court_sport")
 
         # Разное оформление для тренеров и игроков
         if role == "Тренер":
@@ -445,19 +505,66 @@ async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[s
                 f"💰 <b>Стоимость:</b> {price} руб./тренировка\n"
                 f"📍 <b>Местоположение:</b> {escape_markdown(city)} ({country})\n"
                 f"{username_text}"
-                f"#тренер"
             )
         else:
-            player_level = escape_markdown(user_data.get('player_level', 'Не указан'))
             country = escape_markdown(user_data.get('country', ''))
             profile_text = (
                 "🎾 <b>Новый игрок присоединился к сообществу!</b>\n\n"
                 f"👤 <b>Игрок:</b> {await create_user_profile_link(user_data, user_id)}\n" 
-                f"💪 <b>Уровень игры:</b> {player_level}\n"
-                f"📍 <b>Местоположение:</b> {escape_markdown(city)} ({country})\n"
-                f"{username_text}"
-                f"#игрок"
             )
+            
+            # Добавляем уровень игры только если он указан
+            if user_data.get('player_level'):
+                player_level = escape_markdown(user_data.get('player_level'))
+                profile_text += f"💪 <b>Уровень игры:</b> {player_level}\n"
+            
+            profile_text += f"📍 <b>Местоположение:</b> {escape_markdown(city)} ({country})\n"
+            profile_text += f"{username_text}"
+        
+        # Добавляем дополнительные поля в зависимости от вида спорта
+        if category == "dating":
+            # Для знакомств
+            if user_data.get('dating_goal'):
+                dating_goal = escape_markdown(user_data.get('dating_goal'))
+                profile_text += f"💕 <b>Цель знакомства:</b> {dating_goal}\n"
+            
+            if user_data.get('dating_interests'):
+                interests = ', '.join(user_data.get('dating_interests', []))
+                interests_escaped = escape_markdown(interests)
+                profile_text += f"🎯 <b>Интересы:</b> {interests_escaped}\n"
+            
+            if user_data.get('dating_additional'):
+                dating_additional = escape_markdown(user_data.get('dating_additional'))
+                profile_text += f"📝 <b>О себе:</b> {dating_additional}\n"
+            
+            profile_text += "#знакомства"
+            
+        elif category == "meeting":
+            # Для встреч
+            if sport == "☕️Бизнес-завтрак":
+                if user_data.get('meeting_time'):
+                    meeting_time = escape_markdown(user_data.get('meeting_time'))
+                    profile_text += f"☕️ <b>Время встречи:</b> {meeting_time}\n"
+                profile_text += "#бизнес_завтрак"
+            else:  # По пиву
+                if user_data.get('meeting_time'):
+                    meeting_time = escape_markdown(user_data.get('meeting_time'))
+                    profile_text += f"🍻 <b>Время встречи:</b> {meeting_time}\n"
+                profile_text += "#встречи"
+                
+        elif category == "outdoor_sport":
+            # Для активных видов спорта
+            if user_data.get('profile_comment'):
+                comment = escape_markdown(user_data.get('profile_comment'))
+                profile_text += f"💬 <b>О себе:</b> {comment}\n"
+            profile_text += "#активность"
+            
+        else:  # court_sport
+            # Для спортивных видов с кортами
+            if user_data.get('profile_comment'):
+                comment = escape_markdown(user_data.get('profile_comment'))
+                profile_text += f"💬 <b>О себе:</b> {comment}\n"
+            profile_text += "#игрок"
         
         photo_path = user_data.get("photo_path")
 
