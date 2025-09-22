@@ -30,6 +30,76 @@ async def ban_check_handler(message: Message):
         return True
     return False
 
+async def cleanup_expired_game_offers(bot: Bot):
+    """Очистка прошедших предложенных игр"""
+    try:
+        users = await storage.load_users()
+        current_time = datetime.now()
+        updated = False
+        expired_count = 0
+        
+        for user_id, user_data in users.items():
+            # Пропускаем забаненных пользователей
+            if await is_user_banned(user_id):
+                continue
+                
+            # Проверяем игры пользователя
+            if 'games' in user_data and user_data['games']:
+                games_to_keep = []
+                
+                for game in user_data['games']:
+                    if game.get('active', True) and game.get('date') and game.get('time'):
+                        try:
+                            # Парсим дату и время игры
+                            game_date_str = game.get('date')
+                            game_time_str = game.get('time')
+                            
+                            # Парсим дату (может быть в разных форматах)
+                            if 'T' in game_date_str:
+                                # ISO формат: 2025-01-15T10:30
+                                game_datetime = datetime.fromisoformat(game_date_str)
+                            elif '.' in game_date_str and len(game_date_str.split('.')) == 2:
+                                # Формат: 20.09 (день.месяц) с текущим годом
+                                day, month = game_date_str.split('.')
+                                current_year = current_time.year
+                                game_date = datetime.strptime(f"{day}.{month}.{current_year}", '%d.%m.%Y').date()
+                                game_time = datetime.strptime(game_time_str, '%H:%M').time()
+                                game_datetime = datetime.combine(game_date, game_time)
+                            else:
+                                # Простой формат: 2025-01-15
+                                game_date = datetime.strptime(game_date_str, '%Y-%m-%d').date()
+                                game_time = datetime.strptime(game_time_str, '%H:%M').time()
+                                game_datetime = datetime.combine(game_date, game_time)
+                            
+                            # Если игра уже прошла (более 1 часа назад), удаляем её
+                            if game_datetime < current_time:
+                                expired_count += 1
+                                print(f"Удалена прошедшая игра пользователя {user_id}: {game_date_str} {game_time_str}")
+                            else:
+                                games_to_keep.append(game)
+                                
+                        except (ValueError, TypeError) as e:
+                            # Если не удается распарсить дату/время, оставляем игру
+                            print(f"Не удалось распарсить дату игры пользователя {user_id}: {e}")
+                            games_to_keep.append(game)
+                    else:
+                        # Неактивные игры или игры без даты/времени оставляем
+                        games_to_keep.append(game)
+                
+                # Обновляем список игр пользователя, если что-то изменилось
+                if len(games_to_keep) != len(user_data['games']):
+                    users[user_id]['games'] = games_to_keep
+                    updated = True
+        
+        if updated:
+            await storage.save_users(users)
+            print(f"[{datetime.now()}] Очищено прошедших предложенных игр: {expired_count}")
+        else:
+            print(f"[{datetime.now()}] Проверка прошедших игр завершена, изменений нет")
+            
+    except Exception as e:
+        print(f"Ошибка при очистке прошедших игр: {e}")
+
 async def check_subscriptions(bot: Bot):
     """Ежедневная проверка и обновление статуса подписок"""
     while True:
@@ -76,6 +146,9 @@ async def check_subscriptions(bot: Bot):
                 print(f"[{datetime.now()}] Обновлены статусы подписок")
             else:
                 print(f"[{datetime.now()}] Проверка подписок завершена, изменений нет")
+                
+            # Очистка прошедших предложенных игр
+            await cleanup_expired_game_offers(bot)
                 
             # Отправка напоминаний (только для незабаненных пользователей)
             await send_subscription_reminders(bot)
