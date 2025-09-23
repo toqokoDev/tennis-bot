@@ -127,7 +127,52 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
     game_text = ""
     media_group = []
 
-    if game_type == 'single':
+    if game_type == 'tournament':
+        # Турнирная игра
+        player1_id = str(user_id)
+        player2_id = data.get('opponent1', {}).get('telegram_id')
+        
+        player1 = users.get(player1_id, {})
+        player2 = users.get(player2_id, {})
+        
+        player1_link = await create_user_profile_link(player1, player1_id, False)
+        player2_link = await create_user_profile_link(player2, player2_id, False)
+        
+        winner_side = data.get('winner_side')
+        if winner_side == "team1":
+            winner_link, loser_link = player1_link, player2_link
+            winner_name, loser_name = player1.get('first_name', ''), player2.get('first_name', '')
+        else:
+            winner_link, loser_link = player2_link, player1_link
+            winner_name, loser_name = player2.get('first_name', ''), player1.get('first_name', '')
+        
+        score_escaped = escape_markdown(score)
+        
+        # Получаем информацию о турнире
+        tournament_id = data.get('tournament_id')
+        tournament_name = "Неизвестный турнир"
+        if tournament_id:
+            from services.storage import storage
+            tournaments = await storage.load_tournaments()
+            tournament_data = tournaments.get(tournament_id, {})
+            tournament_name = tournament_data.get('name', 'Неизвестный турнир')
+        
+        game_text = (
+            "🏆 *Завершена турнирная игра!*\n\n"
+            f"🏆 *Турнир:* {escape_markdown(tournament_name)}\n\n"
+            f"🥇 {winner_link} выиграл у {loser_link}\n\n"
+            f"📊 *Счет:* {score_escaped}\n\n"
+            f"#турнир #игра"
+        )
+        
+        # Собираем фото игроков
+        for pl in (player1, player2):
+            if pl.get("photo_path"):
+                media_group.append(
+                    types.InputMediaPhoto(media=FSInputFile(BASE_DIR / pl["photo_path"]))
+                )
+    
+    elif game_type == 'single':
         # Одиночная игра
         player1_id = data.get('current_user_id')
         player2_id = data.get('opponent1', {}).get('telegram_id')

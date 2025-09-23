@@ -104,6 +104,9 @@ class AddScoreState(StatesGroup):
     searching_opponent2 = State()
     selecting_opponent1 = State()
     selecting_opponent2 = State()
+    # Состояния для турнирной игры
+    selecting_tournament = State()
+    selecting_tournament_opponent = State()
     
 class SearchPartnerStates(StatesGroup):
     SEARCH_TYPE = State()
@@ -169,4 +172,55 @@ class AdminEditProfileStates(StatesGroup):
     DATING_INTERESTS = State()
     DATING_ADDITIONAL = State()
     MEETING_TIME = State()
+
+class CreateTournamentStates(StatesGroup):
+    SPORT = State()
+    COUNTRY = State()
+    COUNTRY_INPUT = State()
+    CITY = State()
+    CITY_INPUT = State()
+    DISTRICT = State()
+    TYPE = State()
+    GENDER = State()
+    CATEGORY = State()
+    AGE_GROUP = State()
+    DURATION = State()
+    PARTICIPANTS_COUNT = State()
+    SHOW_IN_LIST = State()
+    HIDE_BRACKET = State()
+    COMMENT = State()
+    CONFIRM = State()
+
+class EditTournamentStates(StatesGroup):
+    SELECT_TOURNAMENT = State()
+    EDIT_FIELD = State()
+    EDIT_SPORT = State()
+    EDIT_COUNTRY = State()
+    EDIT_COUNTRY_INPUT = State()
+    EDIT_CITY = State()
+    EDIT_CITY_INPUT = State()
+    EDIT_DISTRICT = State()
+    EDIT_TYPE = State()
+    EDIT_GENDER = State()
+    EDIT_CATEGORY = State()
+    EDIT_AGE_GROUP = State()
+    EDIT_DURATION = State()
+    EDIT_PARTICIPANTS_COUNT = State()
+    EDIT_SHOW_IN_LIST = State()
+    EDIT_HIDE_BRACKET = State()
+    EDIT_COMMENT = State()
+    MANAGE_PARTICIPANTS = State()
+    ADD_PARTICIPANT = State()
+    REMOVE_PARTICIPANT = State()
+
+class ViewTournamentsStates(StatesGroup):
+    SELECT_SPORT = State()
+    SELECT_COUNTRY = State()
+    SELECT_CITY = State()
+    VIEW_TOURNAMENT = State()
+
+class AdminEditGameStates(StatesGroup):
+    EDIT_SCORE = State()
+    EDIT_MEDIA = State()
+    EDIT_WINNER = State()
     

@@ -13,6 +13,7 @@ from config.paths import GAMES_PHOTOS_DIR
 from models.states import AddScoreState
 from services.channels import send_game_notification_to_channel
 from services.storage import storage
+from utils.tournament_manager import tournament_manager
 from utils.admin import is_admin
 from utils.media import save_media_file
 from utils.utils import calculate_age, calculate_new_ratings, create_user_profile_link, search_users
@@ -73,6 +74,7 @@ def create_game_type_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🎯 Одиночная игра", callback_data="game_type:single")
     builder.button(text="👥 Парная игра", callback_data="game_type:double")
+    builder.button(text="🏆 Турнирная игра", callback_data="game_type:tournament")
     builder.button(text="🔙 Назад", callback_data="back")
     builder.adjust(1)
     return builder.as_markup()
@@ -123,6 +125,57 @@ def create_media_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="📷 Прикрепить фото", callback_data="media:photo")
     builder.button(text="🎥 Прикрепить видео", callback_data="media:video")
     builder.button(text="➡️ Пропустить", callback_data="media:skip")
+    builder.button(text="🔙 Назад", callback_data="back")
+    builder.adjust(1)
+    return builder.as_markup()
+
+# Создание inline клавиатуры для выбора турнира
+async def create_tournament_keyboard(current_user_id: str) -> InlineKeyboardMarkup:
+    """Создает клавиатуру для выбора турнира, в котором участвует пользователь"""
+    tournaments = await storage.load_tournaments()
+    started_tournaments = {k: v for k, v in tournaments.items() if v.get('status') == 'started'}
+    
+    builder = InlineKeyboardBuilder()
+    
+    # Фильтруем турниры, в которых участвует пользователь
+    user_tournaments = {}
+    for tournament_id, tournament_data in started_tournaments.items():
+        participants = tournament_data.get('participants', {})
+        if current_user_id in participants:
+            user_tournaments[tournament_id] = tournament_data
+    
+    if not user_tournaments:
+        builder.button(text="❌ Вы не участвуете ни в одном запущенном турнире", callback_data="no_tournaments")
+    else:
+        for tournament_id, tournament_data in user_tournaments.items():
+            name = tournament_data.get('name', 'Без названия')
+            city = tournament_data.get('city', 'Не указан')
+            participants_count = len(tournament_data.get('participants', {}))
+            builder.button(text=f"🏆 {name} ({city}) - {participants_count} участников", 
+                          callback_data=f"select_tournament:{tournament_id}")
+    
+    builder.button(text="🔙 Назад", callback_data="back")
+    builder.adjust(1)
+    return builder.as_markup()
+
+# Создание inline клавиатуры для выбора соперника из доступных в турнире
+async def create_tournament_opponents_keyboard(tournament_id: str, current_user_id: str) -> InlineKeyboardMarkup:
+    """Создает клавиатуру для выбора соперника из доступных в турнире"""
+
+    builder = InlineKeyboardBuilder()
+    
+    # Получаем доступных соперников через менеджер турниров
+    available_opponents = await tournament_manager.get_available_opponents(tournament_id, current_user_id)
+    
+    if not available_opponents:
+        builder.button(text="❌ Нет доступных соперников", callback_data="no_participants")
+    else:
+        for i, opponent in enumerate(available_opponents):
+            name = opponent.get('name', 'Неизвестно')
+            match_number = opponent.get('match_number', 0)
+            builder.button(text=f"👤 {name} (Матч {match_number + 1})", 
+                         callback_data=f"select_tournament_opponent:{tournament_id}:{i}")
+    
     builder.button(text="🔙 Назад", callback_data="back")
     builder.adjust(1)
     return builder.as_markup()
@@ -265,7 +318,7 @@ async def handle_game_type_selection(callback: types.CallbackQuery, state: FSMCo
             )
         )
         
-    else:  # double
+    elif game_type == "double":
         await state.set_state(AddScoreState.selecting_partner)
         await callback.message.edit_text(
             "Ваш партнер по паре\nНапишите имя или фамилию партнера:",
@@ -274,7 +327,161 @@ async def handle_game_type_selection(callback: types.CallbackQuery, state: FSMCo
             )
         )
     
+    elif game_type == "tournament":
+        await state.set_state(AddScoreState.selecting_tournament)
+        current_user_id = str(callback.message.chat.id)
+        keyboard = await create_tournament_keyboard(current_user_id)
+        await callback.message.edit_text(
+            "🏆 Выберите запущенный турнир для внесения счета:",
+            reply_markup=keyboard
+        )
+    
     await callback.answer()
+
+# Обработчик выбора турнира
+@router.callback_query(F.data.startswith("select_tournament:"))
+async def handle_tournament_selection(callback: types.CallbackQuery, state: FSMContext):
+    tournament_id = callback.data.split(":")[1]
+    await state.update_data(tournament_id=tournament_id)
+    
+    # Проверяем, является ли пользователь участником турнира
+    tournaments = await storage.load_tournaments()
+    tournament_data = tournaments.get(tournament_id, {})
+    participants = tournament_data.get('participants', {})
+    current_user_id = str(callback.message.chat.id)
+    
+    if current_user_id not in participants:
+        await callback.message.edit_text(
+            "❌ Вы не являетесь участником этого турнира.\n\n"
+            "Для участия в турнире необходимо сначала подать заявку.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+        await callback.answer("Вы не участник турнира")
+        return
+    
+    # Проверяем статус турнира
+    tournament_status = tournament_data.get('status', 'active')
+    if tournament_status != 'started':
+        await callback.message.edit_text(
+            f"❌ Турнир еще не запущен!\n\n"
+            f"🏆 Турнир: {tournament_data.get('name', 'Без названия')}\n"
+            f"📊 Статус: {tournament_status}\n\n"
+            f"Счет можно внести только в запущенные турниры.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+        await callback.answer("Турнир не запущен")
+        return
+    
+    # Проверяем минимальное количество участников для внесения игр
+    from config.tournament_config import MIN_PARTICIPANTS
+    tournament_type = tournament_data.get('type', 'Олимпийская система')
+    min_participants = MIN_PARTICIPANTS.get(tournament_type, 4)
+    current_participants = len(participants)
+    
+    if current_participants < min_participants:
+        await callback.message.edit_text(
+            f"❌ Недостаточно участников для внесения игр!\n\n"
+            f"🏆 Турнир: {tournament_data.get('name', 'Без названия')}\n"
+            f"⚔️ Тип: {tournament_type}\n"
+            f"👥 Текущих участников: {current_participants}\n"
+            f"📊 Минимум требуется: {min_participants}\n\n"
+            f"Дождитесь набора минимального количества участников.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            )
+        )
+        await callback.answer()
+        return
+    
+    await state.set_state(AddScoreState.selecting_tournament_opponent)
+    keyboard = await create_tournament_opponents_keyboard(tournament_id, current_user_id)
+    await callback.message.edit_text(
+        "👥 Выберите соперника из участников турнира:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+# Обработчик выбора соперника из турнира
+@router.callback_query(F.data.startswith("select_tournament_opponent:"))
+async def handle_tournament_opponent_selection(callback: types.CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    opponent_index = int(parts[2]) if len(parts) > 2 else 0
+    tournament_id = parts[1]
+    current_user_id = str(callback.message.chat.id)
+    print(f"opponent_index: {opponent_index}")
+    print(f"tournament_id: {tournament_id}")
+    print(f"current_user_id: {current_user_id}")
+    # Получаем доступных соперников
+    available_opponents = await tournament_manager.get_available_opponents(tournament_id, current_user_id)
+    print(f"DEBUG: available_opponents count={len(available_opponents)}")
+    print(f"DEBUG: available_opponents={available_opponents}")
+    
+    # Проверяем корректность индекса
+    if opponent_index >= len(available_opponents):
+        await callback.answer("Соперник не найден")
+        return
+    
+    selected_opponent_data = available_opponents[opponent_index]
+    match_id = selected_opponent_data.get('match_id')
+    opponent_id = selected_opponent_data.get('user_id')
+    
+    users = await storage.load_users()
+    
+    if opponent_id not in users:
+        await callback.answer("Пользователь не найден")
+        return
+    
+    selected_opponent = users[opponent_id]
+    selected_opponent['telegram_id'] = opponent_id
+    
+    # Сохраняем информацию о матче
+    await state.update_data(opponent1=selected_opponent, tournament_match_id=match_id)
+    await state.set_state(AddScoreState.selecting_set_score)
+    
+    keyboard = create_set_score_keyboard(1)
+    
+    username = selected_opponent.get('username', '')
+    username_text = f"@{username}" if username else "не указан"
+    
+    await callback.message.edit_text( 
+        f"🏆 Турнирная игра\n\n"
+        f"Вы выбрали соперника:\n"
+        f"👤 {await create_user_profile_link(selected_opponent, opponent_id, additional=False)}\n"
+        f"📱 Username: {username_text}\n\n"
+        f"Выберите счет 1-го сета:",
+        reply_markup=keyboard, 
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+# Обработчик отсутствия турниров
+@router.callback_query(F.data == "no_tournaments")
+async def handle_no_tournaments(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(
+        "❌ Вы не участвуете ни в одном активном турнире.\n\n"
+        "Для участия в турнире необходимо подать заявку в разделе '🏆 Турниры'.\n\n"
+        "Попробуйте выбрать другой тип игры.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+        )
+    )
+    await callback.answer("Нет доступных турниров")
+
+# Обработчик отсутствия участников в турнире
+@router.callback_query(F.data == "no_participants")
+async def handle_no_participants(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(
+        "❌ В выбранном турнире нет других участников для игры.\n\n"
+        "Попробуйте выбрать другой турнир.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+        )
+    )
+    await callback.answer("Нет участников в турнире")
 
 @router.message(AddScoreState.searching_opponent)
 async def handle_opponent_search(message: types.Message, state: FSMContext):
@@ -828,8 +1035,53 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
     result_text = ""
     rating_changes_for_game: dict[str, float] = {}
 
+    # ---- ТУРНИРНАЯ ИГРА ----
+    if game_type == 'tournament':
+        opponent = opponent1
+        op_id = pid(opponent)
+        tournament_id = data.get('tournament_id')
+        
+        if not opponent or not op_id or not tournament_id:
+            err = "Ошибка: данные турнирной игры неполные"
+            if callback:
+                await callback.message.edit_text(err)
+            else:
+                await message.answer(err)
+            await state.clear()
+            return
+
+        # Получаем информацию о турнире
+        tournaments = await storage.load_tournaments()
+        tournament_data = tournaments.get(tournament_id, {})
+        tournament_name = tournament_data.get('name', 'Неизвестный турнир')
+
+        # Определяем победителя
+        if winner_side == "team1":  # team1 = текущий пользователь
+            winner_user = current_user
+            loser_user = opponent
+        else:  # победил соперник
+            winner_user = opponent
+            loser_user = current_user
+
+        # Текст результата для турнирной игры (без рейтинга)
+        winner_name_link = await create_user_profile_link(winner_user, pid(winner_user) or "", additional=False)
+        loser_name_link = await create_user_profile_link(loser_user, pid(loser_user) or "", additional=False)
+
+        result_text = (
+            f"🏆 Турнирная игра\n"
+            f"🏆 Турнир: {tournament_name}\n\n"
+            f"👤 {winner_name_link}\n"
+            f"🆚\n"
+            f"👤 {loser_name_link}\n\n"
+            f"📊 Счёт: {score}\n\n"
+            f"✅ Победитель: {winner_user.get('first_name', '')} {winner_user.get('last_name', '')}"
+        )
+
+        # Для турнирной игры не изменяем рейтинги
+        rating_changes_for_game = {}
+
     # ---- ОДИНОЧНАЯ ИГРА ----
-    if game_type == 'single':
+    elif game_type == 'single':
         opponent = opponent1
         op_id = pid(opponent)
         if not opponent or not op_id:
@@ -1022,7 +1274,8 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         'sets': sets,
         'media_filename': media_filename,
         'players': players_block,
-        'rating_changes': rating_changes_for_game
+        'rating_changes': rating_changes_for_game,
+        'tournament_id': data.get('tournament_id')  # Добавляем ID турнира для турнирных игр
     }
 
     games = await storage.load_games()
@@ -1091,8 +1344,32 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         game_type = data.get('game_type')
         winner_side = data.get('winner_side')
         
+        # Для турнирной игры
+        if game_type == 'tournament':
+            opponent_id = data.get('opponent1', {}).get('telegram_id')
+            tournament_id = data.get('tournament_id')
+            match_id = data.get('tournament_match_id')
+            
+            # Обновляем games_played для обоих игроков
+            users[current_user_id]['games_played'] = users[current_user_id].get('games_played', 0) + 1
+            if opponent_id in users:
+                users[opponent_id]['games_played'] = users[opponent_id].get('games_played', 0) + 1
+            
+            # Обновляем games_wins для победителя
+            winner_id = current_user_id if winner_side == "team1" else opponent_id
+            if winner_side == "team1":  # Победил текущий пользователь
+                users[current_user_id]['games_wins'] = users[current_user_id].get('games_wins', 0) + 1
+            else:  # Победил соперник
+                if opponent_id in users:
+                    users[opponent_id]['games_wins'] = users[opponent_id].get('games_wins', 0) + 1
+            
+            # Обновляем результат матча в турнире
+            if match_id:
+                from utils.tournament_manager import tournament_manager
+                await tournament_manager.update_match_result(match_id, winner_id, data.get('score'))
+        
         # Для одиночной игры
-        if game_type == 'single':
+        elif game_type == 'single':
             opponent_id = data.get('opponent1', {}).get('telegram_id')
             
             # Обновляем games_played для обоих игроков
@@ -1140,7 +1417,47 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         await storage.save_users(users)
         
         # Отправляем уведомления другим игрокам с ссылками на профили
-        if game_type == 'single':
+        if game_type == 'tournament':
+            opponent_id = data.get('opponent1', {}).get('telegram_id')
+            tournament_id = data.get('tournament_id')
+            
+            if opponent_id in users:
+                try:
+                    opponent_user = users[opponent_id]
+                    current_user = users[current_user_id]
+                    tournaments = await storage.load_tournaments()
+                    tournament_data = tournaments.get(tournament_id, {})
+                    tournament_name = tournament_data.get('name', 'Неизвестный турнир')
+                    
+                    opponent_link = await create_user_profile_link(current_user, current_user_id, additional=False)
+                    
+                    # Определяем результат для соперника
+                    if winner_side == "team1":
+                        # Текущий пользователь победил, соперник проиграл
+                        result_msg = (
+                            f"🏆 Турнирная игра завершена!\n"
+                            f"🏆 Турнир: {tournament_name}\n\n"
+                            f"📢 Вам засчитано поражение в игре против {opponent_link}\n"
+                            f"Счет: {data.get('score')}"
+                        )
+                    else:
+                        # Соперник победил
+                        result_msg = (
+                            f"🏆 Турнирная игра завершена!\n"
+                            f"🏆 Турнир: {tournament_name}\n\n"
+                            f"🎉 Поздравляем с победой в игре против {opponent_link}!\n"
+                            f"Счет: {data.get('score')}"
+                        )
+                    
+                    await callback.bot.send_message(
+                        opponent_id,
+                        result_msg,
+                        parse_mode='Markdown'
+                    )
+                except Exception as e:
+                    print(f"Ошибка при отправке уведомления сопернику: {e}")
+        
+        elif game_type == 'single':
             opponent_id = data.get('opponent1', {}).get('telegram_id')
             if opponent_id in users:
                 try:
@@ -1286,7 +1603,23 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         game_type = data.get('game_type')
         winner_side = data.get('winner_side')
         
-        if game_type == 'single':
+        if game_type == 'tournament':
+            current_user_id = str(callback.message.chat.id)
+            opponent_id = data.get('opponent1', {}).get('telegram_id')
+            
+            # Откатываем статистику игр
+            users[current_user_id]['games_played'] = max(0, users[current_user_id].get('games_played', 0) - 1)
+            if opponent_id in users:
+                users[opponent_id]['games_played'] = max(0, users[opponent_id].get('games_played', 0) - 1)
+            
+            # Откатываем победы
+            if winner_side == "team1":  # Отменяем победу текущего пользователя
+                users[current_user_id]['games_wins'] = max(0, users[current_user_id].get('games_wins', 0) - 1)
+            else:  # Отменяем победу соперника
+                if opponent_id in users:
+                    users[opponent_id]['games_wins'] = max(0, users[opponent_id].get('games_wins', 0) - 1)
+        
+        elif game_type == 'single':
             current_user_id = str(callback.message.chat.id)
             opponent_id = data.get('opponent1', {}).get('telegram_id')
             
@@ -1379,6 +1712,17 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
     if current_state == AddScoreState.selecting_game_type.state:
         await callback.message.edit_text("Действие отменено.")
         await state.clear()
+        
+    elif current_state == AddScoreState.selecting_tournament.state:
+        await state.set_state(AddScoreState.selecting_game_type)
+        keyboard = create_game_type_keyboard()
+        await callback.message.edit_text("Выберите тип игры:", reply_markup=keyboard)
+        
+    elif current_state == AddScoreState.selecting_tournament_opponent.state:
+        await state.set_state(AddScoreState.selecting_tournament)
+        current_user_id = str(callback.message.chat.id)
+        keyboard = await create_tournament_keyboard(current_user_id)
+        await callback.message.edit_text("🏆 Выберите запущенный турнир для внесения счета:", reply_markup=keyboard)
         
     elif current_state == AddScoreState.searching_opponent.state:
         await state.set_state(AddScoreState.selecting_game_type)
