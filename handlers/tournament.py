@@ -308,7 +308,7 @@ async def select_type(callback: CallbackQuery, state: FSMContext):
         f"✅ Вид спорта: {tournament_data['sport']}\n"
         f"✅ Страна: {tournament_data['country']}\n"
         f"✅ Город: {tournament_data['city']}\n"
-        f"{f'✅ Район: {tournament_data['district']}\n' if 'district' in tournament_data else ''}"
+        f'✅ Район: {tournament_data['district']}\n' if 'district' in tournament_data else ''
         f"✅ Тип: {t_type}",
         reply_markup=builder.as_markup()
     )
