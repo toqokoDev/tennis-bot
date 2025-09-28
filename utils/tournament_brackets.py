@@ -207,6 +207,12 @@ def format_bracket_text(bracket: TournamentBracket) -> str:
                 player1_name = match.player1.name if match.player1 else "TBD"
                 player2_name = match.player2.name if match.player2 else "TBD"
                 
+                # Проверяем, является ли игрок пустым местом
+                if match.player1 and match.player1.id.startswith("empty"):
+                    player1_name = "Свободное место"
+                if match.player2 and match.player2.id.startswith("empty"):
+                    player2_name = "Свободное место"
+                
                 if match.winner:
                     winner_name = match.winner.name
                     if match.winner == match.player1:

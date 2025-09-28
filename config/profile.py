@@ -141,89 +141,123 @@ channels_usernames = {
 
 tour_channel_id = "-1002972370826"
 
-def create_sport_keyboard(pref: str = "partner_sport_"):
-    """Создает клавиатуру с видами спорта в заданном формате"""
+def create_sport_keyboard(pref: str = "partner_sport_", exclude_sports: list = None):
+    """Создает клавиатуру с видами спорта в заданном формате
+    
+    Args:
+        pref: Префикс для callback_data
+        exclude_sports: Список видов спорта для исключения (например, ["🎾Большой теннис", "🏓Настольный теннис"])
+    """
+    if exclude_sports is None:
+        exclude_sports = []
+    
     builder = InlineKeyboardBuilder()
     
-    # Большой теннис - полная ширина
-    builder.row(
-        InlineKeyboardButton(
+    # Большой теннис, настольный теннис - 2 в ряд
+    tennis_buttons = []
+    if "🎾Большой теннис" not in exclude_sports:
+        tennis_buttons.append(InlineKeyboardButton(
             text="🎾Большой теннис",
             callback_data=f"{pref}🎾Большой теннис"
-        ),
-        InlineKeyboardButton(
+        ))
+    if "🏓Настольный теннис" not in exclude_sports:
+        tennis_buttons.append(InlineKeyboardButton(
             text="🏓Настольный теннис",
             callback_data=f"{pref}🏓Настольный теннис"
-        )
-    )
+        ))
+    
+    if tennis_buttons:
+        builder.row(*tennis_buttons)
     
     # Бадминтон, пляжный теннис - 2 в ряд
-    builder.row(
-        InlineKeyboardButton(
+    racket_buttons = []
+    if "🏸Бадминтон" not in exclude_sports:
+        racket_buttons.append(InlineKeyboardButton(
             text="🏸Бадминтон",
             callback_data=f"{pref}🏸Бадминтон"
-        ),
-        InlineKeyboardButton(
+        ))
+    if "🏖️Пляжный теннис" not in exclude_sports:
+        racket_buttons.append(InlineKeyboardButton(
             text="🏖️Пляжный теннис",
             callback_data=f"{pref}🏖️Пляжный теннис"
-        )
-    )
+        ))
+    
+    if racket_buttons:
+        builder.row(*racket_buttons)
     
     # Падл-теннис, сквош - 2 в ряд
-    builder.row(
-        InlineKeyboardButton(
+    paddle_buttons = []
+    if "🎾Падл-теннис" not in exclude_sports:
+        paddle_buttons.append(InlineKeyboardButton(
             text="🎾Падл-теннис",
             callback_data=f"{pref}🎾Падл-теннис"
-        ),
-        InlineKeyboardButton(
+        ))
+    if "🥎Сквош" not in exclude_sports:
+        paddle_buttons.append(InlineKeyboardButton(
             text="🥎Сквош",
             callback_data=f"{pref}🥎Сквош"
-        )
-    )
+        ))
+    
+    if paddle_buttons:
+        builder.row(*paddle_buttons)
     
     # Пиклбол, гольф, бег - 3 в ряд
-    builder.row(
-        InlineKeyboardButton(
+    outdoor_buttons = []
+    if "🏆Пиклбол" not in exclude_sports:
+        outdoor_buttons.append(InlineKeyboardButton(
             text="🏆Пиклбол",
             callback_data=f"{pref}🏆Пиклбол"
-        ),
-        InlineKeyboardButton(
+        ))
+    if "⛳Гольф" not in exclude_sports:
+        outdoor_buttons.append(InlineKeyboardButton(
             text="⛳Гольф",
             callback_data=f"{pref}⛳Гольф"
-        ),
-        InlineKeyboardButton(
+        ))
+    if "🏃‍♂️‍➡️Бег" not in exclude_sports:
+        outdoor_buttons.append(InlineKeyboardButton(
             text="🏃‍♂️‍➡️Бег",
             callback_data=f"{pref}🏃‍♂️‍➡️Бег"
-        )
-    )
+        ))
+    
+    if outdoor_buttons:
+        builder.row(*outdoor_buttons)
     
     # Фитнес, вело, по пиву - 3 в ряд
-    builder.row(
-        InlineKeyboardButton(
+    fitness_buttons = []
+    if "🏋️‍♀️Фитнес" not in exclude_sports:
+        fitness_buttons.append(InlineKeyboardButton(
             text="🏋️‍♀️Фитнес",
             callback_data=f"{pref}🏋️‍♀️Фитнес"
-        ),
-        InlineKeyboardButton(
+        ))
+    if "🚴Вело" not in exclude_sports:
+        fitness_buttons.append(InlineKeyboardButton(
             text="🚴Вело",
             callback_data=f"{pref}🚴Вело"
-        ),
-        InlineKeyboardButton(
+        ))
+    if "🍻По пиву" not in exclude_sports:
+        fitness_buttons.append(InlineKeyboardButton(
             text="🍻По пиву",
             callback_data=f"{pref}🍻По пиву"
-        )
-    )
+        ))
+    
+    if fitness_buttons:
+        builder.row(*fitness_buttons)
     
     # Знакомства, бизнес-завтрак - 2 в ряд
-    builder.row(
-        InlineKeyboardButton(
+    social_buttons = []
+    if "🍒Знакомства" not in exclude_sports:
+        social_buttons.append(InlineKeyboardButton(
             text="🍒Знакомства",
             callback_data=f"{pref}🍒Знакомства"
-        ),
-        InlineKeyboardButton(
+        ))
+    if "☕️Бизнес-завтрак" not in exclude_sports:
+        social_buttons.append(InlineKeyboardButton(
             text="☕️Бизнес-завтрак",
             callback_data=f"{pref}☕️Бизнес-завтрак"
-        )
-    )
+        ))
+    
+    if social_buttons:
+        builder.row(*social_buttons)
     
     return builder.as_markup()
 

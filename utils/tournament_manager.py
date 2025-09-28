@@ -149,6 +149,7 @@ class TournamentManager:
         tournament_data = tournaments.get(tournament_id, {})
         tournament_type = tournament_data.get('type', 'Олимпийская система')
         matches = tournament_data.get('matches', [])
+        participants = tournament_data.get('participants', {})
         
         print(f"DEBUG: tournament_id={tournament_id}, user_id={user_id}")
         print(f"DEBUG: tournament_type={tournament_type}")
@@ -156,6 +157,19 @@ class TournamentManager:
         
         available_opponents = []
         
+        if not matches:
+            # Турнир ещё не стартовал или жеребьевка не проведена — разрешаем выбрать любого участника, кроме себя
+            for pid, pdata in participants.items():
+                if pid == user_id:
+                    continue
+                available_opponents.append({
+                    'user_id': pid,
+                    'name': pdata.get('name', 'Неизвестно'),
+                    'match_id': None,
+                    'match_number': 0
+                })
+            return available_opponents
+
         if tournament_type == "Олимпийская система":
             # В олимпийской системе ищем матч с этим пользователем
             for match in matches:

@@ -131,21 +131,23 @@ def create_media_keyboard() -> InlineKeyboardMarkup:
 
 # Создание inline клавиатуры для выбора турнира
 async def create_tournament_keyboard(current_user_id: str) -> InlineKeyboardMarkup:
-    """Создает клавиатуру для выбора турнира, в котором участвует пользователь"""
+    """Создает клавиатуру для выбора турнира, в котором участвует пользователь.
+    Теперь доступны турниры до старта, если пользователь участвует и есть соперники."""
     tournaments = await storage.load_tournaments()
-    started_tournaments = {k: v for k, v in tournaments.items() if v.get('status') == 'started'}
     
     builder = InlineKeyboardBuilder()
     
-    # Фильтруем турниры, в которых участвует пользователь
+    # Фильтруем турниры, в которых участвует пользователь и есть с кем играть (>=2 участников)
     user_tournaments = {}
-    for tournament_id, tournament_data in started_tournaments.items():
+    for tournament_id, tournament_data in tournaments.items():
+        if tournament_data.get('status') not in ['active', 'started']:
+            continue
         participants = tournament_data.get('participants', {})
-        if current_user_id in participants:
+        if current_user_id in participants and len(participants) >= 2:
             user_tournaments[tournament_id] = tournament_data
     
     if not user_tournaments:
-        builder.button(text="❌ Вы не участвуете ни в одном запущенном турнире", callback_data="no_tournaments")
+        builder.button(text="❌ Нет доступных турниров с участием и соперником", callback_data="no_tournaments")
     else:
         for tournament_id, tournament_data in user_tournaments.items():
             name = tournament_data.get('name', 'Без названия')
@@ -332,7 +334,7 @@ async def handle_game_type_selection(callback: types.CallbackQuery, state: FSMCo
         current_user_id = str(callback.message.chat.id)
         keyboard = await create_tournament_keyboard(current_user_id)
         await callback.message.edit_text(
-            "🏆 Выберите запущенный турнир для внесения счета:",
+            "🏆 Выберите турнир для внесения счета:",
             reply_markup=keyboard
         )
     
@@ -361,20 +363,8 @@ async def handle_tournament_selection(callback: types.CallbackQuery, state: FSMC
         await callback.answer("Вы не участник турнира")
         return
     
-    # Проверяем статус турнира
+    # Разрешаем вносить счет до старта, если есть участники (>=2) и есть с кем играть
     tournament_status = tournament_data.get('status', 'active')
-    if tournament_status != 'started':
-        await callback.message.edit_text(
-            f"❌ Турнир еще не запущен!\n\n"
-            f"🏆 Турнир: {tournament_data.get('name', 'Без названия')}\n"
-            f"📊 Статус: {tournament_status}\n\n"
-            f"Счет можно внести только в запущенные турниры.",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
-            )
-        )
-        await callback.answer("Турнир не запущен")
-        return
     
     # Проверяем минимальное количество участников для внесения игр
     from config.tournament_config import MIN_PARTICIPANTS
@@ -382,14 +372,12 @@ async def handle_tournament_selection(callback: types.CallbackQuery, state: FSMC
     min_participants = MIN_PARTICIPANTS.get(tournament_type, 4)
     current_participants = len(participants)
     
-    if current_participants < min_participants:
+    if current_participants < 2:
         await callback.message.edit_text(
             f"❌ Недостаточно участников для внесения игр!\n\n"
             f"🏆 Турнир: {tournament_data.get('name', 'Без названия')}\n"
-            f"⚔️ Тип: {tournament_type}\n"
             f"👥 Текущих участников: {current_participants}\n"
-            f"📊 Минимум требуется: {min_participants}\n\n"
-            f"Дождитесь набора минимального количества участников.",
+            f"📊 Требуется минимум: 2", 
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
             )
@@ -1266,6 +1254,33 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
     }
 
     # game_data.rating_changes — используем уже посчитанные дельты (новый - старый)
+    # Определим winner_id для записи (важно для турнирных таблиц)
+    winner_id_for_record = None
+    if game_type == 'tournament':
+        # В турнире team1 = текущий пользователь, team2 = соперник1
+        opponent = data.get('opponent1')
+        op_id_local = pid(opponent) if opponent else None
+        if winner_side == 'team1':
+            winner_id_for_record = current_id
+        elif winner_side == 'team2':
+            winner_id_for_record = op_id_local
+    elif game_type == 'single':
+        opponent = data.get('opponent1')
+        op_id_local = pid(opponent) if opponent else None
+        if winner_side == 'team1':
+            winner_id_for_record = current_id
+        elif winner_side == 'team2':
+            winner_id_for_record = op_id_local
+    else:
+        # double
+        partner = data.get('partner')
+        opponent1 = data.get('opponent1')
+        opponent2 = data.get('opponent2')
+        # Для пар — фиксируем победу за стороной (team1/team2); индивидуальные winner_id здесь не критичен для турниров
+        if winner_side == 'team1':
+            winner_id_for_record = current_id
+        elif winner_side == 'team2':
+            winner_id_for_record = pid(opponent1)
     game_data = {
         'id': game_id,
         'date': datetime.now().isoformat(),
@@ -1275,7 +1290,9 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         'media_filename': media_filename,
         'players': players_block,
         'rating_changes': rating_changes_for_game,
-        'tournament_id': data.get('tournament_id')  # Добавляем ID турнира для турнирных игр
+        'tournament_id': data.get('tournament_id'),  # Добавляем ID турнира для турнирных игр
+        'status': 'completed',
+        'winner_id': winner_id_for_record
     }
 
     games = await storage.load_games()
