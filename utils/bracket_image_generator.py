@@ -66,26 +66,35 @@ class BracketImageGenerator:
         self.placement_color = (139, 69, 19)  # Коричневый для игр за мест
         self.mini_tournament_color = (101, 163, 13)  # Зеленый для мини-турниров (не использовать для оформления)
         
-        # Загрузка шрифтов
+        # Загрузка шрифтов с Unicode-фолбэком
         try:
-            self.font = ImageFont.truetype("arial.ttf", self.font_size, encoding="utf-8")
-            self.bold_font = ImageFont.truetype("arialbd.ttf", self.font_size, encoding="utf-8")
-            self.title_font = ImageFont.truetype("arialbd.ttf", self.title_font_size, encoding="utf-8")
-            self.subtitle_font = ImageFont.truetype("arialbd.ttf", self.subtitle_font_size, encoding="utf-8")
-            self.score_font = ImageFont.truetype("arial.ttf", self.score_font_size, encoding="utf-8")
-        except:
+            self.font = ImageFont.truetype("arial.ttf", self.font_size)
+            self.bold_font = ImageFont.truetype("arialbd.ttf", self.font_size)
+            self.title_font = ImageFont.truetype("arialbd.ttf", self.title_font_size)
+            self.subtitle_font = ImageFont.truetype("arialbd.ttf", self.subtitle_font_size)
+            self.score_font = ImageFont.truetype("arial.ttf", self.score_font_size)
+        except Exception:
+            # Пытаемся DejaVuSans (обычно доступен в Pillow)
             try:
-                self.font = ImageFont.load_default()
-                self.bold_font = ImageFont.load_default()
-                self.title_font = ImageFont.load_default()
-                self.subtitle_font = ImageFont.load_default()
-                self.score_font = ImageFont.load_default()
-            except:
-                self.font = None
-                self.bold_font = None
-                self.title_font = None
-                self.subtitle_font = None
-                self.score_font = None
+                self.font = ImageFont.truetype("DejaVuSans.ttf", self.font_size)
+                self.bold_font = ImageFont.truetype("DejaVuSans-Bold.ttf", self.font_size)
+                self.title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", self.title_font_size)
+                self.subtitle_font = ImageFont.truetype("DejaVuSans.ttf", self.subtitle_font_size)
+                self.score_font = ImageFont.truetype("DejaVuSans.ttf", self.score_font_size)
+            except Exception:
+                # Последний фолбэк — дефолтный, но он может не поддерживать кириллицу
+                try:
+                    self.font = ImageFont.load_default()
+                    self.bold_font = ImageFont.load_default()
+                    self.title_font = ImageFont.load_default()
+                    self.subtitle_font = ImageFont.load_default()
+                    self.score_font = ImageFont.load_default()
+                except Exception:
+                    self.font = None
+                    self.bold_font = None
+                    self.title_font = None
+                    self.subtitle_font = None
+                    self.score_font = None
     
     def create_player_avatar(self, player: Player, size: int = 24) -> Image.Image:
         """Создает квадратный аватар игрока"""
@@ -686,24 +695,38 @@ def create_simple_text_image_bytes(text: str, title: str = "Информация
     """Создает простое изображение с заголовком и текстом и возвращает его как bytes (PNG)."""
     image = Image.new('RGB', (1000, 500), (255, 255, 255))
     draw = ImageDraw.Draw(image)
+    # Загружаем шрифты с учетом Unicode
     try:
         title_font = ImageFont.truetype("arialbd.ttf", 20)
         text_font = ImageFont.truetype("arial.ttf", 14)
     except Exception:
-        title_font = ImageFont.load_default()
-        text_font = ImageFont.load_default()
+        try:
+            title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 20)
+            text_font = ImageFont.truetype("DejaVuSans.ttf", 14)
+        except Exception:
+            title_font = ImageFont.load_default()
+            text_font = ImageFont.load_default()
 
     # Заголовок
     try:
         title_bbox = draw.textbbox((0, 0), title, font=title_font)
         draw.text(((1000 - (title_bbox[2] - title_bbox[0])) // 2, 20), title, fill=(31, 41, 55), font=title_font)
     except Exception:
-        draw.text((20, 20), title, fill=(31, 41, 55), font=title_font)
+        try:
+            draw.text((20, 20), title, fill=(31, 41, 55), font=title_font)
+        except Exception:
+            # В крайнем случае удаляем не-ASCII символы
+            safe_title = title.encode('ascii', 'ignore').decode('ascii')
+            draw.text((20, 20), safe_title, fill=(31, 41, 55), font=title_font)
 
     # Текст с переносами строк
     y = 70
     for line in str(text or "").splitlines() or [""]:
-        draw.text((30, y), line, fill=(31, 41, 55), font=text_font)
+        try:
+            draw.text((30, y), line, fill=(31, 41, 55), font=text_font)
+        except Exception:
+            safe_line = str(line).encode('ascii', 'ignore').decode('ascii')
+            draw.text((30, y), safe_line, fill=(31, 41, 55), font=text_font)
         y += 22
 
     buf = io.BytesIO()

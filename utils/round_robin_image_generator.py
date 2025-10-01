@@ -8,14 +8,21 @@ from config.paths import GAMES_PHOTOS_DIR
 
 
 def _load_fonts():
+    # Try system fonts with Unicode support, fallback to DejaVu, then default
     try:
-        title_font = ImageFont.truetype("arialbd.ttf", 20, encoding="utf-8")
-        header_font = ImageFont.truetype("arialbd.ttf", 14, encoding="utf-8")
-        cell_font = ImageFont.truetype("arial.ttf", 12, encoding="utf-8")
+        title_font = ImageFont.truetype("arialbd.ttf", 20)
+        header_font = ImageFont.truetype("arialbd.ttf", 14)
+        cell_font = ImageFont.truetype("arial.ttf", 12)
         return title_font, header_font, cell_font
     except Exception:
-        f = ImageFont.load_default()
-        return f, f, f
+        try:
+            title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 20)
+            header_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
+            cell_font = ImageFont.truetype("DejaVuSans.ttf", 12)
+            return title_font, header_font, cell_font
+        except Exception:
+            f = ImageFont.load_default()
+            return f, f, f
 
 
 def _draw_game_photos_area(draw: ImageDraw.Draw, x: int, y: int, width: int, height: int, cell_font: ImageFont.FreeTypeFont, photo_paths: Optional[list[str]] = None):
