@@ -90,6 +90,10 @@ class PaymentStates(StatesGroup):
     WAITING_EMAIL = State()
     CONFIRM_PAYMENT = State()
 
+class TournamentPaymentStates(StatesGroup):
+    WAITING_EMAIL = State()
+    CONFIRM_PAYMENT = State()
+
 class AddScoreState(StatesGroup):
     selecting_game_type = State()
     selecting_partner = State()
@@ -217,6 +221,8 @@ class ViewTournamentsStates(StatesGroup):
     SELECT_SPORT = State()
     SELECT_COUNTRY = State()
     SELECT_CITY = State()
+    SELECT_GENDER = State()
+    SELECT_TYPE = State()
     VIEW_TOURNAMENT = State()
 
 class AdminEditGameStates(StatesGroup):

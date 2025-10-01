@@ -84,7 +84,6 @@ async def tournaments_cmd(message: Message):
     # Добавляем кнопки для управления турнирами
     builder = InlineKeyboardBuilder()
     builder.button(text="📝 Создать турнир", callback_data="admin_create_tournament")
-    builder.button(text="👥 Просмотреть заявки", callback_data="admin_view_applications")
     builder.button(text="🗑️ Удалить турнир", callback_data="admin_delete_tournament_menu")
     builder.adjust(1)
     
@@ -96,29 +95,7 @@ async def view_applications_menu(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
-    
-    applications = await storage.load_tournament_applications()
-        
-    if not applications:
-        await callback.answer("📋 Нет активных заявок на турниры")
-        return
-    
-    text = "📋 Заявки на турниры:\n\n"
-    for app_id, app_data in applications.items():
-        text += f"👤 {app_data.get('user_name', 'Неизвестно')}\n"
-        text += f"📞 {app_data.get('phone', 'Неизвестно')}\n"
-        text += f"🎯 Турнир: {app_data.get('tournament_name', 'Неизвестно')}\n"
-        text += f"⏰ Подана: {app_data.get('applied_at', 'Неизвестно')}\n"
-        text += f"🆔 ID заявки: {app_id}\n"
-        text += "─" * 20 + "\n"
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Принять заявку", callback_data="admin_accept_application_menu")
-    builder.button(text="❌ Отклонить заявку", callback_data="admin_reject_application_menu")
-    builder.button(text="🔙 Назад", callback_data="admin_back_to_tournaments")
-    builder.adjust(1)
-    
-    await safe_edit_message(callback, text, builder.as_markup())
+    await safe_edit_message(callback, "📋 Система заявок отключена.")
     await callback.answer()
 
 # Меню принятия заявки
@@ -127,22 +104,7 @@ async def accept_application_menu(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
-    
-    applications = await storage.load_tournament_applications()
-    
-    if not applications:
-        await callback.answer("📋 Нет активных заявок")
-        return
-    
-    builder = InlineKeyboardBuilder()
-    for app_id, app_data in applications.items():
-        text = f"✅ {app_data.get('user_name', 'Неизвестно')} - {app_data.get('tournament_name', '')}"
-        builder.button(text=text, callback_data=f"admin_accept_application:{app_id}")
-    
-    builder.button(text="🔙 Назад", callback_data="admin_view_applications")
-    builder.adjust(1)
-    
-    await safe_edit_message(callback, "✅ Выберите заявку для принятия:", builder.as_markup())
+    await safe_edit_message(callback, "📋 Система заявок отключена.")
     await callback.answer()
 
 # Обработчик принятия заявки
@@ -151,49 +113,7 @@ async def accept_application_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
-    
-    app_id = callback.data.split(':')[1]
-    applications = await storage.load_tournament_applications()
-    tournaments = await storage.load_tournaments()
-    
-    if app_id not in applications:
-        await callback.answer("❌ Заявка не найдена")
-        return
-    
-    app_data = applications[app_id]
-    tournament_id = app_data.get('tournament_id')
-    
-    if tournament_id not in tournaments:
-        await callback.answer("❌ Турнир не найден")
-        return
-    
-    # Обновляем статус заявки
-    applications[app_id]['status'] = 'accepted'
-    applications[app_id]['accepted_at'] = datetime.now().isoformat()
-    applications[app_id]['accepted_by'] = callback.message.chat.id
-    
-    # Добавляем участника в турнир
-    user_id = app_data.get('user_id')
-    tournaments[tournament_id]['participants'][str(user_id)] = {
-        'name': app_data.get('user_name'),
-        'phone': app_data.get('phone'),
-        'applied_at': app_data.get('applied_at'),
-        'accepted_at': datetime.now().isoformat(),
-        'accepted_by': callback.message.chat.id
-    }
-    
-    # Сохраняем изменения
-    await storage.save_tournaments(tournaments)
-    await storage.save_tournament_applications(applications)
-    
-    await safe_edit_message(
-        callback,
-        f"✅ Заявка принята!\n\n"
-        f"👤 Участник: {app_data.get('user_name')}\n"
-        f"📞 Телефон: {app_data.get('phone')}\n"
-        f"🎯 Турнир: {app_data.get('tournament_name')}\n\n"
-        f"Участник добавлен в турнир."
-    )
+    await safe_edit_message(callback, "📋 Система заявок отключена.")
     await callback.answer()
 
 # Меню отклонения заявки
@@ -202,22 +122,7 @@ async def reject_application_menu(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
-    
-    applications = await storage.load_tournament_applications()
-    
-    if not applications:
-        await callback.answer("📋 Нет активных заявок")
-        return
-    
-    builder = InlineKeyboardBuilder()
-    for app_id, app_data in applications.items():
-        text = f"❌ {app_data.get('user_name', 'Неизвестно')} - {app_data.get('tournament_name', '')}"
-        builder.button(text=text, callback_data=f"admin_reject_application:{app_id}")
-    
-    builder.button(text="🔙 Назад", callback_data="admin_view_applications")
-    builder.adjust(1)
-    
-    await safe_edit_message(callback, "❌ Выберите заявку для отклонения:", builder.as_markup())
+    await safe_edit_message(callback, "📋 Система заявок отключена.")
     await callback.answer()
 
 # Обработчик отклонения заявки
@@ -226,27 +131,7 @@ async def reject_application_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
         await callback.answer("❌ Нет прав администратора")
         return
-    
-    app_id = callback.data.split(':')[1]
-    applications = await storage.load_tournament_applications()
-    
-    if app_id not in applications:
-        await callback.answer("❌ Заявка не найдена")
-        return
-    
-    app_data = applications[app_id]
-    
-    # Удаляем заявку
-    del applications[app_id]
-    await storage.save_tournament_applications(applications)
-    
-    await safe_edit_message(
-        callback,
-        f"❌ Заявка отклонена!\n\n"
-        f"👤 Участник: {app_data.get('user_name')}\n"
-        f"🎯 Турнир: {app_data.get('tournament_name')}\n\n"
-        f"Заявка удалена из системы."
-    )
+    await safe_edit_message(callback, "📋 Система заявок отключена.")
     await callback.answer()
 
 # Меню удаления турнира
@@ -357,7 +242,6 @@ async def back_to_tournaments(callback: CallbackQuery):
     
     builder = InlineKeyboardBuilder()
     builder.button(text="📝 Создать турнир", callback_data="admin_create_tournament")
-    builder.button(text="👥 Просмотреть заявки", callback_data="admin_view_applications")
     builder.button(text="🗑️ Удалить турнир", callback_data="admin_delete_tournament_menu")
     builder.adjust(1)
     
@@ -524,7 +408,6 @@ async def tournaments_handler(callback: CallbackQuery):
     
     builder = InlineKeyboardBuilder()
     builder.button(text="📝 Создать турнир", callback_data="admin_create_tournament")
-    builder.button(text="👥 Просмотреть заявки", callback_data="admin_view_applications")
     builder.button(text="🗑️ Удалить турнир", callback_data="admin_delete_tournament_menu")
     builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
     builder.adjust(1)

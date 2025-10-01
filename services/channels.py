@@ -1,6 +1,7 @@
 from typing import Any, Dict
 from aiogram import Bot, types
-from aiogram.types import FSInputFile
+from aiogram.types import FSInputFile, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config.paths import BASE_DIR
 from config.profile import channels_id, tour_channel_id
@@ -16,6 +17,7 @@ async def send_registration_notification(message: types.Message, profile: dict):
     """Отправляет уведомление о новой регистрации в канал"""
     try:
         from config.profile import get_sport_config
+        from datetime import datetime
         
         city = profile.get('city', '—')
         district = profile.get('district', '')
@@ -29,6 +31,27 @@ async def send_registration_notification(message: types.Message, profile: dict):
         # Получаем конфигурацию для вида спорта
         config = get_sport_config(sport)
         category = config.get("category", "court_sport")
+        
+        # Вычисляем возраст из даты рождения
+        age_text = ""
+        if profile.get('birth_date'):
+            try:
+                birth_date = datetime.strptime(profile.get('birth_date'), "%d.%m.%Y")
+                today = datetime.now()
+                age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+                age_text = f"{age} лет"
+            except:
+                pass
+        
+        # Получаем пол
+        gender = profile.get('gender', '')
+        gender_emoji = "👨" if gender == "Мужской" else "👩" if gender == "Женский" else "👤"
+        
+        # Получаем username
+        username_text = ""
+        if profile.get('username'):
+            username = escape_markdown(profile.get('username'))
+            username_text = f"✉️ @{username}\n"
 
         # Разное оформление для тренеров и игроков
         if role == "Тренер":
@@ -37,9 +60,27 @@ async def send_registration_notification(message: types.Message, profile: dict):
             registration_text = (
                 "👨‍🏫 *Новый тренер присоединился к платформе!*\n\n"
                 f"🏆 *Тренер:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n"
+            )
+            
+            # Добавляем возраст и пол если есть
+            if age_text and gender:
+                registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)} • {escape_markdown(gender)}\n"
+            elif age_text:
+                registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)}\n"
+            elif gender:
+                registration_text += f"{gender_emoji} *Пол:* {escape_markdown(gender)}\n"
+            
+            registration_text += (
                 f"💰 *Стоимость:* {price} руб./тренировка\n"
                 f"📍 *Местоположение:* {escape_markdown(city)} ({country})\n"
             )
+            
+            # Добавляем информацию о корте/клубе для тренеров
+            if profile.get('profile_comment'):
+                trainer_comment = escape_markdown(profile.get('profile_comment'))
+                registration_text += f"🎾 *О себе* {trainer_comment}\n"
+            
+            registration_text += f"{username_text}"
         else:
             country = escape_markdown(profile.get('country', ''))
             registration_text = (
@@ -47,12 +88,25 @@ async def send_registration_notification(message: types.Message, profile: dict):
                 f"👤 *Игрок:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n" 
             )
             
+            # Добавляем возраст и пол если есть
+            if age_text and gender:
+                registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)} • {escape_markdown(gender)}\n"
+            elif age_text:
+                registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)}\n"
+            elif gender:
+                registration_text += f"{gender_emoji} *Пол:* {escape_markdown(gender)}\n"
+            
             # Добавляем уровень игры только если он указан
             if profile.get('player_level'):
                 player_level = escape_markdown(profile.get('player_level'))
                 registration_text += f"💪 *Уровень игры:* {player_level}\n"
             
-            registration_text += f"📍 *Местоположение:* {escape_markdown(city)} ({country})\n"
+            # Добавляем рейтинг если есть игры
+            rating_points = profile.get('rating_points', 0)
+            if rating_points and rating_points > 0:
+                registration_text += f"⭐ *Рейтинг:* {format_rating(rating_points)}\n"
+            
+            registration_text += f"📍 *Местоположение:* {escape_markdown(city)} ({country})\n{username_text}"
         
         # Добавляем дополнительные поля в зависимости от вида спорта
         if category == "dating":
@@ -93,7 +147,11 @@ async def send_registration_notification(message: types.Message, profile: dict):
             registration_text += "\n#активность"
             
         else:  # court_sport
-            # Для спортивных видов с кортами
+            # Добавляем способ оплаты корта
+            if profile.get('default_payment'):
+                payment = escape_markdown(profile.get('default_payment'))
+                registration_text += f"💳 *Оплата корта:* {payment}\n"
+            
             if profile.get('profile_comment'):
                 comment = escape_markdown(profile.get('profile_comment'))
                 registration_text += f"💬 *О себе:* {comment}\n"
@@ -718,3 +776,97 @@ async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[s
             )
     except Exception as e:
         print(f"Ошибка отправки анкеты пользователя: {e}")
+
+async def send_tournament_created_to_channel(bot: Bot, tournament_id: str, tournament_data: Dict[str, Any]):
+    """Отправляет уведомление о новом турнире в соответствующий канал с кнопкой "Участвовать"."""
+    try:
+        sport = tournament_data.get('sport', '🎾Большой теннис')
+        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+
+        # Локация
+        city = tournament_data.get('city', '—')
+        district = tournament_data.get('district', '')
+        country = tournament_data.get('country', '')
+        if district:
+            city = f"{city} - {district}"
+
+        # Текст сообщения
+        name = escape_markdown(tournament_data.get('name', 'Новый турнир'))
+        type_text = escape_markdown(tournament_data.get('type', '—'))
+        gender = escape_markdown(tournament_data.get('gender', '—'))
+        category = escape_markdown(tournament_data.get('category', '—'))
+        level = escape_markdown(tournament_data.get('level', 'Не указан'))
+        age_group = escape_markdown(tournament_data.get('age_group', '—'))
+        duration = escape_markdown(tournament_data.get('duration', '—'))
+        participants_count = escape_markdown(str(tournament_data.get('participants_count', '—')))
+        comment = tournament_data.get('comment')
+        comment_escaped = escape_markdown(comment) if comment else None
+
+        text = (
+            f"🏆 *{name}*\n\n"
+            f"🌍 *Место:* {escape_markdown(city)}, {escape_markdown(country)}\n"
+            f"🎯 *Тип:* {type_text} • {gender}\n"
+            f"🏅 *Категория:* {category}\n"
+            f"🧩 *Уровень:* {level}\n"
+            f"👶 *Возраст:* {age_group}\n"
+            f"⏱ *Продолжительность:* {duration}\n"
+            f"👥 *Участников:* {participants_count}\n"
+        )
+        if comment_escaped:
+            text += f"\n💬 *Описание:* {comment_escaped}"
+        text += "\n\n#турнир"
+
+        # Кнопка "Участвовать" открывает просмотр турнира в боте
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="✅ Участвовать", callback_data=f"view_tournament:{tournament_id}"))
+
+        await bot.send_message(
+            chat_id=channel_id,
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=builder.as_markup(),
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        print(f"Ошибка отправки уведомления о новом турнире: {e}")
+
+async def send_tournament_application_to_channel(
+    bot: Bot,
+    tournament_id: str,
+    tournament_data: Dict[str, Any],
+    user_id: str,
+    user_data: Dict[str, Any],
+):
+    """Отправляет уведомление в канал о том, что пользователь записался в турнир, с кнопкой "Участвовать"."""
+    try:
+        sport = tournament_data.get('sport', '🎾Большой теннис')
+        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+
+        # Ссылка на профиль пользователя
+        user_link = await create_user_profile_link(user_data, user_id, additional=False)
+
+        name = escape_markdown(tournament_data.get('name', 'Турнир'))
+        current = len(tournament_data.get('participants', {}))
+        total = tournament_data.get('participants_count', '—')
+        total_text = escape_markdown(str(total))
+
+        text = (
+            "🎉 *Новый участник в турнире!*\n\n"
+            f"🏆 *Турнир:* {name}\n"
+            f"👤 *Игрок:* {user_link}\n"
+            f"👥 *Участников:* {current}/{total_text}\n\n"
+            "Присоединяйтесь и участвуйте!\n\n#турнир"
+        )
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="✅ Участвовать", callback_data=f"view_tournament:{tournament_id}"))
+
+        await bot.send_message(
+            chat_id=channel_id,
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=builder.as_markup(),
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        print(f"Ошибка отправки уведомления об участнике турнира: {e}")
