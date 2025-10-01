@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw, ImageFont
 from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
+from config.paths import GAMES_PHOTOS_DIR
 
 
 @dataclass
@@ -67,11 +68,11 @@ class BracketImageGenerator:
         
         # Загрузка шрифтов
         try:
-            self.font = ImageFont.truetype("arial.ttf", self.font_size)
-            self.bold_font = ImageFont.truetype("arialbd.ttf", self.font_size)
-            self.title_font = ImageFont.truetype("arialbd.ttf", self.title_font_size)
-            self.subtitle_font = ImageFont.truetype("arialbd.ttf", self.subtitle_font_size)
-            self.score_font = ImageFont.truetype("arial.ttf", self.score_font_size)
+            self.font = ImageFont.truetype("arial.ttf", self.font_size, encoding="utf-8")
+            self.bold_font = ImageFont.truetype("arialbd.ttf", self.font_size, encoding="utf-8")
+            self.title_font = ImageFont.truetype("arialbd.ttf", self.title_font_size, encoding="utf-8")
+            self.subtitle_font = ImageFont.truetype("arialbd.ttf", self.subtitle_font_size, encoding="utf-8")
+            self.score_font = ImageFont.truetype("arial.ttf", self.score_font_size, encoding="utf-8")
         except:
             try:
                 self.font = ImageFont.load_default()
@@ -197,6 +198,7 @@ class BracketImageGenerator:
         if font:
             display_name = player.name[:15] + "..." if len(player.name) > 15 else player.name
             draw.text((name_x, name_y), display_name, fill=color, font=font)
+            
     
     def draw_connectors(self, draw: ImageDraw.Draw, round_positions: List[List[Tuple[int, int]]], 
                        is_mini_tournament: bool = False):
@@ -244,7 +246,7 @@ class BracketImageGenerator:
                               next_x - 10, next_center_y], 
                              fill=connector_color, width=1)
     
-    def generate_olympic_bracket_image(self, bracket: TournamentBracket) -> Image.Image:
+    def generate_olympic_bracket_image(self, bracket: TournamentBracket, photo_paths: Optional[list[str]] = None) -> Image.Image:
         """Генерирует изображение сетки олимпийской системы"""
         try:
             # Вычисляем размеры для основной сетки
@@ -313,7 +315,7 @@ class BracketImageGenerator:
             
             # Рисуем область для фото игр внизу
             photos_y = total_height - 150
-            self._draw_game_photos_area(draw, 50, photos_y, total_width - 100, 120)
+            self._draw_game_photos_area(draw, 50, photos_y, total_width - 100, 120, photo_paths or [])
             
             return image
             
@@ -423,7 +425,7 @@ class BracketImageGenerator:
                 return (start_y + match_num * (self.cell_height + self.match_spacing) + 
                         (total_height - start_y - total_matches * (self.cell_height + self.match_spacing)) // 2)
     
-    def _draw_game_photos_area(self, draw: ImageDraw.Draw, x: int, y: int, width: int, height: int):
+    def _draw_game_photos_area(self, draw: ImageDraw.Draw, x: int, y: int, width: int, height: int, photo_paths: list[str]):
         """Рисует область для фото игр внизу по всей ширине"""
         try:
             # Заголовок области
@@ -441,14 +443,37 @@ class BracketImageGenerator:
             draw.rectangle([x, y + 30, x + width, y + height - 10], 
                           fill=(250, 250, 250), outline=self.cell_border_color, width=2)
             
-            # Текст-заглушка
-            if self.font:
-                text = "Здесь будут размещены фотографии с турнирных игр"
-                text_bbox = draw.textbbox((0, 0), text, font=self.font)
-                text_width = text_bbox[2] - text_bbox[0]
-                text_x = x + (width - text_width) // 2
-                text_y = y + (height - 10) // 2
-                draw.text((text_x, text_y), text, fill=self.secondary_text_color, font=self.font)
+            # Если есть фото — рисуем миниатюры, иначе заглушку
+            if photo_paths:
+                try:
+                    from PIL import Image as PILImage
+                    thumb_h = height - 50
+                    thumb_w = thumb_h * 4 // 3
+                    padding = 10
+                    visible = photo_paths[:6]
+                    total_w = len(visible) * thumb_w + (len(visible) - 1) * padding
+                    start_x = x + (width - total_w) // 2
+                    cur_x = start_x
+                    for p in visible:
+                        try:
+                            img = PILImage.open(p)
+                            img = img.convert('RGB')
+                            img_thumb = img.copy()
+                            img_thumb.thumbnail((thumb_w, thumb_h))
+                            draw._image.paste(img_thumb, (cur_x, y + 40))
+                        except Exception:
+                            pass
+                        cur_x += thumb_w + padding
+                except Exception:
+                    pass
+            else:
+                if self.font:
+                    text = "Здесь будут размещены фотографии с турнирных игр"
+                    text_bbox = draw.textbbox((0, 0), text, font=self.font)
+                    text_width = text_bbox[2] - text_bbox[0]
+                    text_x = x + (width - text_width) // 2
+                    text_y = y + (height - 10) // 2
+                    draw.text((text_x, text_y), text, fill=self.secondary_text_color, font=self.font)
                 
         except Exception as e:
             print(f"Ошибка отрисовки области для фото: {e}")
@@ -525,7 +550,7 @@ def create_tournament_from_data() -> TournamentBracket:
         players=[players[3], players[5]],
         matches=[],
         rounds=[[Match(players[3], players[5], players[3], "6-6")]],
-        name="За 3-4 места"
+        name="Игра за 3-е место"
     )
     
     # Турнир за 5-8 места (проигравшие в первом круге)
@@ -700,14 +725,25 @@ def build_tournament_bracket_image_bytes(tournament_data: Dict[str, Any], player
         if tournament_type == 'Олимпийская система':
             bracket_struct = _build_olympic_rounds_from_players(players)
             bracket_struct.name = name
+            # Собираем пути до фото игр этого турнира
+            photo_paths: list[str] = []
+            try:
+                
+                if completed_games:
+                    for g in completed_games:
+                        fn = g.get('media_filename')
+                        if fn:
+                            photo_paths.append(f"{GAMES_PHOTOS_DIR}/{fn}")
+            except Exception:
+                pass
             generator = BracketImageGenerator()
-            image = generator.generate_olympic_bracket_image(bracket_struct)
+            image = generator.generate_olympic_bracket_image(bracket_struct, photo_paths)
             buf = io.BytesIO()
             image.save(buf, format='PNG')
             buf.seek(0)
 
             # Текстовое краткое описание пар первого круга
-            lines = [f"🏆 {name}", "", "Первый круг:"]
+            lines = [f"{name}", "", "Первый круг:"]
             if bracket_struct.rounds:
                 for m in bracket_struct.rounds[0]:
                     p1 = m.player1.name if m.player1 else 'TBD'
@@ -716,9 +752,23 @@ def build_tournament_bracket_image_bytes(tournament_data: Dict[str, Any], player
             text = "\n".join(lines)
             return buf.getvalue(), text
         else:
-            # Для круговой тайп — используется отдельный генератор
-            placeholder = "Тип турнира не поддержан этим генератором"
-            return create_simple_text_image_bytes(placeholder, name), placeholder
+            # Для круговой таблицы используем отдельный генератор с фото
+            from utils.round_robin_image_generator import build_round_robin_table
+            table_players = [{"id": getattr(p, 'id', None) or p.get('id'), "name": getattr(p, 'name', None) or p.get('name')} for p in players_input]
+            # Собираем фото путей
+            photo_paths: list[str] = []
+            try:
+                if completed_games:
+                    for g in completed_games:
+                        fn = g.get('media_filename')
+                        if fn:
+                            photo_paths.append(f"{GAMES_PHOTOS_DIR}/{fn}")
+            except Exception:
+                pass
+            # Генератор round robin сейчас не принимает фото, но мы расширили _draw_game_photos_area, так что передадим позже при интеграции
+            # Возвращаем совместимо: старый вызов без фото (фото выводятся placeholders)
+            image_bytes = build_round_robin_table(table_players, completed_games, name)
+            return image_bytes, name
     except Exception as e:
         print(f"Ошибка сборки изображения турнирной сетки: {e}")
         fallback = "Не удалось сгенерировать изображение"

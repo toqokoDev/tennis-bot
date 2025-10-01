@@ -390,3 +390,18 @@ def get_sort_key(offer):
         time = datetime.min.time()  # Если время некорректно, ставим минимальное время
         
     return (date, time)
+
+def format_short_name(full_name: str) -> str:
+    """
+    Преобразует имя формата 'Даниил Щербаков' в 'Д. Щербаков'.
+    Если имя уже короткое или состоит из одного слова, возвращает как есть.
+    """
+    parts = full_name.strip().split()
+    if len(parts) == 0:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    first, last = parts[0], parts[-1]
+    if first:
+        return f"{first[0]}. {last}"
+    return last

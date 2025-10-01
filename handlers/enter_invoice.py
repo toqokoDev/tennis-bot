@@ -25,6 +25,31 @@ def format_rating(rating: float) -> str:
     return f"{rating:.1f}".rstrip('0').rstrip('.')
 
 router = Router()
+# --- Helpers to prevent duplicate tournament matches ---
+def _have_same_tournament_game(g: dict, tournament_id: str, user_a: str, user_b: str) -> bool:
+    try:
+        if g.get('tournament_id') != tournament_id:
+            return False
+        t1 = [str(x) for x in g.get('players', {}).get('team1', [])]
+        t2 = [str(x) for x in g.get('players', {}).get('team2', [])]
+        ua = str(user_a)
+        ub = str(user_b)
+        # Single players are recorded as one per team for tournament mode
+        return ((ua in t1 and ub in t2) or (ua in t2 and ub in t1))
+    except Exception:
+        return False
+
+async def _already_played_in_tournament(tournament_id: str, user_a: str, user_b: str) -> bool:
+    """Checks if there is already a recorded game between user_a and user_b for the given tournament."""
+    try:
+        games = await storage.load_games()
+        for g in games:
+            if _have_same_tournament_game(g, tournament_id, user_a, user_b):
+                return True
+        return False
+    except Exception:
+        return False
+
 
 # ID последнего сообщения для редактирования
 last_message_ids = {}
@@ -168,6 +193,14 @@ async def create_tournament_opponents_keyboard(tournament_id: str, current_user_
     
     # Получаем доступных соперников через менеджер турниров
     available_opponents = await tournament_manager.get_available_opponents(tournament_id, current_user_id)
+
+    # Фильтруем соперников, с которыми уже сыграна игра в этом турнире
+    filtered: list[dict] = []
+    for opp in available_opponents:
+        opp_id = str(opp.get('user_id'))
+        if not await _already_played_in_tournament(tournament_id, current_user_id, opp_id):
+            filtered.append(opp)
+    available_opponents = filtered
     
     if not available_opponents:
         builder.button(text="❌ Нет доступных соперников", callback_data="no_participants")
@@ -426,6 +459,17 @@ async def handle_tournament_opponent_selection(callback: types.CallbackQuery, st
     selected_opponent = users[opponent_id]
     selected_opponent['telegram_id'] = opponent_id
     
+    # Блокируем повторную игру в этом турнире
+    if await _already_played_in_tournament(tournament_id, current_user_id, opponent_id):
+        await callback.answer("Этот матч уже сыгран в этом турнире", show_alert=True)
+        # Обновим список соперников
+        keyboard = await create_tournament_opponents_keyboard(tournament_id, current_user_id)
+        await callback.message.edit_text(
+            "👥 Выберите соперника из участников турнира:",
+            reply_markup=keyboard
+        )
+        return
+
     # Сохраняем информацию о матче
     await state.update_data(opponent1=selected_opponent, tournament_match_id=match_id)
     await state.set_state(AddScoreState.selecting_set_score)

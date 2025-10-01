@@ -220,7 +220,10 @@ class EditTournamentStates(StatesGroup):
 class ViewTournamentsStates(StatesGroup):
     SELECT_SPORT = State()
     SELECT_COUNTRY = State()
+    COUNTRY_INPUT = State()
     SELECT_CITY = State()
+    CITY_INPUT = State()
+    SELECT_DISTRICT = State()
     SELECT_GENDER = State()
     SELECT_TYPE = State()
     VIEW_TOURNAMENT = State()

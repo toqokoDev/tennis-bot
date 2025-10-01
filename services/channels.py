@@ -64,7 +64,7 @@ async def send_registration_notification(message: types.Message, profile: dict):
             
             # Добавляем возраст и пол если есть
             if age_text and gender:
-                registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)} • {escape_markdown(gender)}\n"
+                registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)}\n"
             elif age_text:
                 registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)}\n"
             elif gender:
@@ -90,11 +90,9 @@ async def send_registration_notification(message: types.Message, profile: dict):
             
             # Добавляем возраст и пол если есть
             if age_text and gender:
-                registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)} • {escape_markdown(gender)}\n"
+                registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)}\n"
             elif age_text:
                 registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)}\n"
-            elif gender:
-                registration_text += f"{gender_emoji} *Пол:* {escape_markdown(gender)}\n"
             
             # Добавляем уровень игры только если он указан
             if profile.get('player_level'):
