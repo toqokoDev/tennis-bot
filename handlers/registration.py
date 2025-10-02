@@ -29,6 +29,8 @@ from utils.media import download_photo_to_path
 from utils.bot import show_current_data, show_profile
 from utils.validate import validate_date, validate_date_range, validate_future_date, validate_price
 from services.storage import storage
+from services.channels import send_tournament_application_to_channel
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 router = Router()
 
@@ -204,6 +206,66 @@ async def cmd_start(message: types.Message, state: FSMContext):
                     await message.answer("Профиль не найден.")
                     
                 return
+            elif start_param.startswith('join_tournament_'):
+                # Обработка deep-link для участия в турнире из канала
+                tournament_id = start_param.replace('join_tournament_', '')
+                # Если пользователь еще не зарегистрирован — попросим зарегистрироваться
+                if not await storage.is_user_registered(user_id):
+                    await message.answer(
+                        "❌ Сначала пройдите регистрацию, затем повторите ссылку для участия.")
+                    # Продолжим обычный start- flow регистрации ниже
+                else:
+                    # Регистрируем в турнире (если есть место и не записан)
+                    tournaments = await storage.load_tournaments()
+                    t = tournaments.get(tournament_id)
+                    if not t:
+                        await message.answer("❌ Турнир не найден")
+                        return
+                    participants = t.get('participants', {}) or {}
+                    # Проверка мест
+                    max_participants = int(t.get('participants_count', 0) or 0)
+                    if max_participants and len(participants) >= max_participants:
+                        await message.answer("❌ В этом турнире больше нет мест")
+                        return
+                    if str(user_id) in participants:
+                        # Уже участвует — покажем кнопку перехода
+                        kb = InlineKeyboardBuilder()
+                        kb.button(text="🏆 Открыть турнир", callback_data=f"view_tournament:{tournament_id}")
+                        kb.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
+                        kb.adjust(1)
+                        await message.answer(
+                            f"✅ Вы уже участвуете в турнире: {t.get('name', 'Турнир')}",
+                            reply_markup=kb.as_markup()
+                        )
+                        return
+                    # Добавляем участника
+                    users_all = await storage.load_users()
+                    u = users_all.get(str(user_id), {})
+                    participants[str(user_id)] = {
+                        'name': f"{u.get('first_name', '')} {u.get('last_name', '')}".strip(),
+                        'phone': u.get('phone', 'Не указан'),
+                        'added_at': datetime.now().isoformat(),
+                        'added_by': int(user_id)
+                    }
+                    t['participants'] = participants
+                    tournaments[tournament_id] = t
+                    await storage.save_tournaments(tournaments)
+                    # Уведомление в канал
+                    try:
+                        await send_tournament_application_to_channel(message.bot, tournament_id, t, str(user_id), u)
+                    except Exception:
+                        pass
+                    # Ответ пользователю с кнопками
+                    kb = InlineKeyboardBuilder()
+                    kb.button(text="🏆 Открыть турнир", callback_data=f"view_tournament:{tournament_id}")
+                    kb.button(text="📊 История игр", callback_data=f"tournament_games_history:{tournament_id}")
+                    kb.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
+                    kb.adjust(1)
+                    await message.answer(
+                        "✅ Вы добавлены в турнир!",
+                        reply_markup=kb.as_markup()
+                    )
+                    return
     
     # Загружаем сессию если есть
     session_data = await storage.load_session(user_id)

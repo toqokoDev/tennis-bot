@@ -5,6 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config.paths import BASE_DIR
 from config.profile import channels_id, tour_channel_id
+from config.config import BOT_USERNAME
 from utils.utils import create_user_profile_link, escape_markdown
 
 def format_rating(rating: float) -> str:
@@ -814,9 +815,10 @@ async def send_tournament_created_to_channel(bot: Bot, tournament_id: str, tourn
             text += f"\n💬 *Описание:* {comment_escaped}"
         text += "\n\n#турнир"
 
-        # Кнопка "Участвовать" открывает просмотр турнира в боте
+        # Кнопка "Участвовать" как ссылка с deep-link
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="✅ Участвовать", callback_data=f"view_tournament:{tournament_id}"))
+        deep_link = f"https://t.me/{BOT_USERNAME}?start=join_tournament_{tournament_id}"
+        builder.row(InlineKeyboardButton(text="✅ Участвовать", url=deep_link))
 
         await bot.send_message(
             chat_id=channel_id,
@@ -857,7 +859,8 @@ async def send_tournament_application_to_channel(
         )
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="✅ Участвовать", callback_data=f"view_tournament:{tournament_id}"))
+        deep_link = f"https://t.me/{BOT_USERNAME}?start=join_tournament_{tournament_id}"
+        builder.row(InlineKeyboardButton(text="✅ Участвовать", url=deep_link))
 
         await bot.send_message(
             chat_id=channel_id,
