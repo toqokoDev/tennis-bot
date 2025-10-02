@@ -17,6 +17,7 @@ from utils.tournament_manager import tournament_manager
 from utils.admin import is_admin
 from utils.media import save_media_file
 from utils.utils import calculate_age, calculate_new_ratings, create_user_profile_link, search_users
+from handlers.profile import calculate_level_from_points
 
 def format_rating(rating: float) -> str:
     """Форматирует рейтинг, убирая лишние нули после запятой"""
@@ -156,23 +157,23 @@ def create_media_keyboard() -> InlineKeyboardMarkup:
 
 # Создание inline клавиатуры для выбора турнира
 async def create_tournament_keyboard(current_user_id: str) -> InlineKeyboardMarkup:
-    """Создает клавиатуру для выбора турнира, в котором участвует пользователь.
-    Теперь доступны турниры до старта, если пользователь участвует и есть соперники."""
+    """Создает клавиатуру для выбора турнира, где пользователь может вносить счет.
+    Доступны только турниры со статусом 'started'."""
     tournaments = await storage.load_tournaments()
     
     builder = InlineKeyboardBuilder()
     
-    # Фильтруем турниры, в которых участвует пользователь и есть с кем играть (>=2 участников)
+    # Доступны турниры, в которых участвует пользователь и турнир запущен
     user_tournaments = {}
     for tournament_id, tournament_data in tournaments.items():
-        if tournament_data.get('status') not in ['active', 'started']:
+        if tournament_data.get('status') not in ['started']:
             continue
         participants = tournament_data.get('participants', {})
         if current_user_id in participants and len(participants) >= 2:
             user_tournaments[tournament_id] = tournament_data
     
     if not user_tournaments:
-        builder.button(text="❌ Нет доступных турниров с участием и соперником", callback_data="no_tournaments")
+        builder.button(text="❌ Нет запущенных турниров для внесения счета", callback_data="no_tournaments")
     else:
         for tournament_id, tournament_data in user_tournaments.items():
             name = tournament_data.get('name', 'Без названия')
@@ -191,6 +192,15 @@ async def create_tournament_opponents_keyboard(tournament_id: str, current_user_
 
     builder = InlineKeyboardBuilder()
     
+    # Запрещаем выбор соперника, если турнир не запущен
+    tournaments = await storage.load_tournaments()
+    t = tournaments.get(tournament_id, {})
+    if t.get('status') != 'started':
+        builder.button(text="⏳ Турнир еще не запущен админом", callback_data="no_participants")
+        builder.button(text="🔙 Назад", callback_data="back")
+        builder.adjust(1)
+        return builder.as_markup()
+
     # Получаем доступных соперников через менеджер турниров
     available_opponents = await tournament_manager.get_available_opponents(tournament_id, current_user_id)
 
@@ -1151,8 +1161,16 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         if winner_side == "team1":
             # Текущий пользователь — победитель
             users[current_id]['rating_points'] = new_winner_points
+            users[current_id]['player_level'] = calculate_level_from_points(
+                int(new_winner_points), 
+                users[current_id].get('sport', '🎾Большой теннис')
+            )
             if op_id in users:
                 users[op_id]['rating_points'] = new_loser_points
+                users[op_id]['player_level'] = calculate_level_from_points(
+                    int(new_loser_points), 
+                    users[op_id].get('sport', '🎾Большой теннис')
+                )
 
             # Дельты для game_data
             rating_changes_for_game[current_id] = float(new_winner_points - curr_old)
@@ -1168,8 +1186,16 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         else:
             # Соперник — победитель
             users[current_id]['rating_points'] = new_loser_points
+            users[current_id]['player_level'] = calculate_level_from_points(
+                int(new_loser_points), 
+                users[current_id].get('sport', '🎾Большой теннис')
+            )
             if op_id in users:
                 users[op_id]['rating_points'] = new_winner_points
+                users[op_id]['player_level'] = calculate_level_from_points(
+                    int(new_winner_points), 
+                    users[op_id].get('sport', '🎾Большой теннис')
+                )
 
             rating_changes_for_game[current_id] = float(new_loser_points - curr_old)
             rating_changes_for_game[op_id] = float(new_winner_points - opp_old)
@@ -1244,12 +1270,22 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         for p in winner_team:
             _id = pid(p)
             if _id and _id in users:
-                users[_id]['rating_points'] = float(users[_id].get('rating_points', 0)) + float(delta_winner_each)
+                new_points = float(users[_id].get('rating_points', 0)) + float(delta_winner_each)
+                users[_id]['rating_points'] = new_points
+                users[_id]['player_level'] = calculate_level_from_points(
+                    int(new_points), 
+                    users[_id].get('sport', '🎾Большой теннис')
+                )
 
         for p in loser_team:
             _id = pid(p)
             if _id and _id in users:
-                users[_id]['rating_points'] = float(users[_id].get('rating_points', 0)) + float(delta_loser_each)
+                new_points = float(users[_id].get('rating_points', 0)) + float(delta_loser_each)
+                users[_id]['rating_points'] = new_points
+                users[_id]['player_level'] = calculate_level_from_points(
+                    int(new_points), 
+                    users[_id].get('sport', '🎾Большой теннис')
+                )
 
         # Считаем rating_changes_for_game на основе old_ratings
         for p in (winner_team + loser_team):
@@ -1466,10 +1502,23 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
                 if opponent_id in users:
                     users[opponent_id]['games_wins'] = users[opponent_id].get('games_wins', 0) + 1
             
-            # Обновляем результат матча в турнире
+            # Обновляем результат матча в турнире и подготавливаем следующий раунд
             if match_id:
                 from utils.tournament_manager import tournament_manager
                 await tournament_manager.update_match_result(match_id, winner_id, data.get('score'))
+                # После обновления результата можно уведомить участников о новых матчах
+                try:
+                    from utils.tournament_notifications import TournamentNotifications
+                    from main import bot
+                    notifications = TournamentNotifications(bot)
+                    # Уведомим обоих игроков об обновлении (и потенциально новых назначениях)
+                    # Здесь можно расширить логику для отправки новых соперников, если сформированы пары
+                    # Оставляем базовое уведомление о том, что результат принят
+                    await callback.bot.send_message(current_user_id, "✅ Результат принят в турнире.")
+                    if opponent_id:
+                        await callback.bot.send_message(opponent_id, "ℹ️ Результат матча зафиксирован соперником.")
+                except Exception:
+                    pass
         
         # Для одиночной игры
         elif game_type == 'single':
@@ -1727,9 +1776,19 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
             opponent_id = data.get('opponent1', {}).get('telegram_id')
             
             # Откатываем рейтинг
-            users[current_user_id]['rating_points'] = data.get('old_rating', 0)
+            old_rating = data.get('old_rating', 0)
+            users[current_user_id]['rating_points'] = old_rating
+            users[current_user_id]['player_level'] = calculate_level_from_points(
+                int(old_rating), 
+                users[current_user_id].get('sport', '🎾Большой теннис')
+            )
             if opponent_id in users:
-                users[opponent_id]['rating_points'] = data.get('opponent_old_rating', 0)
+                opponent_old_rating = data.get('opponent_old_rating', 0)
+                users[opponent_id]['rating_points'] = opponent_old_rating
+                users[opponent_id]['player_level'] = calculate_level_from_points(
+                    int(opponent_old_rating), 
+                    users[opponent_id].get('sport', '🎾Большой теннис')
+                )
             
             # Откатываем статистику игр
             users[current_user_id]['games_played'] = max(0, users[current_user_id].get('games_played', 0) - 1)
@@ -1749,6 +1808,10 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
             for user_id, old_rating in old_ratings.items():
                 if user_id in users:
                     users[user_id]['rating_points'] = old_rating
+                    users[user_id]['player_level'] = calculate_level_from_points(
+                        int(old_rating), 
+                        users[user_id].get('sport', '🎾Большой теннис')
+                    )
             
             # Откатываем статистику игр для всех участников
             players = [

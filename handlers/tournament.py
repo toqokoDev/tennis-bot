@@ -783,8 +783,20 @@ async def build_and_render_tournament_image(tournament_data: dict, tournament_id
 
     # Для олимпийской системы — добавляем свободные места до минимума
     if tournament_type == 'Олимпийская система':
+        # Добавляем номера посева к именам игроков, чтобы изменения были видны на сетке
+        if seeding:
+            seed_index = {pid: i + 1 for i, pid in enumerate(seeding)}
+            players = [
+                Player(
+                    id=p.id,
+                    name=(f"№{seed_index.get(p.id)} {p.name}" if seed_index.get(p.id) else p.name),
+                    photo_url=getattr(p, 'photo_url', None),
+                    initial=getattr(p, 'initial', None),
+                )
+                for p in players
+            ]
         while len(players) < min_participants:
-            players.append(Player(id=f"empty_{len(players)}", name="Свободное место", photo_url=None, initial=None))
+            players.append(Player(id=f"empty_{len(players)}", name=" ", photo_url=None, initial=None))
 
     # Загружаем и нормализуем завершенные игры этого турнира
     completed_games: list[dict] = []
@@ -843,8 +855,8 @@ async def build_and_render_tournament_image(tournament_data: dict, tournament_id
     # Генерируем изображение сетки через утилиту
     try:
         if tournament_type == 'Круговая':
-            # Собираем компактный список игроков для таблицы
-            table_players = [{"id": p.id, "name": p.name} for p in players]
+            # Собираем компактный список игроков для таблицы (добавляем фото профиля)
+            table_players = [{"id": p.id, "name": p.name, "photo_path": getattr(p, 'photo_url', None)} for p in players]
             image_bytes = build_round_robin_table(table_players, completed_games, tournament_data.get('name', 'Турнир'))
             return image_bytes, "Круговая таблица"
         else:
@@ -2049,25 +2061,9 @@ async def select_gender_for_view(callback: CallbackQuery, state: FSMContext):
     city = data.get('selected_city')
 
     await state.update_data(selected_gender=gender)
-    await state.set_state(ViewTournamentsStates.SELECT_TYPE)
-
-    builder = InlineKeyboardBuilder()
-    for t in TOURNAMENT_TYPES:
-        builder.button(text=t, callback_data=f"view_tournament_type:{t}")
-    builder.adjust(2)
-
-    await callback.message.delete()
-    await callback.message.answer(
-        f"🏆 Просмотр турниров\n\n"
-        f"📋 Шаг 5/5: Выберите тип турнира\n"
-        f"✅ Вид спорта: {sport}\n"
-        f"✅ Страна: {country}\n"
-        f"✅ Город: {city}\n"
-        f"✅ Формат: {gender}\n\n"
-        f"Какой тип турнира вас интересует?",
-        reply_markup=builder.as_markup()
-    )
+    await _continue_view_without_type(callback, state)
     await callback.answer()
+    return
 
 def _auto_category_and_age(user_profile: dict) -> tuple[str, str, str]:
     """Определяет категорию, уровень текста и возрастную группу по профилю."""
@@ -2139,8 +2135,105 @@ def _auto_category_and_age(user_profile: dict) -> tuple[str, str, str]:
 
 @router.callback_query(F.data.startswith("view_tournament_type:"))
 async def select_type_for_view(callback: CallbackQuery, state: FSMContext):
-    """Финальный шаг: фильтрация по всем параметрам, авто-создание при отсутствии"""
-    tournament_type = callback.data.split(":", 1)[1]
+    """Совместимость: игнорируем тип и продолжаем без фильтра по типу"""
+    await _continue_view_without_type(callback, state)
+    await callback.answer()
+
+async def _continue_view_without_type(callback: CallbackQuery, state: FSMContext):
+    """Продолжает просмотр турниров без фильтрации по типу турнира."""
+    data = await state.get_data()
+    sport = data.get('selected_sport')
+    country = data.get('selected_country')
+    city = data.get('selected_city')
+    gender = data.get('selected_gender')
+    selected_district = data.get('selected_district', '')
+
+    tournaments = await storage.load_tournaments()
+    active_tournaments = {k: v for k, v in tournaments.items() if v.get('status') == 'active' and v.get('show_in_list', True)}
+
+    # Загружаем профиль пользователя для автоопределения
+    users = await storage.load_users()
+    user_profile = users.get(str(callback.from_user.id), {})
+    category, age_group, level_text, level_range = _auto_category_and_age(user_profile)
+    duration = "Многодневные"
+
+    # Сохраняем вычисленные параметры для пагинации
+    await state.update_data(
+        selected_category=category,
+        selected_age_group=age_group,
+        user_level_text=level_text,
+        selected_duration=duration,
+        selected_level_range=level_range
+    )
+
+    # Фильтруем по всем параметрам кроме типа турнира
+    def _district_match(t: dict) -> bool:
+        if city == "Москва" and selected_district:
+            return (t.get('district') or '') == selected_district
+        return True
+    filtered = {k: v for k, v in active_tournaments.items() if (
+        v.get('sport') == sport and v.get('country') == country and v.get('city') == city and
+        _district_match(v) and
+        v.get('gender') == gender and
+        v.get('category') == category and v.get('age_group') == age_group and v.get('duration', duration) == duration and
+        _is_level_match(level_text, v.get('level'))
+    )}
+
+    if not filtered:
+        # Готовим новый турнир, но НЕ сохраняем — только по нажатию "Участвовать"
+        base = {
+            'sport': sport,
+            'country': country,
+            'city': city,
+            'district': (selected_district if city == 'Москва' else ''),
+            'type': 'Круговая',
+            'gender': gender,
+            'category': category,
+            'level': level_range,
+            'age_group': age_group,
+            'duration': duration,
+            'participants_count': MIN_PARTICIPANTS.get('Круговая', 4),
+            'show_in_list': True,
+            'hide_bracket': False,
+            'comment': '',
+        }
+
+        # Сохраняем предложение в состоянии
+        await state.update_data(proposed_tournament=base)
+
+        # Подготовим красивое превью
+        name = generate_tournament_name(base, len(tournaments) + 1)
+        location = f"{base['city']}" + (f" ({base['district']})" if base.get('district') else "") + f", {base['country']}"
+        text = (
+            f"🏷️ {name}\n\n"
+            f"- Место: {location}\n"
+            f"- Тип: {base['type']}\n"
+            f"- Формат: {base['gender']}\n"
+            f"- Категория: {base['category']}\n"
+            f"- Возраст: {base['age_group']}\n"
+            f"- Продолжительность: {base['duration']}\n"
+            f"- Участников: {base['participants_count']}\n\n"
+            f"Нажмите \"Участвовать\" чтобы записаться на турнир."
+        )
+
+        builder = InlineKeyboardBuilder()
+        builder.button(text="✅ Участвовать", callback_data="apply_proposed_tournament")
+        builder.button(text="🔙 Назад к формату", callback_data=f"view_tournament_gender:{gender}")
+        builder.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
+        builder.adjust(1)
+
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(text, reply_markup=builder.as_markup())
+        return
+
+    # Показать список/первый турнир, если уже есть подходящие
+    await show_tournaments_list(callback, filtered, sport, country, city)
+
+async def _continue_view_with_type(callback: CallbackQuery, state: FSMContext, tournament_type: str):
+    """Продолжает просмотр турниров с указанным типом (используется и для админа, и для пользователя)."""
     # Сохраняем выбранный тип в состоянии для пагинации
     await state.update_data(selected_type=tournament_type)
 
@@ -2177,7 +2270,7 @@ async def select_type_for_view(callback: CallbackQuery, state: FSMContext):
     filtered = {k: v for k, v in active_tournaments.items() if (
         v.get('sport') == sport and v.get('country') == country and v.get('city') == city and
         _district_match(v) and
-        v.get('gender') == gender and v.get('type') == tournament_type and
+        v.get('gender') == gender and
         v.get('category') == category and v.get('age_group') == age_group and v.get('duration', duration) == duration and
         _is_level_match(level_text, v.get('level'))
     )}
@@ -2221,7 +2314,13 @@ async def select_type_for_view(callback: CallbackQuery, state: FSMContext):
 
         builder = InlineKeyboardBuilder()
         builder.button(text="✅ Участвовать", callback_data="apply_proposed_tournament")
-        builder.button(text="🔙 Назад к выбору типа", callback_data=f"view_tournament_gender:{gender}")
+        # Меняем текст кнопки "Назад" в зависимости от роли пользователя
+        try:
+            is_admin_user = await is_admin(callback.from_user.id)
+        except Exception:
+            is_admin_user = False
+        back_label = "🔙 Назад к выбору типа" if is_admin_user else "🔙 Назад к формату"
+        builder.button(text=back_label, callback_data=f"view_tournament_gender:{gender}")
         builder.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
         builder.adjust(1)
 
@@ -2230,12 +2329,10 @@ async def select_type_for_view(callback: CallbackQuery, state: FSMContext):
         except Exception:
             pass
         await callback.message.answer(text, reply_markup=builder.as_markup())
-        await callback.answer()
         return
 
     # Показать список/первый турнир, если уже есть подходящие
     await show_tournaments_list(callback, filtered, sport, country, city)
-    await callback.answer()
 
 # Функция для показа списка турниров
 async def show_tournaments_list(callback: CallbackQuery, tournaments: dict, sport: str, country: str, city: str):
@@ -2288,9 +2385,7 @@ async def show_tournaments_list(callback: CallbackQuery, tournaments: dict, spor
         builder.button(text="⬅️ Предыдущий", callback_data=f"view_tournament_prev:0")
         builder.button(text="Следующий ➡️", callback_data=f"view_tournament_next:0")
     
-    # Кнопка участия (только если пользователь еще не зарегистрирован)
-    if not is_registered:
-        builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
+    # Кнопка участия скрыта: вход в турнир только по заявкам/админ. Показ не нужен.
     
     # Кнопка истории игр (для всех пользователей)
     builder.button(text="📊 История игр", callback_data=f"tournament_games_history:{tournament_id}")
@@ -2308,10 +2403,8 @@ async def show_tournaments_list(callback: CallbackQuery, tournaments: dict, spor
     
     # Настраиваем расположение кнопок
     if total_tournaments > 1:
-        builder.adjust(2)  # Кнопки пагинации в одном ряду
-    if not is_registered:
-        builder.adjust(1)  # Кнопка участия в отдельном ряду
-    builder.adjust(1)  # Остальные кнопки в отдельных рядах
+        builder.adjust(2)
+    builder.adjust(1)
     
     # Создаем турнирную сетку (вынесено в утилиту)
     bracket_image, bracket_text = await build_and_render_tournament_image(tournament_data, tournament_id)
@@ -2364,7 +2457,7 @@ async def view_tournament_prev(callback: CallbackQuery, state: FSMContext):
     filtered_tournaments = {k: v for k, v in active_tournaments.items() if (
         v.get('sport') == sport and v.get('country') == country and v.get('city') == city and
         _district_match(v) and
-        v.get('gender') == gender and v.get('type') == tournament_type and
+        v.get('gender') == gender and
         v.get('category') == category and v.get('age_group') == age_group and v.get('duration', duration) == duration and
         _is_level_match(user_level_text, v.get('level'))
     )}
@@ -2496,7 +2589,7 @@ async def view_tournament_next(callback: CallbackQuery, state: FSMContext):
     filtered_tournaments = {k: v for k, v in active_tournaments.items() if (
         v.get('sport') == sport and v.get('country') == country and v.get('city') == city and
         _district_match(v) and
-        v.get('gender') == gender and v.get('type') == tournament_type and
+        v.get('gender') == gender and
         v.get('category') == category and v.get('age_group') == age_group and v.get('duration', duration) == duration and
         _is_level_match(user_level_text, v.get('level'))
     )}
@@ -2613,6 +2706,16 @@ async def apply_tournament_handler(callback: CallbackQuery):
     user_data = users.get(str(user_id), {})
     if not user_data:
         await callback.answer("❌ Сначала зарегистрируйтесь в системе")
+        return
+    
+    # Проверяем соответствие уровня игрока уровню турнира
+    user_level = str(user_data.get('player_level', ''))
+    tournament_level = tournament_data.get('level', '')
+    if not _is_level_match(user_level, tournament_level):
+        await callback.answer(
+            f"❌ Ваш уровень ({user_level}) не соответствует уровню турнира ({tournament_level})",
+            show_alert=True
+        )
         return
     
     participants = tournament_data.get('participants', {})
@@ -3101,6 +3204,22 @@ async def admin_accept_application(callback: CallbackQuery, state: FSMContext):
     
     if not user_data:
         await callback.answer("❌ Пользователь не найден в системе")
+        return
+    
+    # Проверяем соответствие уровня игрока уровню турнира
+    user_level = str(user_data.get('player_level', ''))
+    tournament_level = tournament_data.get('level', '')
+    if not _is_level_match(user_level, tournament_level):
+        await callback.answer(
+            f"❌ Уровень пользователя ({user_level}) не соответствует уровню турнира ({tournament_level})",
+            show_alert=True
+        )
+        # Отклоняем заявку
+        applications[app_id]['status'] = 'rejected'
+        applications[app_id]['rejected_at'] = datetime.now().isoformat()
+        applications[app_id]['rejected_by'] = callback.from_user.id
+        applications[app_id]['rejection_reason'] = 'Уровень не соответствует турниру'
+        await storage.save_tournament_applications(applications)
         return
     
     # Обновляем статус заявки
@@ -4489,7 +4608,17 @@ async def tournament_seeding_menu(callback: CallbackQuery):
         pass
     kb.row(InlineKeyboardButton(text="🔙 Назад", callback_data=f"view_tournament:{tournament_id}"))
 
-    await safe_edit_message(callback, "\n".join(text_lines), kb.as_markup())
+    # Рендерим изображение сетки, чтобы визуально подтвердить изменения посева
+    bracket_image, _ = await build_and_render_tournament_image(t, tournament_id)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.message.answer_photo(
+        photo=BufferedInputFile(bracket_image, filename="tournament_seeding.png"),
+        caption="\n".join(text_lines),
+        reply_markup=kb.as_markup()
+    )
     await callback.answer()
 
 @router.callback_query(F.data.startswith("tournament_seeding_save_start:"))

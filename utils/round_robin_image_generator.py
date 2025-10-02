@@ -1,10 +1,11 @@
 import io
+import os
 from typing import List, Dict, Any, Optional
 from PIL import Image, ImageDraw, ImageFont
 from PIL import Image as PILImage
 from PIL import Image, ImageDraw, ImageFont
 
-from config.paths import GAMES_PHOTOS_DIR
+from config.paths import GAMES_PHOTOS_DIR, BASE_DIR
 
 
 def _load_fonts():
@@ -81,13 +82,13 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     # Размеры таблицы
     cell_w = 140
     cell_h = 32
-    left_col_w = 220
+    left_col_w = 260
     top_row_h = 40
     padding = 20
     extra_cols = ["Игры", "Победы", "Очки", "Места"]
 
     width = padding * 2 + left_col_w + n * cell_w + len(extra_cols) * cell_w
-    photos_h = 120
+    photos_h = 160
     height = padding * 2 + top_row_h + n * cell_h + 80 + photos_h
 
     image = Image.new('RGB', (max(width, 800), height), (255, 255, 255))
@@ -96,10 +97,10 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     # Заголовок
     title_text = title
     try:
-        bbox = draw.textbbox((0, 0), title_text, font=title_font)
-        draw.text(((image.width - (bbox[2] - bbox[0])) // 2, 20), title_text, fill=(31, 41, 55), font=title_font)
+        bbox = draw.textbbox((0, 0), title_text, font=header_font)
+        draw.text(((image.width - (bbox[2] - bbox[0])) // 2, 20), title_text, fill=(31, 41, 55), font=header_font)
     except Exception:
-        draw.text((padding, 20), title_text, fill=(31, 41, 55), font=title_font)
+        draw.text((padding, 20), title_text, fill=(31, 41, 55), font=header_font)
 
     start_y = padding + 40
     start_x = padding
@@ -111,26 +112,88 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     table_h = top_row_h + n * cell_h
     draw.rectangle([table_x, table_y, table_x + table_w, table_y + table_h], outline=(209, 213, 219), width=2)
     
-    # Используем короткое имя: первая буква имени + фамилия
-    def _short_name(p):
-        name = p.get('name') or p.get('first_name') or 'Игрок'
-        parts = name.strip().split()
-        if len(parts) == 0:
-            return "Игрок"
+    # Инициалы (2 буквы) из имени/фамилии или name
+    def _initials(p: Dict[str, Any]) -> str:
+        first = (p.get('first_name') or '').strip()
+        last = (p.get('last_name') or '').strip()
+        if first or last:
+            a = first[:1].upper() if first else ''
+            b = last[:1].upper() if last else ''
+            return (a + b) if (a or b) else '??'
+        name = (p.get('name') or '').strip()
+        if name:
+            parts = name.split()
+            if len(parts) >= 2:
+                return (parts[0][:1] + parts[1][:1]).upper()
+            return (name[:2]).upper() if len(name) >= 2 else (name[:1].upper() or '??')
+        return '??'
+
+    # Короткое имя: первая буква имени + фамилия, либо инициалы если нет имени
+    def _short_name(p: Dict[str, Any]) -> str:
+        name = (p.get('name') or '').strip()
+        if not name:
+            return _initials(p)
+        parts = name.split()
         if len(parts) == 1:
             return parts[0]
         first, last = parts[0], parts[-1]
-        if first:
-            return f"{first[0]}. {last}"
-        return last
+        return (f"{first[:1]}. {last}").strip()
 
-    # Верхняя строка с именами
+    # Хелпер: вставка аватара в указанные координаты
+    def _paste_avatar(px: int, py: int, p: Dict[str, Any], size: int, font: ImageFont.FreeTypeFont) -> bool:
+        def paste_placeholder() -> bool:
+            try:
+                img = PILImage.new('RGBA', (size, size), (100, 150, 200, 255))
+                d = ImageDraw.Draw(img)
+                initials = _initials(p)
+                try:
+                    bb = d.textbbox((0, 0), initials, font=font)
+                    tw = bb[2] - bb[0]
+                    th = bb[3] - bb[1]
+                    tx = (size - tw) // 2
+                    ty = (size - th) // 2
+                    d.text((tx, ty), initials, fill=(255, 255, 255), font=font)
+                except Exception:
+                    d.text((size // 3, size // 3), initials, fill=(255, 255, 255))
+                draw._image.paste(img, (px, py), img)
+                return True
+            except Exception:
+                return False
+
+        path = p.get('photo_path') or p.get('photo_url')
+        if path:
+            try:
+                abs_path = path if os.path.isabs(path) else f"{BASE_DIR}/{path}"
+                if os.path.exists(abs_path):
+                    img = PILImage.open(abs_path)
+                    img = img.convert('RGBA')
+                    w, h = img.size
+                    side = min(w, h)
+                    left = (w - side) // 2
+                    top = (h - side) // 2
+                    img = img.crop((left, top, left + side, top + side))
+                    try:
+                        resample = Image.Resampling.LANCZOS
+                    except Exception:
+                        resample = Image.LANCZOS
+                    img = img.resize((size, size), resample)
+                    draw._image.paste(img, (px, py), img)
+                    return True
+            except Exception:
+                # Падать не будем — покажем заглушку с инициалами
+                return paste_placeholder()
+        # Нет пути к фото — рисуем заглушку
+        return paste_placeholder()
+
+    # Верхняя строка: аватар + имя/инициалы
     for j, p in enumerate(players):
         x0 = table_x + left_col_w + j * cell_w
         y0 = table_y
         draw.rectangle([x0, y0, x0 + cell_w, y0 + top_row_h], fill=(248, 250, 252), outline=(209, 213, 219))
+        pasted = _paste_avatar(x0 + 6, y0 + 5, p, max(24, top_row_h - 12), header_font)
         short_name = _short_name(p)
-        draw.text((x0 + 10, y0 + 12), short_name[:18] + ('…' if len(short_name) > 18 else ''), fill=(31, 41, 55), font=header_font)
+        name_x = x0 + (top_row_h if pasted else 10) + 6
+        draw.text((name_x, y0 + 12), short_name[:18] + ('…' if len(short_name) > 18 else ''), fill=(31, 41, 55), font=header_font)
 
     # Заголовки дополнительных колонок
     xh = table_x + left_col_w + n * cell_w
@@ -139,13 +202,16 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
         draw.text((xh + 10, table_y + 12), col_name, fill=(31, 41, 55), font=header_font)
         xh += cell_w
 
-    # Левая колонка с именами
+    # Левая колонка с аватаром и именем
     for i, p in enumerate(players):
         x0 = table_x
         y0 = table_y + top_row_h + i * cell_h
         draw.rectangle([x0, y0, x0 + left_col_w, y0 + cell_h], fill=(248, 250, 252), outline=(209, 213, 219))
+        # Аватар  (квадрат слева)
+        pasted = _paste_avatar(x0 + 8, y0 + 2, p, max(24, cell_h - 8), cell_font)
         short_name = _short_name(p)
-        draw.text((x0 + 10, y0 + 8), short_name[:26] + ('…' if len(short_name) > 26 else ''), fill=(31, 41, 55), font=cell_font)
+        name_x = x0 + (cell_h if pasted else 10) + 12
+        draw.text((name_x, y0 + 8), short_name[:30] + ('…' if len(short_name) > 30 else ''), fill=(31, 41, 55), font=header_font)
 
     # Диагональ «—» и пустые клетки
     # Результаты: создадим словарь для быстрого поиска, поддерживая разные форматы

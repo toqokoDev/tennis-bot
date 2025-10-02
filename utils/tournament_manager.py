@@ -57,6 +57,9 @@ class TournamentManager:
             
             tournaments[tournament_id] = tournament_data
             await self.storage.save_tournaments(tournaments)
+
+            # Автоматически завершаем BYE-матчи и подготавливаем следующие раунды
+            await self._rebuild_next_round(tournament_id)
             
             logger.info(f"Турнир {tournament_id} успешно запущен с {len(matches)} матчами")
             return True
@@ -243,6 +246,10 @@ class TournamentManager:
                         await self.storage.save_tournaments(tournaments)
                         
                         logger.info(f"Результат матча {match_id} обновлен: {winner_id} победил со счетом {score}")
+
+                        # Пересобираем сетку следующих раундов и продвигаем стадию при необходимости
+                        await self._rebuild_next_round(tournament_id)
+                        await self.advance_tournament_round(tournament_id)
                         return True
             
             logger.error(f"Матч {match_id} не найден")
@@ -251,6 +258,116 @@ class TournamentManager:
         except Exception as e:
             logger.error(f"Ошибка обновления результата матча {match_id}: {e}")
             return False
+
+    async def _rebuild_next_round(self, tournament_id: str) -> None:
+        """Автозакрывает BYE-матчи и создаёт матчи следующего раунда из победителей."""
+        try:
+            tournaments = await self.storage.load_tournaments()
+            t = tournaments.get(tournament_id, {})
+            if not t:
+                return
+            participants = t.get('participants', {}) or {}
+            matches = t.get('matches', []) or []
+
+            # Утилиты
+            def player_name(uid: str) -> str:
+                try:
+                    return participants.get(uid, {}).get('name', 'Игрок')
+                except Exception:
+                    return 'Игрок'
+
+            # 1) Автозавершаем BYE-матчи
+            changed = False
+            for m in matches:
+                if m.get('is_bye') and m.get('status') == 'pending':
+                    p1 = m.get('player1_id')
+                    p2 = m.get('player2_id')
+                    win = p1 or p2
+                    m['winner_id'] = win
+                    m['status'] = 'completed'
+                    m['score'] = m.get('score') or 'BYE'
+                    m['completed_at'] = datetime.now().isoformat()
+                    changed = True
+
+            if changed:
+                t['matches'] = matches
+                tournaments[tournament_id] = t
+                await self.storage.save_tournaments(tournaments)
+
+            # 2) Создаём матчи следующего раунда на основе победителей текущего
+            # Группируем матчи по раундам
+            rounds: Dict[int, List[dict]] = {}
+            for m in matches:
+                r = int(m.get('round', 0))
+                rounds.setdefault(r, []).append(m)
+            if not rounds:
+                return
+
+            max_round = max(rounds.keys())
+            for r in range(0, max_round + 1):
+                cur = sorted(rounds.get(r, []), key=lambda x: int(x.get('match_number', 0)))
+                # Собираем победителей текущего раунда
+                winners: List[str] = []
+                for m in cur:
+                    if m.get('status') == 'completed' and m.get('winner_id'):
+                        winners.append(m['winner_id'])
+                    else:
+                        winners.append(None)
+                # Если недостаточно победителей — не создаём следующий раунд
+                if len(winners) < 2:
+                    continue
+                next_r = r + 1
+                next_list = rounds.get(next_r, [])
+                # Строим пары победителей 0-1, 2-3, ...
+                for i in range(0, len(winners), 2):
+                    w1 = winners[i]
+                    w2 = winners[i + 1] if i + 1 < len(winners) else None
+                    if not w1 or not w2:
+                        continue
+                    target_match_number = i // 2
+                    # Ищем существующий матч следующего раунда
+                    existing = None
+                    for m in next_list or []:
+                        if int(m.get('match_number', -1)) == target_match_number:
+                            existing = m
+                            break
+                    if existing is None:
+                        # Создаём новый матч
+                        new_match = {
+                            'id': f"{tournament_id}_round_{next_r}_match_{target_match_number}",
+                            'tournament_id': tournament_id,
+                            'round': next_r,
+                            'match_number': target_match_number,
+                            'player1_id': w1,
+                            'player2_id': w2,
+                            'player1_name': player_name(w1),
+                            'player2_name': player_name(w2),
+                            'winner_id': None,
+                            'score': None,
+                            'status': 'pending',
+                            'is_bye': False,
+                            'created_at': datetime.now().isoformat()
+                        }
+                        matches.append(new_match)
+                        rounds.setdefault(next_r, []).append(new_match)
+                        changed = True
+                    else:
+                        # Дозаполняем игроков, если нужно
+                        if not existing.get('player1_id'):
+                            existing['player1_id'] = w1
+                            existing['player1_name'] = player_name(w1)
+                            changed = True
+                        if not existing.get('player2_id'):
+                            existing['player2_id'] = w2
+                            existing['player2_name'] = player_name(w2)
+                            changed = True
+
+            if changed:
+                t['matches'] = matches
+                tournaments[tournament_id] = t
+                await self.storage.save_tournaments(tournaments)
+        except Exception as e:
+            logger.error(f"Ошибка пересборки следующего раунда турнира {tournament_id}: {e}")
     
     async def advance_tournament_round(self, tournament_id: str) -> bool:
         """Переводит турнир на следующий раунд"""

@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageFont
 from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
-from config.paths import GAMES_PHOTOS_DIR
+from config.paths import GAMES_PHOTOS_DIR, BASE_DIR
 
 
 @dataclass
@@ -98,14 +98,34 @@ class BracketImageGenerator:
     
     def create_player_avatar(self, player: Player, size: int = 24) -> Image.Image:
         """Создает квадратный аватар игрока"""
+        # Пробуем загрузить пользовательское фото, если имеется
+        try:
+            if getattr(player, 'photo_url', None):
+                raw_path = str(player.photo_url)
+                abs_path = raw_path if os.path.isabs(raw_path) else os.path.join(BASE_DIR, raw_path)
+                if os.path.exists(abs_path):
+                    img = Image.open(abs_path)
+                    img = img.convert('RGBA')
+                    w, h = img.size
+                    side = min(w, h)
+                    left = (w - side) // 2
+                    top = (h - side) // 2
+                    img = img.crop((left, top, left + side, top + side))
+                    try:
+                        resample = Image.Resampling.LANCZOS  # Pillow>=9
+                    except Exception:
+                        resample = Image.LANCZOS
+                    img = img.resize((size, size), resample)
+                    return img
+        except Exception:
+            # Игнорируем и используем заглушку
+            pass
+
+        # Заглушка: цветной квадрат с инициалами
         avatar = Image.new('RGBA', (size, size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(avatar)
-        
-        # Если фото нет, создаем простой квадрат с цветом
         color = (100, 150, 200)
         draw.rectangle([0, 0, size, size], fill=color)
-        
-        # Инициалы
         initials = self._get_player_initials(player)
         if self.font:
             try:
@@ -115,9 +135,8 @@ class BracketImageGenerator:
                 x = (size - text_width) // 2
                 y = (size - text_height) // 2
                 draw.text((x, y), initials, fill=(255, 255, 255), font=self.font)
-            except:
+            except Exception:
                 pass
-        
         return avatar
     
     def _get_player_initials(self, player: Player) -> str:
@@ -228,7 +247,7 @@ class BracketImageGenerator:
                     draw.line([next_x - 10, prev_center_y, 
                               next_x - 10, next_center_y], 
                              fill=connector_color, width=1)
-                    # Счёт над стрелочкой для предыдущего матча 1
+                    # Только счёт над стрелкой для предыдущего матча 1
                     try:
                         match_obj = None
                         if round_num < len(rounds_matches):
@@ -259,7 +278,7 @@ class BracketImageGenerator:
                     draw.line([next_x - 10, prev_center_y, 
                               next_x - 10, next_center_y], 
                              fill=connector_color, width=1)
-                    # Счёт над стрелочкой для предыдущего матча 2
+                    # Только счёт над стрелкой для предыдущего матча 2
                     try:
                         match_obj = None
                         if round_num < len(rounds_matches):
@@ -295,7 +314,7 @@ class BracketImageGenerator:
             
             # Общие размеры изображения
             total_width = max(main_bracket_width + mini_tournaments_width + 100, 1200)
-            total_height = main_bracket_height + mini_tournaments_height + 200  # + место для фото
+            total_height = main_bracket_height + mini_tournaments_height + 260  # увеличили место для фото
             
             # Создаем изображение
             image = Image.new('RGB', (total_width, total_height), self.bg_color)
@@ -345,8 +364,8 @@ class BracketImageGenerator:
                     current_y += self.calculate_bracket_dimensions(mini_tournament)[1] + 100
             
             # Рисуем область для фото игр внизу
-            photos_y = total_height - 150
-            self._draw_game_photos_area(draw, 50, photos_y, total_width - 100, 120, photo_paths or [])
+            photos_y = total_height - 180
+            self._draw_game_photos_area(draw, 50, photos_y, total_width - 100, 150, photo_paths or [])
             
             return image
             
@@ -733,10 +752,20 @@ def _build_olympic_rounds_from_tournament(
         id_to_player: Dict[str, Player] = {}
         for pid, pdata in participants_map.items():
             name = str(pdata.get('name') or pid)
-            id_to_player[str(pid)] = Player(id=str(pid), name=name)
+            # Старайся сохранить фото, если оно есть в данных участника
+            p_photo = pdata.get('photo_url') or pdata.get('photo_path')
+            id_to_player[str(pid)] = Player(id=str(pid), name=name, photo_url=p_photo)
+        # Дополняем из players_fallback отсутствующие поля (например, фото)
         for p in players_fallback:
             if p.id not in id_to_player:
                 id_to_player[p.id] = p
+            else:
+                cur = id_to_player[p.id]
+                try:
+                    if not getattr(cur, 'photo_url', None) and getattr(p, 'photo_url', None):
+                        cur.photo_url = p.photo_url
+                except Exception:
+                    pass
 
         # Базовая структура раундов: из matches_raw, иначе — каркас по игрокам
         if not matches_raw:
@@ -867,8 +896,15 @@ def _build_olympic_rounds_from_tournament(
                     p2w = ws[2*j + 1] if 2*j + 1 < len(ws) else None
                     if j < len(next_round):
                         # Всегда синхронизируем, чтобы победители отображались корректно на картинке
-                        next_round[j].player1 = next_round[j].player1 or p1w
-                        next_round[j].player2 = next_round[j].player2 or p2w
+                        # Всегда синхронизируем участников, включая фото
+                        if p1w and next_round[j].player1 is None:
+                            next_round[j].player1 = p1w
+                        elif p1w and next_round[j].player1 and not getattr(next_round[j].player1, 'photo_url', None):
+                            next_round[j].player1.photo_url = getattr(p1w, 'photo_url', None)
+                        if p2w and next_round[j].player2 is None:
+                            next_round[j].player2 = p2w
+                        elif p2w and next_round[j].player2 and not getattr(next_round[j].player2, 'photo_url', None):
+                            next_round[j].player2.photo_url = getattr(p2w, 'photo_url', None)
                     else:
                         next_round.append(Match(player1=p1w, player2=p2w, match_number=j))
                 print(f"[BRACKET][OLY] Обновлён следующий раунд {next_idx+1}: матчей {len(next_round)}")
@@ -1155,6 +1191,7 @@ def build_tournament_bracket_image_bytes(tournament_data: Dict[str, Any], player
             except Exception:
                 pass
             generator = BracketImageGenerator()
+            # Пробросим фото профилей в первую отрисовку (у игроков уже photo_url), а в нижний блок передадим фото игр
             image = generator.generate_olympic_bracket_image(bracket_struct, photo_paths)
             print(f"[BRACKET] Сгенерировано изображение олимпийской сетки. Фото прикреплено: {len(photo_paths)}")
             buf = io.BytesIO()

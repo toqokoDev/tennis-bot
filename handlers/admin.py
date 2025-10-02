@@ -9,6 +9,7 @@ import logging
 
 from services.storage import storage
 from utils.admin import get_confirmation_keyboard, is_admin
+from handlers.profile import calculate_level_from_points
 
 admin_router = Router()
 logger = logging.getLogger(__name__)
@@ -984,7 +985,12 @@ async def confirm_delete_game(callback: CallbackQuery):
     # Откат рейтингов участников
     for player_id, rating_change in game_to_delete.get('rating_changes', {}).items():
         if player_id in users:
-            users[player_id]['rating_points'] -= rating_change
+            new_rating = users[player_id]['rating_points'] - rating_change
+            users[player_id]['rating_points'] = new_rating
+            users[player_id]['player_level'] = calculate_level_from_points(
+                int(new_rating), 
+                users[player_id].get('sport', '🎾Большой теннис')
+            )
             users[player_id]['games_played'] = max(0, users[player_id].get('games_played', 0) - 1)
             # Уменьшаем счетчик побед если пользователь был в выигравшей команде
             if (player_id in game_to_delete.get('players', {}).get('team1', []) and 
@@ -1113,7 +1119,12 @@ async def ban_user_handler(callback: CallbackQuery):
         if user_in_game:
             for player_id, rating_change in game.get('rating_changes', {}).items():
                 if player_id in users:
-                    users[player_id]['rating_points'] -= rating_change
+                    new_rating = users[player_id]['rating_points'] - rating_change
+                    users[player_id]['rating_points'] = new_rating
+                    users[player_id]['player_level'] = calculate_level_from_points(
+                        int(new_rating), 
+                        users[player_id].get('sport', '🎾Большой теннис')
+                    )
                     users[player_id]['games_played'] = max(0, users[player_id].get('games_played', 0) - 1)
                     if (user_id in game.get('players', {}).get('team1', []) and 
                         game.get('score', '').startswith('6')):

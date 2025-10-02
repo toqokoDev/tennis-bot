@@ -14,6 +14,7 @@ from services.storage import storage
 from utils.admin import is_admin
 from utils.bot import show_profile
 from utils.media import download_photo_to_path
+from handlers.profile import calculate_level_from_points
 
 admin_edit_router = Router()
 
@@ -413,22 +414,27 @@ async def admin_save_level_edit(message: types.Message, state: FSMContext):
         return
     
     try:
-        level = int(message.text.strip())
-        if level < 0:
-            await message.answer("❌ Уровень не может быть отрицательным. Попробуйте еще раз:")
+        rating = int(message.text.strip())
+        if rating < 0:
+            await message.answer("❌ Рейтинг не может быть отрицательным. Попробуйте еще раз:")
             return
     except ValueError:
-        await message.answer("❌ Пожалуйста, введите корректное число для уровня:")
+        await message.answer("❌ Пожалуйста, введите корректное число для рейтинга:")
         return
     
     users = await storage.load_users()
     
     if user_id in users:
-        users[user_id]['level'] = level
-        users[user_id]['level_edited'] = True  # Помечаем, что уровень был отредактирован
+        # Автоматически рассчитываем уровень на основе очков
+        sport = users[user_id].get('sport', '🎾Большой теннис')
+        calculated_level = calculate_level_from_points(rating, sport)
+        
+        users[user_id]['rating_points'] = rating
+        users[user_id]['player_level'] = calculated_level
+        users[user_id]['rating_edited'] = True  # Помечаем, что рейтинг был отредактирован
         await storage.save_users(users)
         
-        await message.answer("✅ Уровень обновлен!")
+        await message.answer(f"✅ Рейтинг обновлен!\n📊 Новый уровень: {calculated_level}")
         await show_profile(message, users[user_id])
     else:
         await message.answer("❌ Профиль не найден")

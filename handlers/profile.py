@@ -19,6 +19,41 @@ from utils.media import download_photo_to_path
 from services.storage import storage
 from handlers.registration import check_profile_completeness, get_missing_fields_text
 
+def calculate_level_from_points(rating_points: int, sport: str) -> str:
+    """
+    Вычисляет уровень игрока на основе его рейтинговых очков
+    
+    Args:
+        rating_points: Количество рейтинговых очков
+        sport: Вид спорта
+    
+    Returns:
+        Строка с уровнем (например, "2.5")
+    """
+    config = get_sport_config(sport)
+    level_type = config.get("level_type", "tennis")
+    
+    # Выбираем соответствующий словарь уровней
+    if level_type == "table_tennis_rating" or level_type == "table_tennis":
+        levels = table_tennis_levels
+    else:
+        levels = tennis_levels
+    
+    # Сортируем уровни по очкам
+    sorted_levels = sorted(levels.items(), key=lambda x: x[1]["points"])
+    
+    # Находим подходящий уровень
+    for i, (level, data) in enumerate(sorted_levels):
+        if rating_points < data["points"]:
+            # Если это первый уровень, возвращаем его
+            if i == 0:
+                return level
+            # Иначе возвращаем предыдущий уровень
+            return sorted_levels[i - 1][0]
+    
+    # Если очков больше максимума, возвращаем максимальный уровень
+    return sorted_levels[-1][0]
+
 async def migrate_profile_data(old_sport: str, new_sport: str, profile: dict) -> dict:
     """
     Мигрирует данные профиля при смене вида спорта
@@ -525,23 +560,27 @@ async def save_level_edit(message: types.Message, state: FSMContext):
                 await message.answer("❌ Рейтинг не может быть отрицательным. Попробуйте еще раз:")
                 return
             
-            # Сохраняем рейтинг
-            users[user_key]['player_level'] = users[user_key].get('player_level', 1)
+            # Автоматически рассчитываем уровень на основе очков
+            calculated_level = calculate_level_from_points(rating, sport)
+            
+            # Сохраняем рейтинг и уровень
+            users[user_key]['player_level'] = calculated_level
             users[user_key]['rating_points'] = rating
             users[user_key]['rating_edited'] = True
             await storage.save_users(users)
             
-            await message.answer("✅ Рейтинг обновлен!")
+            await message.answer(f"✅ Рейтинг обновлен!\n📊 Ваш уровень: {calculated_level}")
             await show_profile(message, users[user_key])
             
         except ValueError:
-            # Если не удалось преобразовать в число, сохраняем как текст
-            users[user_key]['player_level'] = users[user_key].get('player_level', 1)
-            users[user_key]['rating_points'] = 1000  # Базовый рейтинг для текстового рейтинга
+            # Если не удалось преобразовать в число, используем базовые значения
+            calculated_level = calculate_level_from_points(1000, sport)
+            users[user_key]['player_level'] = calculated_level
+            users[user_key]['rating_points'] = 1000  # Базовый рейтинг
             users[user_key]['rating_edited'] = True
             await storage.save_users(users)
             
-            await message.answer("✅ Рейтинг обновлен!")
+            await message.answer(f"✅ Рейтинг обновлен!\n📊 Ваш уровень: {calculated_level}")
             await show_profile(message, users[user_key])
     else:
         await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
