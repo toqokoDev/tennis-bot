@@ -691,6 +691,103 @@ def _build_olympic_rounds_from_players(players: List[Player]) -> TournamentBrack
         print(f"Ошибка построения структуры олимпийской сетки: {e}")
         return TournamentBracket(players=players, matches=[], rounds=[[]], name="Турнир", tournament_type="Олимпийская система")
 
+def _build_olympic_rounds_from_tournament(tournament_data: Dict[str, Any], players_fallback: List[Player]) -> TournamentBracket:
+    """Строит структуру раундов из состояния турнира: participants + matches.
+
+    - Если есть matches: используем их для заполнения раундов, победителей и счетов
+    - Если матчей нет: возвращаем структуру из игроков
+    - Если следующих раундов нет, но есть победители предыдущего, создаем плейсхолдеры с победителями
+    """
+    try:
+        matches_raw: List[Dict[str, Any]] = tournament_data.get('matches', []) or []
+        participants_map: Dict[str, Dict[str, Any]] = tournament_data.get('participants', {}) or {}
+        # Карта id -> Player
+        id_to_player: Dict[str, Player] = {}
+        for pid, pdata in participants_map.items():
+            name = str(pdata.get('name') or pid)
+            id_to_player[str(pid)] = Player(id=str(pid), name=name)
+        for p in players_fallback:
+            if p.id not in id_to_player:
+                id_to_player[p.id] = p
+
+        if not matches_raw:
+            return _build_olympic_rounds_from_players(list(id_to_player.values()))
+
+        # Группируем матчи по раундам
+        from collections import defaultdict
+        round_to_matches: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+        max_round = 0
+        for m in matches_raw:
+            rnd = int(m.get('round', 0))
+            round_to_matches[rnd].append(m)
+            max_round = max(max_round, rnd)
+
+        # Сортируем внутри раундов по match_number
+        for rnd in round_to_matches:
+            round_to_matches[rnd] = sorted(round_to_matches[rnd], key=lambda x: int(x.get('match_number', 0)))
+
+        # Создаем структуру раундов
+        rounds: List[List[Match]] = []
+        for rnd in range(0, max_round + 1):
+            current_round_matches = []
+            raw_list = round_to_matches.get(rnd, [])
+            for raw in raw_list:
+                p1_id = raw.get('player1_id')
+                p2_id = raw.get('player2_id')
+                p1 = id_to_player.get(str(p1_id)) if p1_id else None
+                p2 = id_to_player.get(str(p2_id)) if p2_id else None
+                score = raw.get('score')
+                winner_id = raw.get('winner_id')
+                winner = id_to_player.get(str(winner_id)) if winner_id else None
+                is_bye = bool(raw.get('is_bye'))
+                mm = Match(player1=p1, player2=p2, winner=winner, score=score, is_bye=is_bye, match_number=int(raw.get('match_number', 0)))
+                current_round_matches.append(mm)
+            rounds.append(current_round_matches)
+
+        # Если следующих раундов нет, но есть победители предыдущего — создадим каркас следующего раунда
+        def winners_of_round(rmatches: List[Match]) -> List[Optional[Player]]:
+            ws: List[Optional[Player]] = []
+            for m in rmatches:
+                if m.is_bye and (m.player1 or m.player2):
+                    ws.append(m.player1 or m.player2)
+                elif m.winner:
+                    ws.append(m.winner)
+                else:
+                    ws.append(None)
+            return ws
+
+        # Добавляем последующие раунды каркасом, пока больше одного претендента
+        current_round = rounds[0] if rounds else []
+        while current_round:
+            ws = winners_of_round(current_round)
+            if len(ws) <= 1:
+                break
+            next_round_size = (len(ws) + 1) // 2
+            next_round: List[Match] = []
+            for i in range(0, len(ws), 2):
+                p1w = ws[i] if i < len(ws) else None
+                p2w = ws[i + 1] if i + 1 < len(ws) else None
+                next_round.append(Match(player1=p1w, player2=p2w, match_number=len(next_round)))
+            # Если уже существует следующий раунд, не дублируем
+            if len(rounds) <= rounds.index(current_round) + 1:
+                rounds.append(next_round)
+            current_round = next_round
+
+        # Соберем плоский список матчей
+        flat_matches = [m for rnd in rounds for m in rnd]
+
+        bracket = TournamentBracket(
+            players=list(id_to_player.values()),
+            matches=flat_matches,
+            rounds=rounds,
+            name=tournament_data.get('name', 'Турнир'),
+            tournament_type='Олимпийская система'
+        )
+        return bracket
+    except Exception as e:
+        print(f"Ошибка построения сетки из состояния турнира: {e}")
+        return _build_olympic_rounds_from_players(players_fallback)
+
 def create_simple_text_image_bytes(text: str, title: str = "Информация") -> bytes:
     """Создает простое изображение с заголовком и текстом и возвращает его как bytes (PNG)."""
     image = Image.new('RGB', (1000, 500), (255, 255, 255))
@@ -746,7 +843,8 @@ def build_tournament_bracket_image_bytes(tournament_data: Dict[str, Any], player
         players = _normalize_players(players_input)
 
         if tournament_type == 'Олимпийская система':
-            bracket_struct = _build_olympic_rounds_from_players(players)
+            # Строим сетку по фактическим матчам, если они есть, чтобы отображались пары, счет и победители
+            bracket_struct = _build_olympic_rounds_from_tournament(tournament_data, players)
             bracket_struct.name = name
             # Собираем пути до фото игр этого турнира
             photo_paths: list[str] = []
