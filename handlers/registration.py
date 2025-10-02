@@ -265,7 +265,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
                         "✅ Вы добавлены в турнир!",
                         reply_markup=kb.as_markup()
                     )
-                    return
+                return
     
     # Загружаем сессию если есть
     session_data = await storage.load_session(user_id)

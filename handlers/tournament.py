@@ -786,14 +786,48 @@ async def build_and_render_tournament_image(tournament_data: dict, tournament_id
         while len(players) < min_participants:
             players.append(Player(id=f"empty_{len(players)}", name="Свободное место", photo_url=None, initial=None))
 
-    # Загружаем завершенные игры этого турнира
+    # Загружаем и нормализуем завершенные игры этого турнира
     completed_games: list[dict] = []
     try:
         games = await storage.load_games()
+        normalized: list[dict] = []
         for g in games:
-            if g.get('tournament_id') == tournament_id:
-                completed_games.append(g)
-        completed_games.sort(key=lambda x: x.get('date') or x.get('created_at', ''), reverse=True)
+            if g.get('tournament_id') != tournament_id:
+                continue
+            if g.get('type') not in (None, 'tournament'):
+                continue
+            # Извлекаем игроков (поддержка разных форматов)
+            p = g.get('players') or {}
+            team1_list: list[str] = []
+            team2_list: list[str] = []
+            if isinstance(p, dict):
+                t1 = p.get('team1') or []
+                t2 = p.get('team2') or []
+                if t1:
+                    team1_list = [str(t1[0])] if not isinstance(t1[0], dict) else [str(t1[0].get('id'))]
+                if t2:
+                    team2_list = [str(t2[0])] if not isinstance(t2[0], dict) else [str(t2[0].get('id'))]
+            elif isinstance(p, list) and len(p) >= 2:
+                a, b = p[0], p[1]
+                team1_list = [str(a)] if not isinstance(a, dict) else [str(a.get('id'))]
+                team2_list = [str(b)] if not isinstance(b, dict) else [str(b.get('id'))]
+
+            norm_game = {
+                'tournament_id': tournament_id,
+                'score': g.get('score') or (', '.join(g.get('sets', []) or [])),
+                'players': {
+                    'team1': team1_list,
+                    'team2': team2_list,
+                },
+                'winner_id': str(g.get('winner_id')) if g.get('winner_id') is not None else None,
+                'media_filename': g.get('media_filename'),
+                'date': g.get('date') or g.get('created_at'),
+                'status': g.get('status') or 'completed',
+            }
+            normalized.append(norm_game)
+        # Сортируем по дате по убыванию
+        completed_games = sorted(normalized, key=lambda x: x.get('date') or '', reverse=True)
+        logger.info(f"[BRACKET][HANDLER] Собрано игр для турнира {tournament_id}: {len(completed_games)}")
     except Exception as e:
         logger.error(f"Ошибка при загрузке игр: {e}")
 
