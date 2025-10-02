@@ -1342,6 +1342,48 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
     games = await storage.load_games()
     games.append(game_data)
 
+    # Если это турнирная игра — добавим/обновим запись матча в самом турнире
+    try:
+        if game_type == 'tournament' and data.get('tournament_id'):
+            tournaments = await storage.load_tournaments()
+            tid = data.get('tournament_id')
+            t = tournaments.get(tid, {})
+            t_matches = t.get('matches') or []
+            # Идентификация матча: по составу пар (без учета порядка)
+            def key_of(p1: str | None, p2: str | None):
+                if not p1 or not p2:
+                    return None
+                a, b = sorted([str(p1), str(p2)])
+                return f"{a}__{b}"
+            new_key = key_of(current_id, pid(opponent1))
+            updated = False
+            seen_keys = set()
+            for m in t_matches:
+                mk = key_of(str(m.get('player1_id')), str(m.get('player2_id')))
+                if mk:
+                    seen_keys.add(mk)
+                if new_key and mk == new_key:
+                    # обновим счет и победителя
+                    m['score'] = score
+                    m['winner_id'] = winner_id_for_record
+                    updated = True
+                    break
+            if not updated and new_key:
+                # Добавляем новый матч в список
+                t_matches.append({
+                    'round': data.get('tournament_round', 0),
+                    'match_number': data.get('tournament_match_number', 0),
+                    'player1_id': current_id,
+                    'player2_id': pid(opponent1),
+                    'score': score,
+                    'winner_id': winner_id_for_record
+                })
+            t['matches'] = t_matches
+            tournaments[tid] = t
+            await storage.save_tournaments(tournaments)
+    except Exception as e:
+        print(f"[TOURNAMENT][MATCHES] Не удалось обновить матчи турнира: {e}")
+
     # Сохраняем игры и пользователей
     await storage.save_games(games)
     await storage.save_users(users)

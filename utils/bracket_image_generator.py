@@ -230,8 +230,12 @@ class BracketImageGenerator:
                              fill=connector_color, width=1)
                     # Счёт над стрелочкой для предыдущего матча 1
                     try:
-                        match_obj = rounds_matches[round_num][prev_match1_idx]
-                        if match_obj and match_obj.score and self.score_font:
+                        match_obj = None
+                        if round_num < len(rounds_matches):
+                            cur_round_matches = rounds_matches[round_num]
+                            if prev_match1_idx < len(cur_round_matches):
+                                match_obj = cur_round_matches[prev_match1_idx]
+                        if match_obj and getattr(match_obj, 'score', None) and self.score_font:
                             score_text = str(match_obj.score)
                             bbox = draw.textbbox((0, 0), score_text, font=self.score_font)
                             text_w = bbox[2] - bbox[0]
@@ -257,8 +261,12 @@ class BracketImageGenerator:
                              fill=connector_color, width=1)
                     # Счёт над стрелочкой для предыдущего матча 2
                     try:
-                        match_obj = rounds_matches[round_num][prev_match2_idx]
-                        if match_obj and match_obj.score and self.score_font:
+                        match_obj = None
+                        if round_num < len(rounds_matches):
+                            cur_round_matches = rounds_matches[round_num]
+                            if prev_match2_idx < len(cur_round_matches):
+                                match_obj = cur_round_matches[prev_match2_idx]
+                        if match_obj and getattr(match_obj, 'score', None) and self.score_font:
                             score_text = str(match_obj.score)
                             bbox = draw.textbbox((0, 0), score_text, font=self.score_font)
                             text_w = bbox[2] - bbox[0]
@@ -771,6 +779,20 @@ def _build_olympic_rounds_from_tournament(
                     print(f"  - [{mm.match_number}] {p1.name if p1 else 'TBD'} vs {p2.name if p2 else 'TBD'} | score={score or '-'} | winner={(winner.name if winner else '-')} | bye={is_bye}")
                 rounds.append(current_round_matches)
 
+        # Гарантируем наличие полного дерева до финала (даже если в данных не хватает последнего раунда)
+        try:
+            if rounds:
+                matches_in_round = len(rounds[-1])
+                while matches_in_round > 1:
+                    next_round: List[Match] = []
+                    for j in range(matches_in_round // 2):
+                        next_round.append(Match(player1=None, player2=None, match_number=j))
+                    rounds.append(next_round)
+                    print(f"[BRACKET][OLY] Достроен каркас раунда: матчей {len(next_round)}")
+                    matches_in_round = len(next_round)
+        except Exception as e:
+            print(f"[BRACKET][OLY] Ошибка достройки дерева раундов: {e}")
+
         # Наложим результаты из завершённых игр, если в матчах они отсутствуют
         try:
             if completed_games:
@@ -844,10 +866,9 @@ def _build_olympic_rounds_from_tournament(
                     p1w = ws[2*j] if 2*j < len(ws) else None
                     p2w = ws[2*j + 1] if 2*j + 1 < len(ws) else None
                     if j < len(next_round):
-                        if not next_round[j].player1 and p1w:
-                            next_round[j].player1 = p1w
-                        if not next_round[j].player2 and p2w:
-                            next_round[j].player2 = p2w
+                        # Всегда синхронизируем, чтобы победители отображались корректно на картинке
+                        next_round[j].player1 = next_round[j].player1 or p1w
+                        next_round[j].player2 = next_round[j].player2 or p2w
                     else:
                         next_round.append(Match(player1=p1w, player2=p2w, match_number=j))
                 print(f"[BRACKET][OLY] Обновлён следующий раунд {next_idx+1}: матчей {len(next_round)}")
@@ -865,11 +886,195 @@ def _build_olympic_rounds_from_tournament(
         # Соберем плоский список матчей
         flat_matches = [m for rnd in rounds for m in rnd]
 
+        # Построим дополнительные мини-турниры за места из placement-матчей
+        additional_tournaments: List[TournamentBracket] = []
+        try:
+            placement_raw = [mr for mr in (tournament_data.get('matches') or []) if mr.get('placement')]
+            if placement_raw:
+                # Группируем: 5-8, 7th, 5th объединяем в один ключ "5-8"; остальное отдельно
+                def placement_key(val: str) -> str:
+                    # Не объединяем 5th и 7th — нужны отдельные подписи
+                    return str(val)
+                grouped: Dict[str, Dict[int, List[Dict[str, Any]]]] = {}
+                for mr in placement_raw:
+                    pk = placement_key(mr.get('placement'))
+                    rnd = int(mr.get('round', 0))
+                    grouped.setdefault(pk, {}).setdefault(rnd, []).append(mr)
+
+                for pk, per_round in grouped.items():
+                    # Сортируем матчи в каждом раунде
+                    for rnd in list(per_round.keys()):
+                        try:
+                            per_round[rnd] = sorted(per_round[rnd], key=lambda x: int(x.get('match_number', 0)))
+                        except Exception:
+                            pass
+                    try:
+                        max_r = max(per_round.keys()) if per_round else -1
+                    except Exception:
+                        max_r = -1
+                    mini_rounds: List[List[Match]] = []
+                    for r_index in range(0, max_r + 1):
+                        lst = per_round.get(r_index, [])
+                        mini_lst: List[Match] = []
+                        for raw in lst:
+                            try:
+                                p1 = id_to_player.get(str(raw.get('player1_id'))) if raw.get('player1_id') else None
+                                p2 = id_to_player.get(str(raw.get('player2_id'))) if raw.get('player2_id') else None
+                                score = raw.get('score')
+                                win = id_to_player.get(str(raw.get('winner_id'))) if raw.get('winner_id') else None
+                                mnum = int(raw.get('match_number', 0)) if raw.get('match_number') is not None else 0
+                                mini_lst.append(Match(player1=p1, player2=p2, winner=win, score=score, match_number=mnum, is_placement=True))
+                            except Exception:
+                                continue
+                        mini_rounds.append(mini_lst)
+
+                    # Наложим результаты завершённых игр и на мини-турниры
+                    try:
+                        if completed_games:
+                            def norm(x):
+                                return str(x) if x is not None else None
+                            results_map: Dict[tuple, Dict[str, Any]] = {}
+                            for g in completed_games:
+                                gp = g.get('players') or {}
+                                if not isinstance(gp, dict):
+                                    continue
+                                t1 = gp.get('team1') or []
+                                t2 = gp.get('team2') or []
+                                if not t1 or not t2:
+                                    continue
+                                a = norm(t1[0])
+                                b = norm(t2[0])
+                                if not a or not b:
+                                    continue
+                                key = tuple(sorted([a, b]))
+                                results_map[key] = {'score': g.get('score'), 'winner_id': norm(g.get('winner_id'))}
+                            for rnd_matches in mini_rounds:
+                                for m in rnd_matches:
+                                    a = norm(m.player1.id) if m.player1 else None
+                                    b = norm(m.player2.id) if m.player2 else None
+                                    if not a or not b:
+                                        continue
+                                    res = results_map.get(tuple(sorted([a, b])))
+                                    if res:
+                                        if not m.score and res.get('score'):
+                                            m.score = res.get('score')
+                                        if not m.winner and res.get('winner_id'):
+                                            wid = res.get('winner_id')
+                                            if m.player1 and m.player1.id == wid:
+                                                m.winner = m.player1
+                                            elif m.player2 and m.player2.id == wid:
+                                                m.winner = m.player2
+                    except Exception:
+                        pass
+
+                    # Название мини-турнира
+                    if pk == '3rd':
+                        mini_name = 'Игры за 3 место'
+                    elif pk == '5th':
+                        mini_name = 'Игра за 5 место'
+                    elif pk == '7th':
+                        mini_name = 'Игра за 7 место'
+                    elif pk == '5-8':
+                        mini_name = 'За 5–8 места'
+                    else:
+                        mini_name = f'Доп. матчи: {pk}'
+
+                    additional_tournaments.append(
+                        TournamentBracket(
+                            players=list(id_to_player.values()),
+                            matches=[m for r in mini_rounds for m in r],
+                            rounds=mini_rounds,
+                            name=mini_name,
+                            tournament_type='Олимпийская система'
+                        )
+                    )
+            # Fallback: если placement-матчей нет в данных турнира — строим 3-е и 5–8 места из текущих раундов/результатов
+            if not additional_tournaments:
+                print("[BRACKET][OLY] placement-матчи не найдены — строю мини-сетки по результатам раундов")
+                # Карта результатов из completed_games
+                def norm2(x):
+                    return str(x) if x is not None else None
+                results_map2: Dict[tuple, Dict[str, Any]] = {}
+                try:
+                    if completed_games:
+                        for g in completed_games:
+                            gp = g.get('players') or {}
+                            if not isinstance(gp, dict):
+                                continue
+                            t1 = gp.get('team1') or []
+                            t2 = gp.get('team2') or []
+                            if not t1 or not t2:
+                                continue
+                            a = norm2(t1[0])
+                            b = norm2(t2[0])
+                            if not a or not b:
+                                continue
+                            key = tuple(sorted([a, b]))
+                            results_map2[key] = {'score': g.get('score'), 'winner_id': norm2(g.get('winner_id'))}
+                except Exception:
+                    pass
+
+                # 3-е место из проигравших полуфиналов
+                if len(rounds) >= 2 and len(rounds[-2]) >= 2:
+                    sf = rounds[-2]
+                    losers_sf: List[Player] = []
+                    for m in sf:
+                        if m.player1 and m.player2 and m.winner:
+                            losers_sf.append(m.player2 if m.winner.id == m.player1.id else m.player1)
+                    if len(losers_sf) == 2:
+                        # Создаем матч за 3-е и накладываем счет из results_map2
+                        m3 = Match(player1=losers_sf[0], player2=losers_sf[1], is_placement=True)
+                        res = results_map2.get(tuple(sorted([losers_sf[0].id, losers_sf[1].id])))
+                        if res:
+                            m3.score = res.get('score')
+                            wid = res.get('winner_id')
+                            if wid == losers_sf[0].id:
+                                m3.winner = losers_sf[0]
+                            elif wid == losers_sf[1].id:
+                                m3.winner = losers_sf[1]
+                        additional_tournaments.append(
+                            TournamentBracket(
+                                players=list(id_to_player.values()),
+                                matches=[m3],
+                                rounds=[[m3]],
+                                name='Игра за 3-е место',
+                                tournament_type='Олимпийская система'
+                            )
+                        )
+
+                # 5–8 места из проигравших четвертьфиналов
+                if rounds and len(rounds[0]) >= 4:
+                    qf = rounds[0]
+                    losers_qf: List[Player] = []
+                    for m in qf:
+                        if m.player1 and m.player2 and m.winner:
+                            losers_qf.append(m.player2 if m.winner.id == m.player1.id else m.player1)
+                    if len(losers_qf) >= 2:
+                        # Составим мини-сетку по проигравшим
+                        mini = _build_olympic_rounds_from_players(losers_qf[:4])
+                        # Наложим результаты
+                        for rr in mini.rounds:
+                            for mm in rr:
+                                if mm.player1 and mm.player2:
+                                    res = results_map2.get(tuple(sorted([mm.player1.id, mm.player2.id])))
+                                    if res:
+                                        mm.score = mm.score or res.get('score')
+                                        wid = res.get('winner_id')
+                                        if wid == (mm.player1.id if mm.player1 else None):
+                                            mm.winner = mm.player1
+                                        elif wid == (mm.player2.id if mm.player2 else None):
+                                            mm.winner = mm.player2
+                        mini.name = 'За 5–8 места'
+                        additional_tournaments.append(mini)
+        except Exception as e:
+            print(f"[BRACKET][OLY] Ошибка построения доп. турниров: {e}")
+
         bracket = TournamentBracket(
             players=list(id_to_player.values()),
             matches=flat_matches,
             rounds=rounds,
             name=tournament_data.get('name', 'Турнир'),
+            additional_tournaments=additional_tournaments if additional_tournaments else None,
             tournament_type='Олимпийская система'
         )
         print(f"[BRACKET][OLY] Итог: раундов {len(rounds)}, всего матчей {len(flat_matches)}")
