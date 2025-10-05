@@ -4596,10 +4596,7 @@ async def tournament_seeding_menu(callback: CallbackQuery):
     if not t:
         await callback.answer("❌ Турнир не найден")
         return
-    if t.get('type') != 'Олимпийская система':
-        await safe_edit_message(callback, "ℹ️ Посев применяется только к олимпийской системе.")
-        await callback.answer()
-        return
+    # Посев теперь доступен и для круговой системы — порядок влияет на генерацию расписания
     seeding = await _ensure_seeding(tournament_id)
     users = await storage.load_users()
 
@@ -4608,7 +4605,10 @@ async def tournament_seeding_menu(callback: CallbackQuery):
     for idx, uid in enumerate(seeding, start=1):
         name = users.get(uid, {}).get('first_name') or users.get(uid, {}).get('name') or str(uid)
         text_lines.append(f"{idx}. {name}")
-    text_lines.append(_format_first_round_pairs(seeding, users))
+    if t.get('type') == 'Олимпийская система':
+        text_lines.append(_format_first_round_pairs(seeding, users))
+    else:
+        text_lines.append("\nКруговая система: порядок влияет на составление календаря матчей.")
 
     # Клавиатура: переместить вверх/вниз, перемешать, сохранить и запустить, назад
     kb = InlineKeyboardBuilder()
@@ -4740,7 +4740,10 @@ async def tournament_seeding_move(callback: CallbackQuery):
     for idx_new, uid in enumerate(seeding, start=1):
         name = users.get(uid, {}).get('first_name') or users.get(uid, {}).get('name') or str(uid)
         text_lines.append(f"{idx_new}. {name}")
-    text_lines.append(_format_first_round_pairs(seeding, users))
+    if t.get('type') == 'Олимпийская система':
+        text_lines.append(_format_first_round_pairs(seeding, users))
+    else:
+        text_lines.append("\nКруговая система: порядок влияет на составление календаря матчей.")
 
     # Клавиатура
     kb = InlineKeyboardBuilder()
@@ -4801,7 +4804,10 @@ async def tournament_seeding_shuffle(callback: CallbackQuery):
     for idx_new, uid in enumerate(seeding, start=1):
         name = users.get(uid, {}).get('first_name') or users.get(uid, {}).get('name') or str(uid)
         text_lines.append(f"{idx_new}. {name}")
-    text_lines.append(_format_first_round_pairs(seeding, users))
+    if t.get('type') == 'Олимпийская система':
+        text_lines.append(_format_first_round_pairs(seeding, users))
+    else:
+        text_lines.append("\nКруговая система: порядок влияет на составление календаря матчей.")
 
     # Клавиатура
     kb = InlineKeyboardBuilder()

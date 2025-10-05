@@ -131,8 +131,17 @@ class TournamentManager:
                 matches.append(match_data)
 
         elif tournament_type == "Круговая":
-            # Каждый с каждым. Порядок случайный, пар дубликатов нет
-            random.shuffle(participant_ids)
+            # Каждый с каждым. Если есть посев — используем его порядок; иначе случайный
+            ordered = list((tournament_data or {}).get('seeding') or [])
+            seen = set()
+            if ordered:
+                ordered = [pid for pid in ordered if pid in participants and not (pid in seen or seen.add(pid))]
+                remaining = [pid for pid in participant_ids if pid not in seen]
+                if remaining:
+                    random.shuffle(remaining)
+                participant_ids = ordered + remaining
+            else:
+                random.shuffle(participant_ids)
             for i, p1 in enumerate(participant_ids):
                 for p2 in participant_ids[i + 1:]:
                     match_data = {
