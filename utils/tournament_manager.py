@@ -47,7 +47,7 @@ class TournamentManager:
             tournament_type = tournament_data.get('type', 'Олимпийская система')
             
             # Проводим жеребьевку
-            matches = self._conduct_draw(participants, tournament_type, tournament_id)
+            matches = self._conduct_draw(participants, tournament_type, tournament_id, tournament_data)
             
             # Обновляем статус турнира
             tournament_data['status'] = 'started'
@@ -68,59 +68,82 @@ class TournamentManager:
             logger.error(f"Ошибка запуска турнира {tournament_id}: {e}")
             return False
     
-    def _conduct_draw(self, participants: Dict[str, Any], tournament_type: str, tournament_id: str) -> List[Dict[str, Any]]:
-        """Проводит жеребьевку для турнира"""
+    def _conduct_draw(self, participants: Dict[str, Any], tournament_type: str, tournament_id: str, tournament_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Проводит жеребьевку для турнира.
+
+        Логика:
+        - Для олимпийской системы используем сохранённый посев `seeding` (если есть),
+          иначе формируем порядок случайно. Пары первого круга — (1–2), (3–4), ...
+          Недостающие слоты заполняем BYE (игрок отсутствует, is_bye=True).
+        - Для круговой системы — каждый с каждым (порядок случайный).
+        """
         import random
-        
-        matches = []
+
+        matches: List[Dict[str, Any]] = []
         participant_ids = list(participants.keys())
-        
+
+        if not participant_ids:
+            return matches
+
         if tournament_type == "Олимпийская система":
-            # Олимпийская система - случайная жеребьевка
-            random.shuffle(participant_ids)
-            
-            # Добавляем BYE если нужно
-            bracket_size = 2 ** math.ceil(math.log2(len(participant_ids)))
-            while len(participant_ids) < bracket_size:
-                participant_ids.append("BYE")
-            
-            # Создаем матчи первого раунда
-            for i in range(0, len(participant_ids), 2):
-                player1_id = participant_ids[i]
-                player2_id = participant_ids[i + 1] if i + 1 < len(participant_ids) else None
-                
+            # Используем сохранённый посев из данных турнира, если он есть
+            seeding = list((tournament_data or {}).get('seeding') or [])
+
+            # Отфильтруем посев от отсутствующих и дополним оставшимися участниками
+            seen = set()
+            ordered: List[str] = []
+            for pid in seeding:
+                if pid in participants and pid not in seen:
+                    ordered.append(pid)
+                    seen.add(pid)
+            remaining = [pid for pid in participant_ids if pid not in seen]
+            if remaining:
+                random.shuffle(remaining)
+                ordered.extend(remaining)
+
+            # Доводим до степени двойки с BYE (None)
+            size = len(ordered)
+            bracket_size = 1 if size == 0 else 2 ** math.ceil(math.log2(size))
+            while len(ordered) < bracket_size:
+                ordered.append(None)  # BYE слот
+
+            # Формируем пары (1–2), (3–4), ...
+            for i in range(0, len(ordered), 2):
+                p1 = ordered[i]
+                p2 = ordered[i + 1] if i + 1 < len(ordered) else None
+
+                is_bye = (p1 is None) or (p2 is None)
                 match_data = {
                     'id': f"{tournament_id}_round_0_match_{i//2}",
                     'tournament_id': tournament_id,
                     'round': 0,
                     'match_number': i // 2,
-                    'player1_id': player1_id if player1_id != "BYE" else None,
-                    'player2_id': player2_id if player2_id != "BYE" else None,
-                    'player1_name': participants[player1_id]['name'] if player1_id != "BYE" else "BYE",
-                    'player2_name': participants[player2_id]['name'] if player2_id != "BYE" else "BYE",
+                    'player1_id': p1,
+                    'player2_id': p2,
+                    'player1_name': (participants.get(p1, {}).get('name') if p1 else 'BYE'),
+                    'player2_name': (participants.get(p2, {}).get('name') if p2 else 'BYE'),
                     'winner_id': None,
                     'score': None,
                     'status': 'pending',
-                    'is_bye': player1_id == "BYE" or player2_id == "BYE",
+                    'is_bye': is_bye,
                     'created_at': datetime.now().isoformat()
                 }
                 matches.append(match_data)
-                
+
         elif tournament_type == "Круговая":
-            # Круговая система - каждый с каждым
+            # Каждый с каждым. Порядок случайный, пар дубликатов нет
             random.shuffle(participant_ids)
-            
-            for i, player1_id in enumerate(participant_ids):
-                for j, player2_id in enumerate(participant_ids[i+1:], i+1):
+            for i, p1 in enumerate(participant_ids):
+                for p2 in participant_ids[i + 1:]:
                     match_data = {
                         'id': f"{tournament_id}_round_0_match_{len(matches)}",
                         'tournament_id': tournament_id,
                         'round': 0,
                         'match_number': len(matches),
-                        'player1_id': player1_id,
-                        'player2_id': player2_id,
-                        'player1_name': participants[player1_id]['name'],
-                        'player2_name': participants[player2_id]['name'],
+                        'player1_id': p1,
+                        'player2_id': p2,
+                        'player1_name': participants[p1]['name'],
+                        'player2_name': participants[p2]['name'],
                         'winner_id': None,
                         'score': None,
                         'status': 'pending',
@@ -128,8 +151,216 @@ class TournamentManager:
                         'created_at': datetime.now().isoformat()
                     }
                     matches.append(match_data)
-        
+
         return matches
+
+    async def _notify_pending_matches(self, tournament_id: str) -> None:
+        """Отправляет уведомления о назначенных матчах, если оба игрока известны и уведомление ещё не отправлено."""
+        try:
+            tournaments = await self.storage.load_tournaments()
+            t = tournaments.get(tournament_id, {})
+            matches = t.get('matches', []) or []
+            if not matches:
+                return
+            from utils.tournament_notifications import TournamentNotifications
+            try:
+                from main import bot
+            except Exception:
+                bot = None
+            if not bot:
+                return
+            notifier = TournamentNotifications(bot)
+            changed = False
+            for m in matches:
+                if m.get('status') == 'pending' and not m.get('is_bye', False) and m.get('player1_id') and m.get('player2_id') and not m.get('notified'):
+                    ok = await notifier.notify_match_assignment(tournament_id, m)
+                    if ok:
+                        m['notified'] = True
+                        changed = True
+            if changed:
+                t['matches'] = matches
+                tournaments[tournament_id] = t
+                await self.storage.save_tournaments(tournaments)
+        except Exception as e:
+            logger.error(f"Ошибка уведомления о назначенных матчах {tournament_id}: {e}")
+
+    async def _notify_completion_with_places(self, tournament_id: str) -> None:
+        """Если турнир завершён, отправляет участникам сообщения об итоговых местах."""
+        try:
+            tournaments = await self.storage.load_tournaments()
+            t = tournaments.get(tournament_id, {})
+            if not t:
+                return
+            participants = t.get('participants', {}) or {}
+            matches = t.get('matches', []) or []
+            if not participants:
+                return
+            # Проверяем завершение: все матчи завершены или BYE
+            pending = [m for m in matches if m.get('status') != 'completed' and not m.get('is_bye', False)]
+            if pending:
+                return
+            # Обновим статус турнира
+            t['status'] = 'finished'
+            t['finished_at'] = datetime.now().isoformat()
+
+            # Готовим вычисление мест
+            places: Dict[str, str] = {}
+            summary_lines: List[str] = []
+            t_type = t.get('type', 'Олимпийская система')
+
+            if t_type == 'Круговая':
+                # Подсчёт 3/1/0 и тай-брейк по разнице сетов между равными по очкам
+                def parse_sets(score_text: str) -> List[tuple[int, int]]:
+                    out: List[tuple[int, int]] = []
+                    for s in [x.strip() for x in str(score_text or '').split(',') if ':' in x]:
+                        try:
+                            a, b = s.split(':')
+                            out.append((int(a), int(b)))
+                        except Exception:
+                            continue
+                    return out
+                ids = [str(pid) for pid in participants.keys()]
+                points = {pid: 0 for pid in ids}
+                tie_sd = {pid: 0 for pid in ids}
+                res_map: Dict[tuple, Dict[str, Any]] = {}
+                for m in matches:
+                    p1 = str(m.get('player1_id')) if m.get('player1_id') is not None else None
+                    p2 = str(m.get('player2_id')) if m.get('player2_id') is not None else None
+                    if not p1 or not p2:
+                        continue
+                    sets = parse_sets(m.get('score'))
+                    a_sets = sum(1 for x, y in sets if x > y)
+                    b_sets = sum(1 for x, y in sets if y > x)
+                    key = tuple(sorted([p1, p2]))
+                    res_map[key] = {'a': p1, 'b': p2, 'a_sets': a_sets, 'b_sets': b_sets}
+                    # Очки 3/1/0
+                    if a_sets > b_sets:
+                        points[p1] += 3
+                    elif b_sets > a_sets:
+                        points[p2] += 3
+                    else:
+                        points[p1] += 1
+                        points[p2] += 1
+                # Тай-брейк внутри групп равных очков: сумма разницы сетов в очных
+                from collections import defaultdict
+                pts_groups = defaultdict(list)
+                for pid in ids:
+                    pts_groups[points[pid]].append(pid)
+                for grp in pts_groups.values():
+                    if len(grp) <= 1:
+                        continue
+                    for pid in grp:
+                        sd = 0
+                        for opp in grp:
+                            if opp == pid:
+                                continue
+                            rec = res_map.get(tuple(sorted([pid, opp])))
+                            if not rec:
+                                continue
+                            if rec['a'] == pid:
+                                sd += rec['a_sets'] - rec['b_sets']
+                            else:
+                                sd += rec['b_sets'] - rec['a_sets']
+                        tie_sd[pid] = sd
+                order = sorted(ids, key=lambda pid: (points.get(pid, 0), tie_sd.get(pid, 0)), reverse=True)
+                # Итоговые места
+                for idx, pid in enumerate(order, start=1):
+                    places[pid] = f"{idx} место"
+                # Резюме топ-3
+                def name_of(uid: str) -> str:
+                    return participants.get(uid, {}).get('name', uid)
+                summary_lines = [
+                    f"🥇 1 место: {name_of(order[0])}" if order else "",
+                    f"🥈 2 место: {name_of(order[1])}" if len(order) > 1 else "",
+                    f"🥉 3 место: {name_of(order[2])}" if len(order) > 2 else "",
+                ]
+            else:
+                # Олимпийская система: чемпион/финалист и диапазоны для остальных по раунду вылета
+                if not matches:
+                    return
+                max_round = max(int(m.get('round', 0)) for m in matches)
+                final_match = None
+                for m in matches:
+                    if int(m.get('round', 0)) == max_round:
+                        final_match = m
+                        break
+                champion = str(final_match.get('winner_id')) if final_match else None
+                runner_up = None
+                if final_match and champion:
+                    a = str(final_match.get('player1_id'))
+                    b = str(final_match.get('player2_id'))
+                    runner_up = a if b == champion else b
+                # Функции имён
+                def pname(uid: str | None) -> str:
+                    if not uid:
+                        return "—"
+                    return participants.get(uid, {}).get('name', uid)
+                # Расставим места
+                if champion:
+                    places[champion] = "1 место"
+                if runner_up:
+                    places[runner_up] = "2 место"
+                # Для остальных по раунду вылета
+                # Вычислим размер сетки как число участников первого раунда
+                first_round_matches = [m for m in matches if int(m.get('round', 0)) == 0]
+                bracket_size = max(2, len(first_round_matches) * 2)
+                # Индекс раунда, где игрок проиграл
+                for uid in participants.keys():
+                    suid = str(uid)
+                    if suid in places:
+                        continue
+                    # Найти матч, где игрок проиграл
+                    lost_round = None
+                    for m in matches:
+                        if m.get('status') != 'completed':
+                            continue
+                        p1 = str(m.get('player1_id')) if m.get('player1_id') is not None else None
+                        p2 = str(m.get('player2_id')) if m.get('player2_id') is not None else None
+                        if p1 != suid and p2 != suid:
+                            continue
+                        winner = str(m.get('winner_id')) if m.get('winner_id') is not None else None
+                        if winner and winner != suid:
+                            lost_round = int(m.get('round', 0))
+                    if lost_round is None:
+                        # Никогда не проиграл (мог пройти по BYE и вылететь не зафиксировано) — ставим последний известный диапазон
+                        lost_round = 0
+                    # Диапазон мест для проигравших в этом раунде
+                    upper = bracket_size // (2 ** max(0, lost_round))
+                    lower = upper // 2 + 1
+                    if lower > upper:
+                        lower = upper
+                    places[suid] = f"{lower}-{upper} место"
+                summary_lines = [
+                    f"🥇 Чемпион: {pname(champion)}",
+                    f"🥈 Финалист: {pname(runner_up)}",
+                ]
+
+            # Сохраним изменения в турнире
+            tournaments[tournament_id] = t
+            await self.storage.save_tournaments(tournaments)
+
+            # Рассылка сообщений участникам
+            try:
+                from main import bot
+            except Exception:
+                bot = None
+            if not bot:
+                return
+            summary = "\n".join([line for line in summary_lines if line])
+            for uid in participants.keys():
+                msg = (
+                    f"🏁 Турнир завершён!\n\n"
+                    f"🏆 {t.get('name', 'Турнир')}\n"
+                    f"📍 {t.get('city', '')} {('(' + t.get('district','') + ')') if t.get('district') else ''}\n\n"
+                    f"{summary}\n\n"
+                    f"📣 Ваш результат: {places.get(str(uid), '—')}"
+                )
+                try:
+                    await bot.send_message(int(uid), msg)
+                except Exception as e:
+                    logger.error(f"Не удалось отправить сообщение пользователю {uid}: {e}")
+        except Exception as e:
+            logger.error(f"Ошибка уведомлений о завершении турнира {tournament_id}: {e}")
     
     async def get_tournament_matches(self, tournament_id: str) -> List[Dict[str, Any]]:
         """Получает матчи турнира"""
@@ -250,6 +481,10 @@ class TournamentManager:
                         # Пересобираем сетку следующих раундов и продвигаем стадию при необходимости
                         await self._rebuild_next_round(tournament_id)
                         await self.advance_tournament_round(tournament_id)
+                        # Уведомим участников о назначенных матчах
+                        await self._notify_pending_matches(tournament_id)
+                        # Если турнир завершён — уведомим об итогах и местах
+                        await self._notify_completion_with_places(tournament_id)
                         return True
             
             logger.error(f"Матч {match_id} не найден")

@@ -24,6 +24,9 @@ class TournamentNotifications:
             tournament_type = tournament_data.get('type', 'Олимпийская система')
             matches = tournament_data.get('matches', [])
             
+            logger.info(f"Начинаю отправку уведомлений для турнира {tournament_id} ({tournament_name})")
+            logger.info(f"Участников: {len(participants)}, матчей: {len(matches)}")
+            
             # Загружаем данные пользователей для получения username
             users = await storage.load_users()
             
@@ -31,35 +34,41 @@ class TournamentNotifications:
             success_count = 0
             for user_id, participant_data in participants.items():
                 try:
+                    logger.info(f"Обработка участника {user_id}...")
                     user_data = users.get(user_id, {})
                     username = user_data.get('username', '')
                     username_text = f"@{username}" if username else "нет username"
                     
-                    # Находим матчи этого пользователя
+                    # Находим матчи этого пользователя (нормализуем ID к строкам)
                     user_matches = []
                     for match in matches:
-                        if match['player1_id'] == user_id or match['player2_id'] == user_id:
+                        match_p1 = str(match.get('player1_id', ''))
+                        match_p2 = str(match.get('player2_id', ''))
+                        if match_p1 == str(user_id) or match_p2 == str(user_id):
                             user_matches.append(match)
                     
+                    logger.info(f"Для участника {user_id} найдено матчей: {len(user_matches)}")
+                    
                     if not user_matches:
+                        logger.warning(f"У участника {user_id} нет матчей, пропускаем уведомление")
                         continue
                     
-                    # Формируем персональное сообщение
-                    message = f"🏆 *Турнир начался!*\n\n"
+                    # Формируем персональное сообщение (используем HTML вместо Markdown для надежности)
+                    message = f"🏆 <b>Турнир начался!</b>\n\n"
                     message += f"📋 Название: {tournament_name}\n"
                     message += f"⚔️ Тип: {tournament_type}\n"
                     message += f"👤 Ваше имя: {participant_data.get('name', 'Неизвестно')}\n\n"
                     
                     if tournament_type == "Олимпийская система":
-                        message += f"🎯 *Ваш соперник в первом раунде:*\n"
+                        message += f"🎯 <b>Ваш соперник в первом раунде:</b>\n"
                         for match in user_matches:
-                            if match['status'] == 'pending' and not match['is_bye']:
-                                if match['player1_id'] == user_id:
-                                    opponent_name = match['player2_name']
-                                    opponent_id = match['player2_id']
+                            if match.get('status') == 'pending' and not match.get('is_bye'):
+                                if str(match.get('player1_id')) == str(user_id):
+                                    opponent_name = match.get('player2_name', 'Неизвестно')
+                                    opponent_id = str(match.get('player2_id', ''))
                                 else:
-                                    opponent_name = match['player1_name']
-                                    opponent_id = match['player1_id']
+                                    opponent_name = match.get('player1_name', 'Неизвестно')
+                                    opponent_id = str(match.get('player1_id', ''))
                                 
                                 opponent_data = users.get(opponent_id, {})
                                 opponent_username = opponent_data.get('username', '')
@@ -67,18 +76,17 @@ class TournamentNotifications:
                                 
                                 message += f"⚔️ {opponent_name}\n"
                                 message += f"📱 Для связи: {opponent_username_text}\n"
-                                message += f"🆔 ID: {opponent_id}\n\n"
                                 
                     elif tournament_type == "Круговая":
-                        message += f"🎯 *Ваши соперники:*\n"
+                        message += f"🎯 <b>Ваши соперники:</b>\n"
                         for match in user_matches:
-                            if match['status'] == 'pending' and not match['is_bye']:
-                                if match['player1_id'] == user_id:
-                                    opponent_name = match['player2_name']
-                                    opponent_id = match['player2_id']
+                            if match.get('status') == 'pending' and not match.get('is_bye'):
+                                if str(match.get('player1_id')) == str(user_id):
+                                    opponent_name = match.get('player2_name', 'Неизвестно')
+                                    opponent_id = str(match.get('player2_id', ''))
                                 else:
-                                    opponent_name = match['player1_name']
-                                    opponent_id = match['player1_id']
+                                    opponent_name = match.get('player1_name', 'Неизвестно')
+                                    opponent_id = str(match.get('player1_id', ''))
                                 
                                 opponent_data = users.get(opponent_id, {})
                                 opponent_username = opponent_data.get('username', '')
@@ -86,25 +94,24 @@ class TournamentNotifications:
                                 
                                 message += f"⚔️ {opponent_name}\n"
                                 message += f"📱 Для связи: {opponent_username_text}\n"
-                                message += f"🆔 ID: {opponent_id}\n\n"
                     
-                    message += f"📊 Для внесения результатов используйте команду /add_score"
-                    
+                    logger.info(f"Отправка сообщения участнику {user_id}, длина сообщения: {len(message)}")
                     await self.bot.send_message(
-                        chat_id=int(user_id),
+                        chat_id=user_id,
                         text=message,
-                        parse_mode='Markdown'
+                        parse_mode='HTML'
                     )
                     success_count += 1
+                    logger.info(f"✅ Уведомление успешно отправлено участнику {user_id}")
                     
                 except Exception as e:
-                    logger.error(f"Ошибка отправки уведомления пользователю {user_id}: {e}")
+                    logger.error(f"❌ Ошибка отправки уведомления пользователю {user_id}: {e}", exc_info=True)
             
             logger.info(f"Уведомления о начале турнира {tournament_id} отправлены {success_count} из {len(participants)} участников")
             return success_count > 0
             
         except Exception as e:
-            logger.error(f"Ошибка отправки уведомлений о начале турнира {tournament_id}: {e}")
+            logger.error(f"Ошибка отправки уведомлений о начале турнира {tournament_id}: {e}", exc_info=True)
             return False
     
     async def notify_match_assignment(self, tournament_id: str, match_data: Dict[str, Any]) -> bool:
@@ -117,7 +124,7 @@ class TournamentNotifications:
             player1_id = match_data.get('player1_id')
             player2_id = match_data.get('player2_id')
             
-            message = f"⚔️ *Новый матч в турнире!*\n\n"
+            message = f"⚔️ <b>Новый матч в турнире!</b>\n\n"
             message += f"🏆 Турнир: {tournament_name}\n"
             message += f"📋 Раунд: {match_data['round'] + 1}\n\n"
             
@@ -131,7 +138,7 @@ class TournamentNotifications:
                     await self.bot.send_message(
                         chat_id=int(player_id),
                         text=message,
-                        parse_mode='Markdown'
+                        parse_mode='HTML'
                     )
                     return True
                 except Exception as e:
@@ -152,7 +159,7 @@ class TournamentNotifications:
                             await self.bot.send_message(
                                 chat_id=int(player_id),
                                 text=message,
-                                parse_mode='Markdown'
+                                parse_mode='HTML'
                             )
                             success_count += 1
                         except Exception as e:
@@ -171,7 +178,7 @@ class TournamentNotifications:
             tournament_name = tournament_data.get('name', 'Турнир')
             winner_name = winner_data.get('name', 'Неизвестно')
             
-            message = f"🏆 *Турнир завершен!*\n\n"
+            message = f"🏆 <b>Турнир завершен!</b>\n\n"
             message += f"📋 Название: {tournament_name}\n"
             message += f"🥇 Победитель: {winner_name}\n\n"
             message += f"🎉 Поздравляем победителя и благодарим всех участников!"
@@ -183,7 +190,7 @@ class TournamentNotifications:
                     await self.bot.send_message(
                         chat_id=int(user_id),
                         text=message,
-                        parse_mode='Markdown'
+                        parse_mode='HTML'
                     )
                     success_count += 1
                 except Exception as e:

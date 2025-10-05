@@ -214,6 +214,7 @@ class EditTournamentStates(StatesGroup):
     EDIT_HIDE_BRACKET = State()
     EDIT_COMMENT = State()
     MANAGE_PARTICIPANTS = State()
+    SEARCH_PARTICIPANT = State()  # Новое состояние для поиска участника
     ADD_PARTICIPANT = State()
     REMOVE_PARTICIPANT = State()
 

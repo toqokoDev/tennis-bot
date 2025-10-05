@@ -3,9 +3,26 @@ from datetime import datetime
 async def validate_date(date_str: str) -> bool:
     """Проверяет корректность даты в формате ДД.ММ.ГГГГ"""
     try:
-        day, month, year = map(int, date_str.split('.'))
+        # Проверяем, что строка содержит ровно 2 точки
+        if date_str.count('.') != 2:
+            return False
+            
+        parts = date_str.split('.')
+        
+        # Проверяем, что все части состоят из цифр
+        if not all(part.isdigit() for part in parts):
+            return False
+            
+        # Проверяем, что год состоит из 4 символов
+        if len(parts[2]) != 4:
+            return False
+            
+        day, month, year = map(int, parts)
+        
+        # Проверяем, что дата корректна
         datetime(year=year, month=month, day=day)
         return True
+        
     except (ValueError, AttributeError):
         return False
 

@@ -49,6 +49,7 @@ class BracketImageGenerator:
         self.match_spacing = 20
         self.vertical_margin = 30
         self.font_size = 12
+        self.name_font_size = 11
         self.title_font_size = 20
         self.subtitle_font_size = 14
         self.score_font_size = 11
@@ -70,6 +71,8 @@ class BracketImageGenerator:
         try:
             self.font = ImageFont.truetype("arial.ttf", self.font_size)
             self.bold_font = ImageFont.truetype("arialbd.ttf", self.font_size)
+            self.name_font = ImageFont.truetype("arial.ttf", self.name_font_size)
+            self.name_bold_font = ImageFont.truetype("arialbd.ttf", self.name_font_size)
             self.title_font = ImageFont.truetype("arialbd.ttf", self.title_font_size)
             self.subtitle_font = ImageFont.truetype("arialbd.ttf", self.subtitle_font_size)
             self.score_font = ImageFont.truetype("arial.ttf", self.score_font_size)
@@ -78,6 +81,8 @@ class BracketImageGenerator:
             try:
                 self.font = ImageFont.truetype("DejaVuSans.ttf", self.font_size)
                 self.bold_font = ImageFont.truetype("DejaVuSans-Bold.ttf", self.font_size)
+                self.name_font = ImageFont.truetype("DejaVuSans.ttf", self.name_font_size)
+                self.name_bold_font = ImageFont.truetype("DejaVuSans-Bold.ttf", self.name_font_size)
                 self.title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", self.title_font_size)
                 self.subtitle_font = ImageFont.truetype("DejaVuSans.ttf", self.subtitle_font_size)
                 self.score_font = ImageFont.truetype("DejaVuSans.ttf", self.score_font_size)
@@ -86,12 +91,16 @@ class BracketImageGenerator:
                 try:
                     self.font = ImageFont.load_default()
                     self.bold_font = ImageFont.load_default()
+                    self.name_font = ImageFont.load_default()
+                    self.name_bold_font = ImageFont.load_default()
                     self.title_font = ImageFont.load_default()
                     self.subtitle_font = ImageFont.load_default()
                     self.score_font = ImageFont.load_default()
                 except Exception:
                     self.font = None
                     self.bold_font = None
+                    self.name_font = None
+                    self.name_bold_font = None
                     self.title_font = None
                     self.subtitle_font = None
                     self.score_font = None
@@ -151,6 +160,17 @@ class BracketImageGenerator:
             return name_parts[0][0].upper()
         else:
             return "??"
+
+    def _get_short_name(self, player: Player) -> str:
+        """Получает короткое имя в формате 'И. Фамилия'"""
+        name_parts = player.name.split()
+        if len(name_parts) >= 2:
+            # Берем первую букву имени и фамилию
+            return f"{name_parts[0][0]}. {name_parts[1]}"
+        elif len(name_parts) == 1:
+            return name_parts[0]
+        else:
+            return player.name
     
     def draw_match_cell(self, draw: ImageDraw.Draw, x: int, y: int, match: Match, round_num: int = 0, 
                        is_placement: bool = False, is_mini_tournament: bool = False) -> None:
@@ -171,6 +191,19 @@ class BracketImageGenerator:
         draw.rectangle([x, y, x + self.cell_width, y + self.cell_height], 
                       fill=self.cell_color, outline=border_color, width=1)
         
+        # Счёт матча над ячейкой
+        try:
+            if match and getattr(match, 'score', None) and self.score_font:
+                score_text = str(match.score)
+                bbox = draw.textbbox((0, 0), score_text, font=self.score_font)
+                text_w = bbox[2] - bbox[0]
+                text_h = bbox[3] - bbox[1]
+                label_x = x + (self.cell_width - text_w) // 2
+                label_y = y - text_h - 6
+                draw.text((label_x, label_y), score_text, fill=self.text_color, font=self.score_font)
+        except Exception:
+            pass
+
         # Информация о матче
         player1 = match.player1
         player2 = match.player2
@@ -198,27 +231,33 @@ class BracketImageGenerator:
                            is_winner: bool, is_special: bool = False):
         """Рисует информацию об игроке в ячейке"""
         # Аватар
-        avatar_size = 20
+        avatar_size = 30
         avatar = self.create_player_avatar(player, avatar_size)
         if avatar:
             draw._image.paste(avatar, (x + 5, y + (height - avatar_size) // 2), avatar)
         
         # Имя игрока
-        name_x = x + 30
-        name_y = y + (height - 12) // 2
+        name_x = x + 5 + avatar_size + 6
+        name_y = y
         
         # Для победителя используем жирный шрифт, для остальных обычный
-        font = self.bold_font if is_winner else self.font
+        font = self.name_bold_font if is_winner else self.name_font
         color = self.winner_color if is_winner else self.text_color
         
         if font:
             display_name = player.name[:15] + "..." if len(player.name) > 15 else player.name
+            try:
+                bbox = draw.textbbox((0, 0), display_name, font=font)
+                text_h = bbox[3] - bbox[1]
+                name_y = y + (height - text_h) // 2
+            except Exception:
+                name_y = y + (height - self.name_font_size) // 2
             draw.text((name_x, name_y), display_name, fill=color, font=font)
             
     
     def draw_connectors(self, draw: ImageDraw.Draw, round_positions: List[List[Tuple[int, int]]], 
                        rounds_matches: List[List[Match]], is_mini_tournament: bool = False):
-        """Рисует соединительные линии между раундами и счёт над стрелочками"""
+        """Рисует соединительные линии между раундами и победителя над стрелочками в формате 'И. Фамилия'"""
         connector_color = self.connector_color
         
         for round_num in range(len(round_positions) - 1):
@@ -247,21 +286,25 @@ class BracketImageGenerator:
                     draw.line([next_x - 10, prev_center_y, 
                               next_x - 10, next_center_y], 
                              fill=connector_color, width=1)
-                    # Только счёт над стрелкой для предыдущего матча 1
+                    
+                    # Подпись победителя на линии предыдущего матча 1 в формате 'И. Фамилия'
                     try:
                         match_obj = None
                         if round_num < len(rounds_matches):
                             cur_round_matches = rounds_matches[round_num]
                             if prev_match1_idx < len(cur_round_matches):
                                 match_obj = cur_round_matches[prev_match1_idx]
-                        if match_obj and getattr(match_obj, 'score', None) and self.score_font:
-                            score_text = str(match_obj.score)
-                            bbox = draw.textbbox((0, 0), score_text, font=self.score_font)
+                        if match_obj and getattr(match_obj, 'winner', None) and self.font:
+                            winner_name = self._get_short_name(match_obj.winner)
+                            bbox = draw.textbbox((0, 0), winner_name, font=self.font)
                             text_w = bbox[2] - bbox[0]
                             text_h = bbox[3] - bbox[1]
-                            label_x = max(prev_x + self.cell_width + 4, next_x - 12 - text_w)
+                            # Центруем по горизонтальному отрезку
+                            seg_left = prev_x + self.cell_width
+                            seg_right = next_x - 10
+                            label_x = max(seg_left + 4, min((seg_left + seg_right - text_w) // 2, seg_right - 2 - text_w))
                             label_y = prev_center_y - text_h - 6
-                            draw.text((label_x, label_y), score_text, fill=self.text_color, font=self.score_font)
+                            draw.text((label_x, label_y), winner_name, fill=self.text_color, font=self.font)
                     except Exception:
                         pass
                 
@@ -278,21 +321,24 @@ class BracketImageGenerator:
                     draw.line([next_x - 10, prev_center_y, 
                               next_x - 10, next_center_y], 
                              fill=connector_color, width=1)
-                    # Только счёт над стрелкой для предыдущего матча 2
+                    
+                    # Подпись победителя на линии предыдущего матча 2 в формате 'И. Фамилия'
                     try:
                         match_obj = None
                         if round_num < len(rounds_matches):
                             cur_round_matches = rounds_matches[round_num]
                             if prev_match2_idx < len(cur_round_matches):
                                 match_obj = cur_round_matches[prev_match2_idx]
-                        if match_obj and getattr(match_obj, 'score', None) and self.score_font:
-                            score_text = str(match_obj.score)
-                            bbox = draw.textbbox((0, 0), score_text, font=self.score_font)
+                        if match_obj and getattr(match_obj, 'winner', None) and self.font:
+                            winner_name = self._get_short_name(match_obj.winner)
+                            bbox = draw.textbbox((0, 0), winner_name, font=self.font)
                             text_w = bbox[2] - bbox[0]
                             text_h = bbox[3] - bbox[1]
-                            label_x = max(prev_x + self.cell_width + 4, next_x - 12 - text_w)
+                            seg_left = prev_x + self.cell_width
+                            seg_right = next_x - 10
+                            label_x = max(seg_left + 4, min((seg_left + seg_right - text_w) // 2, seg_right - 2 - text_w))
                             label_y = prev_center_y - text_h - 6
-                            draw.text((label_x, label_y), score_text, fill=self.text_color, font=self.score_font)
+                            draw.text((label_x, label_y), winner_name, fill=self.text_color, font=self.font)
                     except Exception:
                         pass
     
@@ -314,7 +360,7 @@ class BracketImageGenerator:
             
             # Общие размеры изображения
             total_width = max(main_bracket_width + mini_tournaments_width + 100, 1200)
-            total_height = main_bracket_height + mini_tournaments_height + 260  # увеличили место для фото
+            total_height = main_bracket_height + mini_tournaments_height + 380  # увеличили место для фото
             
             # Создаем изображение
             image = Image.new('RGB', (total_width, total_height), self.bg_color)
@@ -332,7 +378,7 @@ class BracketImageGenerator:
                     pass
             
             # Рисуем основную сетку
-            main_bracket_y = 80
+            main_bracket_y = 120
             round_positions = self._draw_bracket_grid(draw, bracket, 50, main_bracket_y, main_bracket_width, main_bracket_height)
             
             # Рисуем соединительные линии для основной сетки
@@ -364,8 +410,8 @@ class BracketImageGenerator:
                     current_y += self.calculate_bracket_dimensions(mini_tournament)[1] + 100
             
             # Рисуем область для фото игр внизу
-            photos_y = total_height - 180
-            self._draw_game_photos_area(draw, 50, photos_y, total_width - 100, 150, photo_paths or [])
+            photos_y = total_height - 300
+            self._draw_game_photos_area(draw, 50, photos_y, total_width - 100, 270, photo_paths or [])
             
             return image
             
@@ -383,14 +429,15 @@ class BracketImageGenerator:
                 
             round_x = start_x + round_num * (self.cell_width + self.round_spacing)
             
+            # ЗДЕСЬ ОТРИСОВЫВАЮТСЯ ЗАГОЛОВКИ РАУНДОВ (ФИНАЛ, ПОЛУФИНАЛ и т.д.)
             # Заголовок раунда
             round_title = self._get_round_title(round_num, len(bracket.rounds))
             if self.font:
                 try:
                     title_bbox = draw.textbbox((0, 0), round_title, font=self.bold_font)
                     title_width = title_bbox[2] - title_bbox[0]
-                    draw.text((round_x + (self.cell_width - title_width) // 2, start_y - 30), 
-                             round_title, fill=self.round_title_color, font=self.bold_font)
+                    draw.text((round_x + (self.cell_width - title_width) // 2, start_y - 80), 
+                        round_title, fill=self.round_title_color, font=self.bold_font)
                 except:
                     pass
             
@@ -416,14 +463,15 @@ class BracketImageGenerator:
                 
             round_x = start_x + round_num * (self.cell_width + self.round_spacing - 20)  # Более компактно
             
+            # ЗДЕСЬ ТОЖЕ ОТРИСОВЫВАЮТСЯ ЗАГОЛОВКИ РАУНДОВ ДЛЯ МИНИ-ТУРНИРОВ
             # Заголовок раунда для мини-турнира
             round_title = self._get_round_title(round_num, len(tournament.rounds))
             if self.font:
                 try:
                     title_bbox = draw.textbbox((0, 0), round_title, font=self.font)
                     title_width = title_bbox[2] - title_bbox[0]
-                    draw.text((round_x + (self.cell_width - title_width) // 2, start_y - 20), 
-                             round_title, fill=self.round_title_color, font=self.font)
+                    draw.text((round_x + (self.cell_width - title_width) // 2, start_y - 80), 
+                            round_title, fill=self.round_title_color, font=self.font)
                 except:
                     pass
             
@@ -497,10 +545,10 @@ class BracketImageGenerator:
             if photo_paths:
                 try:
                     from PIL import Image as PILImage
-                    thumb_h = height - 50
+                    thumb_h = height - 60
                     thumb_w = thumb_h * 4 // 3
-                    padding = 10
-                    visible = photo_paths[:6]
+                    padding = 15
+                    visible = photo_paths[:8]  # Увеличили количество видимых фото
                     total_w = len(visible) * thumb_w + (len(visible) - 1) * padding
                     start_x = x + (width - total_w) // 2
                     cur_x = start_x
@@ -510,7 +558,7 @@ class BracketImageGenerator:
                             img = img.convert('RGB')
                             img_thumb = img.copy()
                             img_thumb.thumbnail((thumb_w, thumb_h))
-                            draw._image.paste(img_thumb, (cur_x, y + 40))
+                            draw._image.paste(img_thumb, (cur_x, y + 45))
                         except Exception:
                             pass
                         cur_x += thumb_w + padding
@@ -915,8 +963,8 @@ def _build_olympic_rounds_from_tournament(
                     p1w = ws[i] if i < len(ws) else None
                     p2w = ws[i + 1] if i + 1 < len(ws) else None
                     next_round.append(Match(player1=p1w, player2=p2w, match_number=len(next_round)))
-                rounds.append(next_round)
-                print(f"[BRACKET][OLY] Добавлен каркас следующего раунда: матчей {len(next_round)}")
+                    rounds.append(next_round)
+                    print(f"[BRACKET][OLY] Добавлен каркас следующего раунда: матчей {len(next_round)}")
             round_idx += 1
 
         # Соберем плоский список матчей

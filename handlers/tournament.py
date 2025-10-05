@@ -43,6 +43,13 @@ my_applications_pages = {}
 # Глобальная переменная для хранения данных создаваемого турнира
 tournament_data = {}
 
+# Хелпер-функция для обрезки caption (лимит Telegram - 1024 символа)
+def truncate_caption(text: str, max_length: int = 1020) -> str:
+    """Обрезает текст до максимальной длины, добавляя '...' в конце"""
+    if len(text) <= max_length:
+        return text
+    return text[:max_length] + "..."
+
 # Списки для выбора (используем данные из конфигурации)
 SPORTS = sport_type
 COUNTRIES = list(cities_data.keys())
@@ -2424,7 +2431,7 @@ async def show_tournaments_list(callback: CallbackQuery, tournaments: dict, spor
 
     await callback.message.answer_photo(
         photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
-        caption=final_caption,
+        caption=truncate_caption(final_caption),
         reply_markup=builder.as_markup()
     )
 
@@ -2516,7 +2523,9 @@ async def view_tournament_prev(callback: CallbackQuery, state: FSMContext):
         builder.button(text="⬅️ Предыдущий", callback_data=f"view_tournament_prev:{prev_page}")
         builder.button(text="Следующий ➡️", callback_data=f"view_tournament_next:{prev_page}")
     
-    if not is_registered:
+    # Кнопка "Участвовать" только если не зарегистрирован и турнир не запущен
+    tournament_status = tournament_data.get('status', 'active')
+    if not is_registered and tournament_status == 'active':
         builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
     
     # Кнопка истории игр (для всех пользователей)
@@ -2556,7 +2565,7 @@ async def view_tournament_prev(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.answer_photo(
         photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
-        caption=final_caption,
+        caption=truncate_caption(final_caption),
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -2646,7 +2655,9 @@ async def view_tournament_next(callback: CallbackQuery, state: FSMContext):
         builder.button(text="⬅️ Предыдущий", callback_data=f"view_tournament_prev:{next_page}")
         builder.button(text="Следующий ➡️", callback_data=f"view_tournament_next:{next_page}")
     
-    if not is_registered:
+    # Кнопка "Участвовать" только если не зарегистрирован и турнир не запущен
+    tournament_status = tournament_data.get('status', 'active')
+    if not is_registered and tournament_status == 'active':
         builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
     
     # Кнопка истории игр (для всех пользователей)
@@ -2671,7 +2682,7 @@ async def view_tournament_next(callback: CallbackQuery, state: FSMContext):
     await callback.message.delete()
     await callback.message.answer_photo(
         photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
-        caption=text,
+        caption=truncate_caption(text),
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -2688,6 +2699,11 @@ async def apply_tournament_handler(callback: CallbackQuery):
         return
     
     tournament_data = tournaments[tournament_id]
+    
+    # Проверяем статус турнира
+    if tournament_data.get('status') != 'active':
+        await callback.answer("❌ Регистрация на этот турнир закрыта (турнир уже запущен или завершён)", show_alert=True)
+        return
     
     # Проверяем ограничение по количеству участников (если задано)
     max_participants = int(tournament_data.get('participants_count', 0) or 0)
@@ -2761,7 +2777,7 @@ async def apply_tournament_handler(callback: CallbackQuery):
         pass
     await callback.message.answer_photo(
         photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
-        caption=caption,
+        caption=truncate_caption(caption),
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -2868,7 +2884,7 @@ async def apply_proposed_tournament(callback: CallbackQuery, state: FSMContext):
         pass
     await callback.message.answer_photo(
         photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
-        caption=caption,
+        caption=truncate_caption(caption),
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -2957,7 +2973,7 @@ async def tournament_pay_confirm(callback: CallbackQuery, state: FSMContext):
             payments[str(callback.from_user.id)] = {
                 'payment_id': payment_id,
                 'status': 'succeeded',
-                'amount': payment.amount.value,
+                'amount': float(payment.amount.value),  # Преобразуем Decimal в float для JSON
                 'paid_at': datetime.now().isoformat(),
                 'email': data.get('user_email')
             }
@@ -3022,7 +3038,9 @@ async def view_tournament_from_application(callback: CallbackQuery):
     # Создаем клавиатуру
     builder = InlineKeyboardBuilder()
     
-    if not is_registered:
+    # Кнопка "Участвовать" только если не зарегистрирован и турнир не запущен
+    tournament_status = tournament_data.get('status', 'active')
+    if not is_registered and tournament_status == 'active':
         builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
     
     builder.button(text="📊 История игр", callback_data=f"tournament_games_history:{tournament_id}")
@@ -3039,7 +3057,7 @@ async def view_tournament_from_application(callback: CallbackQuery):
     await callback.message.delete()
     await callback.message.answer_photo(
         photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
-        caption=text,
+        caption=truncate_caption(text),
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -3110,7 +3128,7 @@ async def my_tournaments_list(callback: CallbackQuery):
     await callback.message.delete()
     await callback.message.answer_photo(
         photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
-        caption=text,
+        caption=truncate_caption(text),
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -3529,7 +3547,7 @@ async def admin_view_tournament_participants(callback: CallbackQuery, state: FSM
     await callback.message.delete()
     await callback.message.answer_photo(
         photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
-        caption=text,
+        caption=truncate_caption(text),
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -4149,7 +4167,7 @@ async def select_tournament_for_edit(callback: CallbackQuery, state: FSMContext)
     await callback.message.delete()
     await callback.message.answer_photo(
         photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
-        caption=text,
+        caption=truncate_caption(text),
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -4528,7 +4546,7 @@ async def manage_tournament_participants(callback: CallbackQuery, state: FSMCont
     await callback.message.delete()
     await callback.message.answer_photo(
         photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
-        caption=text,
+        caption=truncate_caption(text),
         reply_markup=builder.as_markup()
     )
     await callback.answer()
@@ -4616,7 +4634,7 @@ async def tournament_seeding_menu(callback: CallbackQuery):
         pass
     await callback.message.answer_photo(
         photo=BufferedInputFile(bracket_image, filename="tournament_seeding.png"),
-        caption="\n".join(text_lines),
+        caption=truncate_caption("\n".join(text_lines)),
         reply_markup=kb.as_markup()
     )
     await callback.answer()
@@ -4641,15 +4659,29 @@ async def tournament_seeding_save_start(callback: CallbackQuery):
         await callback.answer("⏳ Недостаточно участников для старта")
         return
     # Запускаем турнир и уведомляем
+    logger.info(f"Запуск турнира {tid}...")
     started = await tournament_manager.start_tournament(tid)
+    logger.info(f"Результат запуска турнира {tid}: {started}")
+    
     if started:
+        # Перезагружаем данные турнира после запуска (они обновились с матчами)
+        tournaments = await storage.load_tournaments()
+        tournament_data = tournaments.get(tid, {})
+        
+        logger.info(f"Турнир {tid} загружен после запуска. Участников: {len(tournament_data.get('participants', {}))}, Матчей: {len(tournament_data.get('matches', []))}")
+        
         # Уведомления участникам с сеткой и первой игрой (олимпийская) или списком соперников (круговая)
         try:
-            from main import bot
-            notifications = TournamentNotifications(bot)
-            await notifications.notify_tournament_started(tid, tournaments.get(tid, {}))
-        except Exception:
-            pass
+            logger.info(f"Создание объекта TournamentNotifications для турнира {tid}")
+            notifications = TournamentNotifications(callback.message.bot)
+            logger.info(f"Отправка уведомлений о старте турнира {tid}")
+            notification_sent = await notifications.notify_tournament_started(tid, tournament_data)
+            if notification_sent:
+                logger.info(f"✅ Уведомления о старте турнира {tid} успешно отправлены")
+            else:
+                logger.warning(f"⚠️ Не удалось отправить уведомления о старте турнира {tid}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при отправке уведомлений о старте турнира {tid}: {e}", exc_info=True)
         await safe_edit_message(callback, "✅ Турнир запущен! Участникам отправлены уведомления", InlineKeyboardBuilder().button(text="🔙 К турниру", callback_data=f"view_tournament:{tid}").as_markup())
     else:
         await safe_edit_message(callback, "❌ Не удалось запустить турнир", InlineKeyboardBuilder().button(text="🔙 Назад", callback_data=f"tournament_seeding_menu:{tid}").as_markup())
@@ -4671,17 +4703,68 @@ async def tournament_seeding_move(callback: CallbackQuery):
     if not (0 <= idx < len(seeding)):
         await callback.answer("Некорректный индекс")
         return
+    
+    # Получаем имя участника для показа в уведомлении
+    users = await storage.load_users()
+    moved_user_id = seeding[idx]
+    moved_user_name = users.get(moved_user_id, {}).get('first_name') or users.get(moved_user_id, {}).get('name') or str(moved_user_id)
+    
     if direction == 'up' and idx > 0:
         seeding[idx-1], seeding[idx] = seeding[idx], seeding[idx-1]
+        move_text = f"⬆️ {moved_user_name} перемещён вверх"
     elif direction == 'down' and idx < len(seeding) - 1:
         seeding[idx+1], seeding[idx] = seeding[idx], seeding[idx+1]
+        move_text = f"⬇️ {moved_user_name} перемещён вниз"
+    else:
+        await callback.answer("❌ Невозможно переместить дальше", show_alert=True)
+        return
+    
     t['seeding'] = seeding
     tournaments[tid] = t
     await storage.save_tournaments(tournaments)
-    await callback.answer("✅ Обновлено")
-    # перерисовываем меню
-    callback.data = f"tournament_seeding_menu:{tid}"
-    await tournament_seeding_menu(callback)
+    
+    # Удаляем старое сообщение
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
+    # Перезагружаем турнир и перерисовываем меню
+    tournaments = await storage.load_tournaments()
+    t = tournaments.get(tid, {})
+    seeding = await _ensure_seeding(tid)
+    users = await storage.load_users()
+
+    # Текст с порядком
+    text_lines = [f"🎲 Посев турнира: {t.get('name', 'Турнир')}", f"", f"✅ {move_text}", ""]
+    for idx_new, uid in enumerate(seeding, start=1):
+        name = users.get(uid, {}).get('first_name') or users.get(uid, {}).get('name') or str(uid)
+        text_lines.append(f"{idx_new}. {name}")
+    text_lines.append(_format_first_round_pairs(seeding, users))
+
+    # Клавиатура
+    kb = InlineKeyboardBuilder()
+    for idx_new, uid in enumerate(seeding):
+        up_cb = f"tournament_seeding_move:{tid}:{idx_new}:up"
+        down_cb = f"tournament_seeding_move:{tid}:{idx_new}:down"
+        kb.row(InlineKeyboardButton(text=f"⬆️ {idx_new+1}", callback_data=up_cb), InlineKeyboardButton(text="⬇️", callback_data=down_cb))
+    kb.row(InlineKeyboardButton(text="🔀 Перемешать", callback_data=f"tournament_seeding_shuffle:{tid}"))
+    try:
+        ready = await tournament_manager.check_tournament_readiness(tid)
+        if ready:
+            kb.row(InlineKeyboardButton(text="💾 Сохранить и запустить", callback_data=f"tournament_seeding_save_start:{tid}"))
+    except Exception:
+        pass
+    kb.row(InlineKeyboardButton(text="🔙 Назад", callback_data=f"view_tournament:{tid}"))
+
+    # Рендерим изображение сетки
+    bracket_image, _ = await build_and_render_tournament_image(t, tid)
+    await callback.message.answer_photo(
+        photo=BufferedInputFile(bracket_image, filename="tournament_seeding.png"),
+        caption=truncate_caption("\n".join(text_lines)),
+        reply_markup=kb.as_markup()
+    )
+    await callback.answer()
 
 @router.callback_query(F.data.startswith("tournament_seeding_shuffle:"))
 async def tournament_seeding_shuffle(callback: CallbackQuery):
@@ -4700,10 +4783,214 @@ async def tournament_seeding_shuffle(callback: CallbackQuery):
     t['seeding'] = seeding
     tournaments[tid] = t
     await storage.save_tournaments(tournaments)
-    await callback.answer("🔀 Перемешано")
-    callback.data = f"tournament_seeding_menu:{tid}"
-    await tournament_seeding_menu(callback)
+    
+    # Удаляем старое сообщение
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
+    # Перезагружаем турнир и перерисовываем меню
+    tournaments = await storage.load_tournaments()
+    t = tournaments.get(tid, {})
+    seeding = await _ensure_seeding(tid)
+    users = await storage.load_users()
 
+    # Текст с порядком
+    text_lines = [f"🎲 Посев турнира: {t.get('name', 'Турнир')}", "", "🔀 Порядок перемешан", ""]
+    for idx_new, uid in enumerate(seeding, start=1):
+        name = users.get(uid, {}).get('first_name') or users.get(uid, {}).get('name') or str(uid)
+        text_lines.append(f"{idx_new}. {name}")
+    text_lines.append(_format_first_round_pairs(seeding, users))
+
+    # Клавиатура
+    kb = InlineKeyboardBuilder()
+    for idx_new, uid in enumerate(seeding):
+        up_cb = f"tournament_seeding_move:{tid}:{idx_new}:up"
+        down_cb = f"tournament_seeding_move:{tid}:{idx_new}:down"
+        kb.row(InlineKeyboardButton(text=f"⬆️ {idx_new+1}", callback_data=up_cb), InlineKeyboardButton(text="⬇️", callback_data=down_cb))
+    kb.row(InlineKeyboardButton(text="🔀 Перемешать", callback_data=f"tournament_seeding_shuffle:{tid}"))
+    try:
+        ready = await tournament_manager.check_tournament_readiness(tid)
+        if ready:
+            kb.row(InlineKeyboardButton(text="💾 Сохранить и запустить", callback_data=f"tournament_seeding_save_start:{tid}"))
+    except Exception:
+        pass
+    kb.row(InlineKeyboardButton(text="🔙 Назад", callback_data=f"view_tournament:{tid}"))
+
+    # Рендерим изображение сетки
+    bracket_image, _ = await build_and_render_tournament_image(t, tid)
+    await callback.message.answer_photo(
+        photo=BufferedInputFile(bracket_image, filename="tournament_seeding.png"),
+        caption=truncate_caption("\n".join(text_lines)),
+        reply_markup=kb.as_markup()
+    )
+    await callback.answer()
+
+
+# Обработчик поиска участника по имени/фамилии
+@router.message(EditTournamentStates.SEARCH_PARTICIPANT)
+async def search_participant_by_name(message: Message, state: FSMContext):
+    """Обработчик поиска участника по имени/фамилии"""
+    search_query = message.text.strip().lower()
+    
+    if len(search_query) < 2:
+        await message.answer("❌ Введите минимум 2 символа для поиска")
+        return
+    
+    # Загружаем всех пользователей
+    users = await storage.load_users()
+    
+    # Ищем пользователей по имени или фамилии
+    found_users = []
+    for user_id, user_data in users.items():
+        first_name = (user_data.get('first_name') or '').lower()
+        last_name = (user_data.get('last_name') or '').lower()
+        full_name = f"{first_name} {last_name}".strip()
+        
+        if search_query in first_name or search_query in last_name or search_query in full_name:
+            found_users.append({
+                'id': user_id,
+                'name': f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip(),
+                'phone': user_data.get('phone', 'Не указан'),
+                'city': user_data.get('city', 'Не указан')
+            })
+    
+    if not found_users:
+        data = await state.get_data()
+        tournament_id = data.get('admin_editing_tournament_id') or data.get('editing_tournament_id')
+        is_admin_mode = 'admin_editing_tournament_id' in data
+        
+        builder = InlineKeyboardBuilder()
+        if is_admin_mode:
+            builder.button(text="🔄 Попробовать снова", callback_data=f"admin_add_participant:{tournament_id}")
+            builder.button(text="🔙 Назад к участникам", callback_data=f"admin_view_participants:{tournament_id}")
+        else:
+            builder.button(text="🔄 Попробовать снова", callback_data=f"add_tournament_participant:{tournament_id}")
+            builder.button(text="🔙 Назад", callback_data=f"manage_tournament_participants:{tournament_id}")
+        builder.adjust(1)
+        
+        await message.answer(
+            f"❌ Пользователи с именем или фамилией '{message.text}' не найдены.\n\n"
+            "Попробуйте изменить запрос.",
+            reply_markup=builder.as_markup()
+        )
+        await state.clear()
+        return
+    
+    # Ограничиваем количество результатов
+    if len(found_users) > 20:
+        found_users = found_users[:20]
+        results_text = f"🔍 Найдено участников: {len(found_users)} (показаны первые 20)\n\n"
+    else:
+        results_text = f"🔍 Найдено участников: {len(found_users)}\n\n"
+    
+    results_text += "Выберите участника для добавления в турнир:\n\n"
+    
+    builder = InlineKeyboardBuilder()
+    for user in found_users:
+        button_text = f"{user['name']} ({user['city']})"
+        builder.button(
+            text=button_text,
+            callback_data=f"select_participant:{user['id']}"
+        )
+    
+    data = await state.get_data()
+    tournament_id = data.get('admin_editing_tournament_id') or data.get('editing_tournament_id')
+    is_admin_mode = 'admin_editing_tournament_id' in data
+    
+    if is_admin_mode:
+        builder.button(text="🔄 Новый поиск", callback_data=f"admin_add_participant:{tournament_id}")
+        builder.button(text="🔙 Назад к участникам", callback_data=f"admin_view_participants:{tournament_id}")
+    else:
+        builder.button(text="🔄 Новый поиск", callback_data=f"add_tournament_participant:{tournament_id}")
+        builder.button(text="🔙 Назад", callback_data=f"manage_tournament_participants:{tournament_id}")
+    builder.adjust(1)
+    
+    await message.answer(results_text, reply_markup=builder.as_markup())
+    # Состояние не очищаем, остаёмся в том же состоянии
+
+# Обработчик выбора участника из списка найденных
+@router.callback_query(F.data.startswith("select_participant:"))
+async def select_participant_from_search(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора участника из списка"""
+    user_id = callback.data.split(":", 1)[1]
+    
+    data = await state.get_data()
+    tournament_id = data.get('admin_editing_tournament_id') or data.get('editing_tournament_id')
+    is_admin_mode = 'admin_editing_tournament_id' in data
+    
+    # Проверяем, существует ли пользователь
+    users = await storage.load_users()
+    if str(user_id) not in users:
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+    
+    user_data = users[str(user_id)]
+    user_name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
+    
+    # Загружаем турниры
+    tournaments = await storage.load_tournaments()
+    
+    if tournament_id not in tournaments:
+        await callback.answer("❌ Турнир не найден", show_alert=True)
+        await state.clear()
+        return
+    
+    tournament_data = tournaments[tournament_id]
+    participants = tournament_data.get('participants', {})
+    
+    # Проверяем, не является ли пользователь уже участником
+    if str(user_id) in participants:
+        await callback.answer("❌ Этот пользователь уже является участником турнира", show_alert=True)
+        return
+    
+    # Проверяем ограничение по количеству участников
+    max_participants = int(tournament_data.get('participants_count', 0) or 0)
+    current_count = len(participants)
+    if max_participants and current_count >= max_participants:
+        await callback.answer(
+            f"❌ Достигнуто максимальное количество участников ({max_participants})",
+            show_alert=True
+        )
+        return
+    
+    # Добавляем участника
+    participants[str(user_id)] = {
+        'name': user_name,
+        'phone': user_data.get('phone', 'Не указан'),
+        'added_at': datetime.now().isoformat()
+    }
+    
+    tournament_data['participants'] = participants
+    tournaments[tournament_id] = tournament_data
+    await storage.save_tournaments(tournaments)
+    
+    # Формируем сообщение об успехе
+    builder = InlineKeyboardBuilder()
+    if is_admin_mode:
+        builder.button(text="➕ Добавить еще", callback_data=f"admin_add_participant:{tournament_id}")
+        builder.button(text="👥 К участникам", callback_data=f"admin_view_participants:{tournament_id}")
+        builder.button(text="🔙 К списку турниров", callback_data="admin_back_to_tournament_list")
+    else:
+        builder.button(text="➕ Добавить еще", callback_data="add_tournament_participant")
+        builder.button(text="👥 Управление участниками", callback_data="manage_tournament_participants")
+        builder.button(text="🔙 К турниру", callback_data=f"edit_tournament:{tournament_id}")
+    
+    builder.adjust(1)
+    
+    await callback.message.delete()
+    await callback.message.answer(
+        f"✅ Участник добавлен!\n\n"
+        f"👤 {user_name}\n"
+        f"📞 {user_data.get('phone', 'Не указан')}\n"
+        f"🆔 {user_id}\n\n"
+        f"👥 Участников в турнире: {len(participants)}/{tournament_data.get('participants_count', '—')}",
+        reply_markup=builder.as_markup()
+    )
+    
+    await state.clear()
+    await callback.answer()
 
 # Обработчик ввода ID участника
 @router.message(EditTournamentStates.ADD_PARTICIPANT)
@@ -4872,10 +5159,10 @@ async def add_tournament_participant(callback: CallbackQuery, state: FSMContext)
     """Старт добавления участника из экрана управления участниками"""
     tournament_id = callback.data.split(":", 1)[1]
     await state.update_data(editing_tournament_id=tournament_id)
-    await state.set_state(EditTournamentStates.ADD_PARTICIPANT)
+    await state.set_state(EditTournamentStates.SEARCH_PARTICIPANT)
     await safe_edit_message(
         callback,
-        "➕ Добавление участника в турнир\n\nВведите ID пользователя для добавления:",
+        "➕ Добавление участника в турнир\n\nВведите фамилию или имя участника для поиска:",
         InlineKeyboardBuilder().button(text="🔙 Назад", callback_data=f"manage_tournament_participants:{tournament_id}").as_markup()
     )
     await callback.answer()
@@ -5050,11 +5337,11 @@ async def admin_add_participant(callback: CallbackQuery, state: FSMContext):
     
     # Сохраняем ID турнира в состоянии
     await state.update_data(admin_editing_tournament_id=tournament_id)
-    await state.set_state(EditTournamentStates.ADD_PARTICIPANT)
+    await state.set_state(EditTournamentStates.SEARCH_PARTICIPANT)
     
     await safe_edit_message(callback,
         "➕ Добавление участника в турнир\n\n"
-        "Введите ID пользователя для добавления в турнир:",
+        "Введите фамилию или имя участника для поиска:",
         reply_markup=InlineKeyboardBuilder()
         .button(text="🔙 Назад к участникам", callback_data=f"admin_view_participants:{tournament_id}")
         .as_markup()
@@ -5201,7 +5488,7 @@ async def tournament_bracket(callback: CallbackQuery, state: FSMContext):
     await callback.message.delete()
     await callback.message.answer_photo(
         photo=BufferedInputFile(image_bytes, filename="tournament_bracket.png"),
-        caption=(
+        caption=truncate_caption(
             f"🏆 Турнирная сетка\n\n"
             f"📋 Турнир: {tournament.get('name', 'Без названия')}\n"
             f"⚔️ Тип: {tournament_type}\n"

@@ -38,10 +38,10 @@ def _draw_game_photos_area(draw: ImageDraw.Draw, x: int, y: int, width: int, hei
         if photo_paths:
             try:
                 from PIL import Image as PILImage
-                thumb_h = height - 50
+                thumb_h = height - 60
                 thumb_w = thumb_h * 4 // 3
-                padding = 10
-                visible = photo_paths[:6]
+                padding = 15
+                visible = photo_paths[:8]  # Увеличили количество видимых фото
                 total_w = len(visible) * thumb_w + (len(visible) - 1) * padding
                 start_x = x + (width - total_w) // 2
                 cur_x = start_x
@@ -52,7 +52,7 @@ def _draw_game_photos_area(draw: ImageDraw.Draw, x: int, y: int, width: int, hei
                         img = img.convert('RGB')
                         img_thumb = img.copy()
                         img_thumb.thumbnail((thumb_w, thumb_h))
-                        draw._image.paste(img_thumb, (cur_x, y + 36))
+                        draw._image.paste(img_thumb, (cur_x, y + 40))
                         cur_x += thumb_w + padding
                     except Exception:
                         pass
@@ -88,7 +88,7 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     extra_cols = ["Игры", "Победы", "Очки", "Места"]
 
     width = padding * 2 + left_col_w + n * cell_w + len(extra_cols) * cell_w
-    photos_h = 160
+    photos_h = 280
     height = padding * 2 + top_row_h + n * cell_h + 80 + photos_h
 
     image = Image.new('RGB', (max(width, 800), height), (255, 255, 255))
