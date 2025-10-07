@@ -3953,16 +3953,16 @@ async def _show_tournament_edit(callback: CallbackQuery, state: FSMContext, tour
     builder.button(text="👥 Кол-во", callback_data="edit_field:participants_count")
     builder.button(text="💬 Описание", callback_data="edit_field:comment")
     builder.button(text="⚙️ Ещё", callback_data="edit_tournament_more")
-    builder.button(text="👥 Участники", callback_data="manage_tournament_participants")
+    builder.button(text="👥 Участники", callback_data=f"manage_tournament_participants:{tournament_id}")
     
     # Кнопка посева (жеребьевки) - всегда видна
-    builder.button(text="🎲 Посев", callback_data="tournament_seeding_menu")
+    builder.button(text="🎲 Посев", callback_data=f"tournament_seeding_menu:{tournament_id}")
     
     # Кнопка запуска турнира, если готов
     if tournament_ready and tournament_data.get('status') == 'active':
         builder.button(text="🚀 Запустить", callback_data="tournament_start_now")
     
-    builder.button(text="🗑️ Удалить", callback_data="delete_tournament_confirm")
+    builder.button(text="🗑️ Удалить", callback_data=f"delete_tournament_confirm:{tournament_id}")
     builder.button(text="🔙 Назад", callback_data="edit_tournaments_back")
     builder.adjust(2, 2, 2, 2, 1, 1, 1, 1, 1)
     
@@ -4337,9 +4337,9 @@ async def manage_tournament_participants(callback: CallbackQuery, state: FSMCont
         pass
     
     builder = InlineKeyboardBuilder()
-    builder.button(text="➕ Добавить", callback_data="add_tournament_participant")
+    builder.button(text="➕ Добавить", callback_data=f"add_tournament_participant:{tournament_id}")
     if participants:
-        builder.button(text="➖ Удалить", callback_data="remove_tournament_participant")
+        builder.button(text="➖ Удалить", callback_data=f"remove_tournament_participant:{tournament_id}")
     
     # Кнопка запуска турнира, если готов
     if tournament_ready and tournament_data.get('status') == 'active':
@@ -4983,8 +4983,8 @@ async def select_participant_from_search(callback: CallbackQuery, state: FSMCont
         builder.button(text="👥 К участникам", callback_data=f"admin_view_participants:{tournament_id}")
         builder.button(text="🔙 К списку турниров", callback_data="admin_back_to_tournament_list")
     else:
-        builder.button(text="➕ Добавить еще", callback_data="add_tournament_participant")
-        builder.button(text="👥 Управление участниками", callback_data="manage_tournament_participants")
+        builder.button(text="➕ Добавить еще", callback_data=f"add_tournament_participant:{tournament_id}")
+        builder.button(text="👥 Управление участниками", callback_data=f"manage_tournament_participants:{tournament_id}")
         builder.button(text="🔙 К турниру", callback_data=f"edit_tournament:{tournament_id}")
     
     builder.adjust(1)
