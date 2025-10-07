@@ -871,3 +871,68 @@ async def send_tournament_application_to_channel(
         )
     except Exception as e:
         print(f"Ошибка отправки уведомления об участнике турнира: {e}")
+
+
+async def send_tournament_started_to_channel(
+    bot: Bot,
+    tournament_id: str,
+    tournament_data: Dict[str, Any],
+    bracket_image_bytes: bytes = None
+):
+    """Отправляет уведомление в канал о начале турнира с фото сетки."""
+    try:
+        sport = tournament_data.get('sport', '🎾Большой теннис')
+        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+
+        # Локация
+        city = tournament_data.get('city', '—')
+        district = tournament_data.get('district', '')
+        country = tournament_data.get('country', '')
+        if district:
+            city = f"{city} - {district}"
+
+        # Текст сообщения
+        name = escape_markdown(tournament_data.get('name', 'Турнир'))
+        type_text = escape_markdown(tournament_data.get('type', '—'))
+        gender = escape_markdown(tournament_data.get('gender', '—'))
+        category = escape_markdown(tournament_data.get('category', '—'))
+        level = escape_markdown(tournament_data.get('level', 'Не указан'))
+        participants_count = len(tournament_data.get('participants', {}))
+        
+        text = (
+            f"🏁 *Турнир начался!*\n\n"
+            f"🏆 *{name}*\n\n"
+            f"🌍 *Место:* {escape_markdown(city)}, {escape_markdown(country)}\n"
+            f"🎯 *Тип:* {type_text} • {gender}\n"
+            f"🏅 *Категория:* {category}\n"
+            f"🧩 *Уровень:* {level}\n"
+            f"👥 *Участников:* {participants_count}\n\n"
+            f"Турнир запущен! Следите за результатами!\n\n#турнир"
+        )
+
+        builder = InlineKeyboardBuilder()
+        deep_link = f"https://t.me/{BOT_USERNAME}?start=view_tournament_{tournament_id}"
+        builder.row(InlineKeyboardButton(text="👀 Смотреть турнир", url=deep_link))
+
+        # Отправляем с фото сетки, если оно есть
+        if bracket_image_bytes:
+            from aiogram.types import BufferedInputFile
+            photo = BufferedInputFile(bracket_image_bytes, filename=f"tournament_{tournament_id}_bracket.png")
+            await bot.send_photo(
+                chat_id=channel_id,
+                photo=photo,
+                caption=text,
+                parse_mode="Markdown",
+                reply_markup=builder.as_markup(),
+            )
+        else:
+            # Если фото нет, отправляем только текст
+            await bot.send_message(
+                chat_id=channel_id,
+                text=text,
+                parse_mode="Markdown",
+                reply_markup=builder.as_markup(),
+                disable_web_page_preview=True,
+            )
+    except Exception as e:
+        print(f"Ошибка отправки уведомления о начале турнира в канал: {e}")

@@ -318,10 +318,8 @@ async def cancel_action(callback: CallbackQuery):
 def get_admin_keyboard():
     builder = InlineKeyboardBuilder()
     builder.button(text="🚫 Забаненные пользователи", callback_data="admin_banned_list")
-    builder.button(text="🏆 Турниры", callback_data="admin_tournaments")
     builder.button(text="➕ Создать турнир", callback_data="admin_create_tournament")
-    builder.button(text="✏️ Редактировать турниры", callback_data="admin_edit_tournaments")
-    builder.button(text="👥 Участники турниров", callback_data="admin_view_tournament_participants")
+    builder.button(text="✏️ Управление турнирами", callback_data="admin_edit_tournaments")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -498,22 +496,22 @@ async def edit_tournaments_handler(callback: CallbackQuery):
     tournaments = await storage.load_tournaments()
     
     if not tournaments:
-        await safe_edit_message(callback, "📋 Нет турниров для редактирования")
+        await safe_edit_message(callback, "📋 Нет турниров")
         return
     
     builder = InlineKeyboardBuilder()
     for tournament_id, tournament_data in tournaments.items():
         name = tournament_data.get('name', 'Без названия')
         city = tournament_data.get('city', 'Не указан')
-        builder.button(text=f"🏆 {name} ({city})", callback_data=f"edit_tournament:{tournament_id}")
+        button_text = f"{name[:30]}... ({city})" if len(name) > 30 else f"{name} ({city})"
+        builder.button(text=button_text, callback_data=f"edit_tournament:{tournament_id}")
     
     builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
     builder.adjust(1)
     
     await safe_edit_message(
         callback,
-        "🏆 Редактирование турниров\n\n"
-        "Выберите турнир для редактирования:",
+        "🏆 Выберите турнир:",
         builder.as_markup()
     )
     await callback.answer()

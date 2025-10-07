@@ -5,7 +5,15 @@
 import logging
 from typing import List, Dict, Any
 from aiogram import Bot
+from aiogram.types import BufferedInputFile
 from services.storage import storage
+from utils.tournament_brackets import Player
+from utils.bracket_image_generator import (
+    build_tournament_bracket_image_bytes,
+    create_simple_text_image_bytes,
+)
+from utils.round_robin_image_generator import build_round_robin_table
+from config.tournament_config import MIN_PARTICIPANTS
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +23,119 @@ class TournamentNotifications:
     
     def __init__(self, bot: Bot):
         self.bot = bot
+    
+    async def _generate_bracket_image(self, tournament_data: dict, tournament_id: str) -> tuple[bytes, str]:
+        """Генерирует изображение сетки турнира"""
+        try:
+            participants = tournament_data.get('participants', {}) or {}
+            tournament_type = tournament_data.get('type', 'Олимпийская система')
+
+            # Собираем игроков
+            users = await storage.load_users()
+            players: list[Player] = []
+            for user_id, pdata in participants.items():
+                u = users.get(user_id, {})
+                players.append(
+                    Player(
+                        id=user_id,
+                        name=pdata.get('name', u.get('first_name', 'Неизвестно')),
+                        photo_url=u.get('photo_path'),
+                        initial=None,
+                    )
+                )
+
+            # Применяем посев (seeding)
+            min_participants = MIN_PARTICIPANTS.get(tournament_type, 4)
+            seeding = tournament_data.get('seeding') or []
+            id_to_player = {p.id: p for p in players}
+            ordered: list[Player] = []
+            
+            # Добираем из seeding
+            for pid in seeding:
+                if pid in id_to_player:
+                    ordered.append(id_to_player.pop(pid))
+            
+            # Оставшиеся игроки
+            import random
+            remaining = list(id_to_player.values())
+            random.shuffle(remaining)
+            ordered.extend(remaining)
+
+            players = ordered
+
+            # Для олимпийской системы — добавляем номера посева
+            if tournament_type == 'Олимпийская система':
+                if seeding:
+                    seed_index = {pid: i + 1 for i, pid in enumerate(seeding)}
+                    players = [
+                        Player(
+                            id=p.id,
+                            name=(f"№{seed_index.get(p.id)} {p.name}" if seed_index.get(p.id) else p.name),
+                            photo_url=getattr(p, 'photo_url', None),
+                            initial=getattr(p, 'initial', None),
+                        )
+                        for p in players
+                    ]
+                while len(players) < min_participants:
+                    players.append(Player(id=f"empty_{len(players)}", name=" ", photo_url=None, initial=None))
+
+            # Загружаем завершенные игры турнира
+            completed_games: list[dict] = []
+            try:
+                games = await storage.load_games()
+                normalized: list[dict] = []
+                for g in games:
+                    if g.get('tournament_id') != tournament_id:
+                        continue
+                    if g.get('type') not in (None, 'tournament'):
+                        continue
+                    
+                    # Извлекаем игроков
+                    p = g.get('players') or {}
+                    team1_list: list[str] = []
+                    team2_list: list[str] = []
+                    if isinstance(p, dict):
+                        t1 = p.get('team1') or []
+                        t2 = p.get('team2') or []
+                        if t1:
+                            team1_list = [str(t1[0])] if not isinstance(t1[0], dict) else [str(t1[0].get('id'))]
+                        if t2:
+                            team2_list = [str(t2[0])] if not isinstance(t2[0], dict) else [str(t2[0].get('id'))]
+                    elif isinstance(p, list) and len(p) >= 2:
+                        a, b = p[0], p[1]
+                        team1_list = [str(a)] if not isinstance(a, dict) else [str(a.get('id'))]
+                        team2_list = [str(b)] if not isinstance(b, dict) else [str(b.get('id'))]
+
+                    norm_game = {
+                        'tournament_id': tournament_id,
+                        'score': g.get('score') or (', '.join(g.get('sets', []) or [])),
+                        'players': {
+                            'team1': team1_list,
+                            'team2': team2_list,
+                        },
+                        'winner_id': str(g.get('winner_id')) if g.get('winner_id') is not None else None,
+                        'media_filename': g.get('media_filename'),
+                        'date': g.get('date') or g.get('created_at'),
+                        'status': g.get('status') or 'completed',
+                    }
+                    normalized.append(norm_game)
+                
+                completed_games = sorted(normalized, key=lambda x: x.get('date') or '', reverse=True)
+            except Exception as e:
+                logger.error(f"Ошибка при загрузке игр: {e}")
+
+            # Генерируем изображение сетки
+            if tournament_type == 'Круговая':
+                table_players = [{"id": p.id, "name": p.name, "photo_path": getattr(p, 'photo_url', None)} for p in players]
+                image_bytes = build_round_robin_table(table_players, completed_games, tournament_data.get('name', 'Турнир'))
+                return image_bytes, "Круговая таблица"
+            else:
+                return build_tournament_bracket_image_bytes(tournament_data, players, completed_games)
+                
+        except Exception as e:
+            logger.error(f"Ошибка при генерации изображения сетки: {e}", exc_info=True)
+            fallback = "Турнирная сетка\n\nНе удалось загрузить данные"
+            return create_simple_text_image_bytes(fallback, "Ошибка"), ""
     
     async def notify_tournament_started(self, tournament_id: str, tournament_data: Dict[str, Any]) -> bool:
         """Уведомляет всех участников о начале турнира и их соперниках"""
@@ -26,6 +147,16 @@ class TournamentNotifications:
             
             logger.info(f"Начинаю отправку уведомлений для турнира {tournament_id} ({tournament_name})")
             logger.info(f"Участников: {len(participants)}, матчей: {len(matches)}")
+            
+            # Генерируем изображение сетки турнира
+            try:
+                logger.info(f"Генерация изображения сетки турнира {tournament_id}")
+                bracket_image_bytes, caption_suffix = await self._generate_bracket_image(tournament_data, tournament_id)
+                bracket_photo = BufferedInputFile(bracket_image_bytes, filename=f"tournament_{tournament_id}_bracket.png")
+                logger.info(f"Изображение сетки успешно сгенерировано: {len(bracket_image_bytes)} байт")
+            except Exception as e:
+                logger.error(f"Ошибка генерации изображения сетки: {e}", exc_info=True)
+                bracket_photo = None
             
             # Загружаем данные пользователей для получения username
             users = await storage.load_users()
@@ -96,11 +227,34 @@ class TournamentNotifications:
                                 message += f"📱 Для связи: {opponent_username_text}\n"
                     
                     logger.info(f"Отправка сообщения участнику {user_id}, длина сообщения: {len(message)}")
-                    await self.bot.send_message(
-                        chat_id=user_id,
-                        text=message,
-                        parse_mode='HTML'
-                    )
+                    
+                    # Отправляем с фото сетки, если оно есть
+                    if bracket_photo:
+                        try:
+                            # Создаем новый BufferedInputFile для каждого пользователя
+                            user_photo = BufferedInputFile(bracket_image_bytes, filename=f"tournament_{tournament_id}_bracket.png")
+                            await self.bot.send_photo(
+                                chat_id=user_id,
+                                photo=user_photo,
+                                caption=message,
+                                parse_mode='HTML'
+                            )
+                        except Exception as photo_error:
+                            logger.error(f"Ошибка отправки фото участнику {user_id}: {photo_error}")
+                            # Если не удалось отправить с фото, отправляем просто текст
+                            await self.bot.send_message(
+                                chat_id=user_id,
+                                text=message,
+                                parse_mode='HTML'
+                            )
+                    else:
+                        # Если фото не сгенерировано, отправляем только текст
+                        await self.bot.send_message(
+                            chat_id=user_id,
+                            text=message,
+                            parse_mode='HTML'
+                        )
+                    
                     success_count += 1
                     logger.info(f"✅ Уведомление успешно отправлено участнику {user_id}")
                     

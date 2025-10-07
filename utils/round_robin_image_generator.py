@@ -26,6 +26,28 @@ def _load_fonts():
             return f, f, f
 
 
+def _sanitize_title(text: str) -> str:
+    """Удаляет эмодзи и связанные служебные символы из строки заголовка."""
+    try:
+        import re
+        emoji_pattern = re.compile(
+            "[\U0001F600-\U0001F64F"
+            "\U0001F300-\U0001F5FF"
+            "\U0001F680-\U0001F6FF"
+            "\U0001F1E6-\U0001F1FF"
+            "\U00002700-\U000027BF"
+            "\U0001F900-\U0001F9FF"
+            "\U00002600-\U000026FF"
+            "]+",
+            flags=re.UNICODE,
+        )
+        cleaned = emoji_pattern.sub("", str(text or ""))
+        cleaned = cleaned.replace("\u200d", "").replace("\ufe0f", "")
+        return cleaned
+    except Exception:
+        return "".join(ch for ch in str(text or "") if ord(ch) <= 0xFFFF)
+
+
 def _draw_game_photos_area(draw: ImageDraw.Draw, x: int, y: int, width: int, height: int, cell_font: ImageFont.FreeTypeFont, photo_paths: Optional[list[str]] = None):
     try:
         title = "Фото с игр турнира"
@@ -89,13 +111,16 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
 
     width = padding * 2 + left_col_w + n * cell_w + len(extra_cols) * cell_w
     photos_h = 280
-    height = padding * 2 + top_row_h + n * cell_h + 80 + photos_h
+    # Предварительно проверим наличие фото, чтобы корректно рассчитать высоту изображения
+    photo_paths = [r.get('media_filename') for r in (results or []) if r.get('media_filename')]
+    has_photos = len(photo_paths) > 0
+    height = padding * 2 + top_row_h + n * cell_h + 80 + (photos_h if has_photos else 0)
 
     image = Image.new('RGB', (max(width, 800), height), (255, 255, 255))
     draw = ImageDraw.Draw(image)
 
     # Заголовок
-    title_text = title
+    title_text = _sanitize_title(title)
     try:
         bbox = draw.textbbox((0, 0), title_text, font=header_font)
         draw.text(((image.width - (bbox[2] - bbox[0])) // 2, 20), title_text, fill=(31, 41, 55), font=header_font)
@@ -260,7 +285,6 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                         pass
         return sets
 
-    photo_paths = []
     res_map: Dict[tuple, Dict[str, Any]] = {}
     for r in results or []:
         ids = _parse_ids(r)
@@ -277,7 +301,6 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
             'a_sets': a_sets,
             'b_sets': b_sets,
         }
-        photo_paths.append(r.get('media_filename'))
 
     # Подсчет статистики 3/1/0 и тай-брейк по разнице сетов между равными по очкам
     ids = [str(p.get('id')) for p in players]
@@ -402,9 +425,10 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     except Exception:
         pass
 
-    # Фото игр внизу
-    photos_y = table_y + table_h + 40
-    _draw_game_photos_area(draw, padding, photos_y, image.width - 2 * padding, photos_h, cell_font, photo_paths)
+    # Фото игр внизу: рисуем только если есть фото
+    if has_photos:
+        photos_y = table_y + table_h + 40
+        _draw_game_photos_area(draw, padding, photos_y, image.width - 2 * padding, photos_h, cell_font, photo_paths)
 
     buf = io.BytesIO()
     image.save(buf, format='PNG')
