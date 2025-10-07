@@ -2393,6 +2393,13 @@ async def show_tournaments_list(callback: CallbackQuery, tournaments: dict, spor
     if await is_admin(user_id):
         builder.button(text="🎲 Посев", callback_data=f"tournament_seeding_menu:{tournament_id}")
     
+    # Кнопка "Участвовать" только если не зарегистрирован, турнир не запущен и не достигнут лимит участников
+    tournament_status = tournament_data.get('status', 'active')
+    max_participants = int(tournament_data.get('participants_count', 0) or 0)
+    current_count = len(tournament_data.get('participants', {}))
+    if not is_registered and tournament_status == 'active' and (not max_participants or current_count < max_participants):
+        builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
+    
     # Кнопка оплаты участия, если есть взнос и пользователь зарегистрирован, но не оплатил
     fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or 0)
     paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
@@ -2521,8 +2528,6 @@ async def view_tournament_prev(callback: CallbackQuery, state: FSMContext):
     current_count = len(tournament_data.get('participants', {}))
     if not is_registered and tournament_status == 'active' and (not max_participants or current_count < max_participants):
         builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
-    else:
-        print("2525 current_count")
     
     # Кнопка оплаты участия
     fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or 0)
@@ -2649,8 +2654,12 @@ async def view_tournament_next(callback: CallbackQuery, state: FSMContext):
     current_count = len(tournament_data.get('participants', {}))
     if not is_registered and tournament_status == 'active' and (not max_participants or current_count < max_participants):
         builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
-    else:
-        print("2653 current_count")
+    
+    # Кнопка оплаты участия
+    fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or 0)
+    paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
+    if fee > 0 and is_registered and not paid:
+        builder.button(text=f"💳 Оплатить участие ({fee}₽)", callback_data=f"tournament_pay:{tournament_id}")
     
     builder.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
     
@@ -3022,8 +3031,6 @@ async def view_tournament_from_application(callback: CallbackQuery):
     current_count = len(tournament_data.get('participants', {}))
     if not is_registered and tournament_status == 'active' and (not max_participants or current_count < max_participants):
         builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
-    else:
-        print("3026 current_count")
     
     builder.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
     
