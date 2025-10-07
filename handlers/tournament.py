@@ -2521,6 +2521,8 @@ async def view_tournament_prev(callback: CallbackQuery, state: FSMContext):
     current_count = len(tournament_data.get('participants', {}))
     if not is_registered and tournament_status == 'active' and (not max_participants or current_count < max_participants):
         builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
+    else:
+        print("2525 current_count")
     
     # Кнопка оплаты участия
     fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or 0)
@@ -2647,6 +2649,8 @@ async def view_tournament_next(callback: CallbackQuery, state: FSMContext):
     current_count = len(tournament_data.get('participants', {}))
     if not is_registered and tournament_status == 'active' and (not max_participants or current_count < max_participants):
         builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
+    else:
+        print("2653 current_count")
     
     builder.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
     
@@ -3018,6 +3022,8 @@ async def view_tournament_from_application(callback: CallbackQuery):
     current_count = len(tournament_data.get('participants', {}))
     if not is_registered and tournament_status == 'active' and (not max_participants or current_count < max_participants):
         builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
+    else:
+        print("3026 current_count")
     
     builder.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
     
