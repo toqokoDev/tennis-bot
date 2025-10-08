@@ -3958,13 +3958,16 @@ async def _show_tournament_edit(callback: CallbackQuery, state: FSMContext, tour
     # Кнопка посева (жеребьевки) - всегда видна
     builder.button(text="🎲 Посев", callback_data=f"tournament_seeding_menu:{tournament_id}")
     
+    # Кнопка управления играми
+    builder.button(text="🎮 Управление играми", callback_data=f"admin_tournament_games:{tournament_id}")
+    
     # Кнопка запуска турнира, если готов
     if tournament_ready and tournament_data.get('status') == 'active':
         builder.button(text="🚀 Запустить", callback_data="tournament_start_now")
     
     builder.button(text="🗑️ Удалить", callback_data=f"delete_tournament_confirm:{tournament_id}")
     builder.button(text="🔙 Назад", callback_data="edit_tournaments_back")
-    builder.adjust(2, 2, 2, 2, 1, 1, 1, 1, 1)
+    builder.adjust(2, 2, 2, 2, 1, 1, 1, 1, 1, 1)
     
     # Создаем турнирную сетку
     bracket_image, bracket_text = await build_and_render_tournament_image(tournament_data, tournament_id)
