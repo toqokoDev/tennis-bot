@@ -14,6 +14,9 @@ from handlers.profile import calculate_level_from_points
 admin_router = Router()
 logger = logging.getLogger(__name__)
 
+# Пагинация для списка игр
+GAMES_PER_PAGE = 10
+
 async def safe_edit_message(callback: CallbackQuery, text: str, reply_markup=None):
     """
     Безопасное редактирование сообщения с обработкой ошибок
@@ -1144,4 +1147,714 @@ async def ban_user_handler(callback: CallbackQuery):
     await storage.save_games(new_games)
     
     await safe_edit_message(callback, f"✅ Пользователь {user_id} забанен и удален!")
+    await callback.answer()
+
+
+# ==================== УПРАВЛЕНИЕ ИГРАМИ ====================
+
+@admin_router.message(Command("games"))
+async def games_cmd(message: Message):
+    """Команда для просмотра всех игр"""
+    if not await is_admin(message.from_user.id):
+        await safe_send_message(message, "❌ У вас нет прав администратора")
+        return
+    
+    games = await storage.load_games()
+    
+    if not games:
+        await safe_send_message(message, "📋 Список игр пуст.")
+        return
+    
+    await show_games_page(message, page=0)
+
+
+async def show_games_page(message: Message, page: int = 0, callback: CallbackQuery = None):
+    """Показывает страницу со списком игр"""
+    games = await storage.load_games()
+    users = await storage.load_users()
+    
+    if not games:
+        text = "📋 Список игр пуст."
+        if callback:
+            await safe_edit_message(callback, text)
+        else:
+            await safe_send_message(message, text)
+        return
+    
+    # Сортируем игры по дате (новые первые)
+    games_sorted = sorted(games, key=lambda x: x.get('date', ''), reverse=True)
+    
+    total_games = len(games_sorted)
+    total_pages = (total_games + GAMES_PER_PAGE - 1) // GAMES_PER_PAGE
+    
+    if page < 0:
+        page = 0
+    if page >= total_pages:
+        page = total_pages - 1
+    
+    start_idx = page * GAMES_PER_PAGE
+    end_idx = min(start_idx + GAMES_PER_PAGE, total_games)
+    
+    games_on_page = games_sorted[start_idx:end_idx]
+    
+    text = f"🎾 <b>Список игр</b>\n\n"
+    text += f"Страница {page + 1}/{total_pages} (всего игр: {total_games})\n\n"
+    
+    builder = InlineKeyboardBuilder()
+    
+    for idx, game in enumerate(games_on_page, start=start_idx + 1):
+        game_id = game.get('id', 'Неизвестно')
+        game_type = game.get('type', 'single')
+        score = game.get('score', 'Нет счета')
+        date = game.get('date', '')
+        
+        # Форматируем дату
+        try:
+            dt = datetime.fromisoformat(date)
+            date_str = dt.strftime("%d.%m.%Y %H:%M")
+        except:
+            date_str = date[:16] if date else "Неизвестно"
+        
+        # Получаем имена игроков
+        team1 = game.get('players', {}).get('team1', [])
+        team2 = game.get('players', {}).get('team2', [])
+        
+        def get_player_name(player_id):
+            user = users.get(player_id, {})
+            return f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or player_id
+        
+        if game_type == 'single':
+            type_icon = "👤"
+            player1 = get_player_name(team1[0]) if team1 else "?"
+            player2 = get_player_name(team2[0]) if team2 else "?"
+            players_str = f"{player1} vs {player2}"
+        elif game_type == 'double':
+            type_icon = "👥"
+            players_str = "Парная игра"
+        else:
+            type_icon = "🏆"
+            player1 = get_player_name(team1[0]) if team1 else "?"
+            player2 = get_player_name(team2[0]) if team2 else "?"
+            players_str = f"{player1} vs {player2}"
+        
+        button_text = f"{type_icon} {date_str} | {score}"
+        builder.button(text=button_text, callback_data=f"admin_view_game:{game_id}")
+    
+    builder.adjust(1)
+    
+    # Кнопки навигации
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"admin_games_page:{page-1}"))
+    if page < total_pages - 1:
+        nav_buttons.append(InlineKeyboardButton(text="Вперед ➡️", callback_data=f"admin_games_page:{page+1}"))
+    
+    if nav_buttons:
+        builder.row(*nav_buttons)
+    
+    if callback:
+        await safe_edit_message(callback, text, reply_markup=builder.as_markup())
+    else:
+        await safe_send_message(message, text, reply_markup=builder.as_markup())
+
+
+@admin_router.callback_query(F.data.startswith("admin_games_page:"))
+async def admin_games_page_handler(callback: CallbackQuery):
+    """Обработчик пагинации списка игр"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    page = int(callback.data.split(":", 1)[1])
+    await show_games_page(callback.message, page=page, callback=callback)
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin_view_game:"))
+async def admin_view_game_handler(callback: CallbackQuery):
+    """Обработчик просмотра информации об игре"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    game_id = callback.data.split(":", 1)[1]
+    games = await storage.load_games()
+    users = await storage.load_users()
+    
+    # Находим игру
+    game = None
+    for g in games:
+        if g.get('id') == game_id:
+            game = g
+            break
+    
+    if not game:
+        await callback.answer("❌ Игра не найдена")
+        return
+    
+    # Формируем информацию об игре
+    game_type = game.get('type', 'single')
+    score = game.get('score', 'Нет счета')
+    date = game.get('date', '')
+    winner_id = game.get('winner_id')
+    tournament_id = game.get('tournament_id')
+    media = game.get('media_filename')
+    
+    # Форматируем дату
+    try:
+        dt = datetime.fromisoformat(date)
+        date_str = dt.strftime("%d.%m.%Y в %H:%M")
+    except:
+        date_str = date[:16] if date else "Неизвестно"
+    
+    # Получаем информацию об игроках
+    team1 = game.get('players', {}).get('team1', [])
+    team2 = game.get('players', {}).get('team2', [])
+    
+    def get_player_info(player_id):
+        user = users.get(player_id, {})
+        name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or player_id
+        level = user.get('player_level', '?')
+        rating = user.get('rating_points', '?')
+        return f"{name} ({level}, {rating} pts)"
+    
+    text = f"<b>🎾 Информация об игре</b>\n\n"
+    text += f"🆔 ID: <code>{game_id}</code>\n"
+    text += f"📅 Дата: {date_str}\n"
+    
+    if game_type == 'single':
+        text += f"🎮 Тип: Одиночная игра\n\n"
+        if team1 and team2:
+            text += f"👤 Игрок 1: {get_player_info(team1[0])}\n"
+            text += f"👤 Игрок 2: {get_player_info(team2[0])}\n\n"
+    elif game_type == 'double':
+        text += f"🎮 Тип: Парная игра\n\n"
+        text += f"👥 Команда 1:\n"
+        for pid in team1:
+            text += f"  • {get_player_info(pid)}\n"
+        text += f"\n👥 Команда 2:\n"
+        for pid in team2:
+            text += f"  • {get_player_info(pid)}\n\n"
+    else:
+        text += f"🎮 Тип: Турнирная игра\n"
+        if tournament_id:
+            text += f"🏆 Турнир ID: <code>{tournament_id}</code>\n\n"
+        if team1 and team2:
+            text += f"👤 Игрок 1: {get_player_info(team1[0])}\n"
+            text += f"👤 Игрок 2: {get_player_info(team2[0])}\n\n"
+    
+    text += f"📊 Счет: <b>{score}</b>\n"
+    
+    if winner_id:
+        winner = users.get(winner_id, {})
+        winner_name = f"{winner.get('first_name', '')} {winner.get('last_name', '')}".strip() or winner_id
+        text += f"🏆 Победитель: {winner_name}\n"
+    
+    if media:
+        text += f"📷 Медиа: Есть\n"
+    else:
+        text += f"📷 Медиа: Нет\n"
+    
+    # Кнопки редактирования
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✏️ Изменить счет", callback_data=f"admin_edit_score:{game_id}")
+    builder.button(text="📷 Изменить медиа", callback_data=f"admin_edit_media:{game_id}")
+    builder.button(text="🏆 Изменить победителя", callback_data=f"admin_edit_winner:{game_id}")
+    builder.button(text="🗑️ Удалить игру", callback_data=f"admin_delete_game:{game_id}")
+    builder.button(text="🔙 К списку игр", callback_data="admin_back_to_games")
+    builder.adjust(1)
+    
+    await safe_edit_message(callback, text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin_back_to_games")
+async def admin_back_to_games_handler(callback: CallbackQuery):
+    """Возврат к списку игр"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    await show_games_page(callback.message, page=0, callback=callback)
+    await callback.answer()
+
+
+# ==================== РЕДАКТИРОВАНИЕ СЧЕТА ====================
+
+@admin_router.callback_query(F.data.startswith("admin_edit_score:"))
+async def admin_edit_score_handler(callback: CallbackQuery, state: FSMContext):
+    """Начало редактирования счета"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    game_id = callback.data.split(":", 1)[1]
+    await state.update_data(editing_game_id=game_id)
+    
+    from models.states import AdminEditGameStates
+    await state.set_state(AdminEditGameStates.EDIT_SCORE)
+    
+    games = await storage.load_games()
+    game = None
+    for g in games:
+        if g.get('id') == game_id:
+            game = g
+            break
+    
+    current_score = game.get('score', 'Не указан') if game else 'Не указан'
+    
+    text = (
+        f"✏️ <b>Изменение счета игры</b>\n\n"
+        f"🆔 ID: <code>{game_id}</code>\n"
+        f"📊 Текущий счет: <b>{current_score}</b>\n\n"
+        f"Введите новый счет в формате:\n"
+        f"<code>6:4, 6:2</code> (для нескольких сетов)\n"
+        f"или\n"
+        f"<code>6:4</code> (для одного сета)\n\n"
+        f"Примеры:\n"
+        f"• <code>6:4, 6:2</code>\n"
+        f"• <code>7:5, 6:4, 6:2</code>\n"
+        f"• <code>6:0</code>"
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 Назад", callback_data=f"admin_view_game:{game_id}")
+    
+    await safe_edit_message(callback, text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@admin_router.message(lambda message: message.from_user)
+async def admin_edit_score_input(message: Message, state: FSMContext):
+    """Обработчик ввода нового счета"""
+    from models.states import AdminEditGameStates
+    
+    current_state = await state.get_state()
+    if current_state != AdminEditGameStates.EDIT_SCORE.state:
+        return
+    
+    if not await is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет прав администратора")
+        await state.clear()
+        return
+    
+    new_score = message.text.strip()
+    data = await state.get_data()
+    game_id = data.get('editing_game_id')
+    
+    # Загружаем игры
+    games = await storage.load_games()
+    
+    # Находим игру
+    game = None
+    game_index = None
+    for idx, g in enumerate(games):
+        if g.get('id') == game_id:
+            game = g
+            game_index = idx
+            break
+    
+    if not game:
+        await message.answer("❌ Игра не найдена")
+        await state.clear()
+        return
+    
+    # Парсим новый счет
+    try:
+        sets = [s.strip() for s in new_score.split(',')]
+        for s in sets:
+            parts = s.split(':')
+            if len(parts) != 2:
+                raise ValueError("Неверный формат счета")
+            int(parts[0])
+            int(parts[1])
+        
+        # Обновляем игру
+        games[game_index]['score'] = new_score
+        games[game_index]['sets'] = sets
+        
+        # Пересчитываем победителя по новому счету
+        team1_wins = sum(1 for s in sets if int(s.split(':')[0]) > int(s.split(':')[1]))
+        team2_wins = sum(1 for s in sets if int(s.split(':')[0]) < int(s.split(':')[1]))
+        
+        team1_players = game.get('players', {}).get('team1', [])
+        team2_players = game.get('players', {}).get('team2', [])
+        
+        if team1_wins > team2_wins and team1_players:
+            games[game_index]['winner_id'] = team1_players[0]
+        elif team2_wins > team1_wins and team2_players:
+            games[game_index]['winner_id'] = team2_players[0]
+        
+        # Сохраняем изменения
+        await storage.save_games(games)
+        
+        builder = InlineKeyboardBuilder()
+        builder.button(text="📋 Просмотр игры", callback_data=f"admin_view_game:{game_id}")
+        builder.button(text="🔙 К списку игр", callback_data="admin_back_to_games")
+        builder.adjust(1)
+        
+        await message.answer(
+            f"✅ Счет игры успешно изменен!\n\n"
+            f"🆔 ID: <code>{game_id}</code>\n"
+            f"📊 Новый счет: <b>{new_score}</b>",
+            reply_markup=builder.as_markup()
+        )
+        
+    except ValueError:
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔙 Назад", callback_data=f"admin_view_game:{game_id}")
+        
+        await message.answer(
+            "❌ Неверный формат счета!\n\n"
+            "Используйте формат: <code>6:4, 6:2</code>",
+            reply_markup=builder.as_markup()
+        )
+    
+    await state.clear()
+
+
+# ==================== РЕДАКТИРОВАНИЕ МЕДИА ====================
+
+@admin_router.callback_query(F.data.startswith("admin_edit_media:"))
+async def admin_edit_media_handler(callback: CallbackQuery, state: FSMContext):
+    """Начало редактирования медиа"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    game_id = callback.data.split(":", 1)[1]
+    await state.update_data(editing_game_id=game_id)
+    
+    from models.states import AdminEditGameStates
+    await state.set_state(AdminEditGameStates.EDIT_MEDIA)
+    
+    games = await storage.load_games()
+    game = None
+    for g in games:
+        if g.get('id') == game_id:
+            game = g
+            break
+    
+    current_media = game.get('media_filename', 'Нет') if game else 'Нет'
+    
+    text = (
+        f"📷 <b>Изменение медиафайла игры</b>\n\n"
+        f"🆔 ID: <code>{game_id}</code>\n"
+        f"📁 Текущий медиафайл: {current_media}\n\n"
+        f"Отправьте новое фото или видео для игры.\n"
+        f"Или отправьте текст <code>удалить</code> чтобы удалить медиафайл."
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 Назад", callback_data=f"admin_view_game:{game_id}")
+    
+    await safe_edit_message(callback, text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@admin_router.message(lambda message: message.from_user)
+async def admin_edit_media_input(message: Message, state: FSMContext):
+    """Обработчик изменения медиафайла"""
+    from models.states import AdminEditGameStates
+    
+    current_state = await state.get_state()
+    if current_state != AdminEditGameStates.EDIT_MEDIA.state:
+        return
+    
+    if not await is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет прав администратора")
+        await state.clear()
+        return
+    
+    data = await state.get_data()
+    game_id = data.get('editing_game_id')
+    
+    # Загружаем игры
+    games = await storage.load_games()
+    
+    # Находим игру
+    game = None
+    game_index = None
+    for idx, g in enumerate(games):
+        if g.get('id') == game_id:
+            game = g
+            game_index = idx
+            break
+    
+    if not game:
+        await message.answer("❌ Игра не найдена")
+        await state.clear()
+        return
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📋 Просмотр игры", callback_data=f"admin_view_game:{game_id}")
+    builder.button(text="🔙 К списку игр", callback_data="admin_back_to_games")
+    builder.adjust(1)
+    
+    if message.text and message.text.lower() == 'удалить':
+        # Удаляем медиафайл
+        old_media = games[game_index].get('media_filename')
+        games[game_index]['media_filename'] = None
+        await storage.save_games(games)
+        
+        # Пытаемся удалить файл с диска
+        if old_media:
+            try:
+                from config.paths import GAMES_PHOTOS_DIR
+                file_path = os.path.join(GAMES_PHOTOS_DIR, old_media)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception as e:
+                logger.warning(f"Не удалось удалить медиафайл: {e}")
+        
+        await message.answer(
+            f"✅ Медиафайл игры удален!\n\n"
+            f"🆔 ID: <code>{game_id}</code>",
+            reply_markup=builder.as_markup()
+        )
+    elif message.photo:
+        # Сохраняем новое фото
+        from utils.media import save_media_file
+        photo = message.photo[-1]
+        
+        try:
+            filename = await save_media_file(message.bot, photo.file_id, 'photo')
+            games[game_index]['media_filename'] = filename
+            await storage.save_games(games)
+            
+            await message.answer_photo(
+                photo=photo.file_id,
+                caption=f"✅ Новое фото для игры сохранено!\n\n🆔 ID: <code>{game_id}</code>",
+                reply_markup=builder.as_markup()
+            )
+        except Exception as e:
+            logger.error(f"Ошибка сохранения фото: {e}")
+            await message.answer(
+                f"❌ Ошибка при сохранении фото: {e}",
+                reply_markup=builder.as_markup()
+            )
+    elif message.video:
+        # Сохраняем новое видео
+        from utils.media import save_media_file
+        video = message.video
+        
+        try:
+            filename = await save_media_file(message.bot, video.file_id, 'video')
+            games[game_index]['media_filename'] = filename
+            await storage.save_games(games)
+            
+            await message.answer_video(
+                video=video.file_id,
+                caption=f"✅ Новое видео для игры сохранено!\n\n🆔 ID: <code>{game_id}</code>",
+                reply_markup=builder.as_markup()
+            )
+        except Exception as e:
+            logger.error(f"Ошибка сохранения видео: {e}")
+            await message.answer(
+                f"❌ Ошибка при сохранении видео: {e}",
+                reply_markup=builder.as_markup()
+            )
+    else:
+        await message.answer(
+            "❌ Отправьте фото, видео или напишите <code>удалить</code>",
+            reply_markup=builder.as_markup()
+        )
+    
+    await state.clear()
+
+
+# ==================== РЕДАКТИРОВАНИЕ ПОБЕДИТЕЛЯ ====================
+
+@admin_router.callback_query(F.data.startswith("admin_edit_winner:"))
+async def admin_edit_winner_handler(callback: CallbackQuery):
+    """Начало редактирования победителя"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    game_id = callback.data.split(":", 1)[1]
+    
+    # Загружаем игры и пользователей
+    games = await storage.load_games()
+    users = await storage.load_users()
+    
+    # Находим игру
+    game = None
+    for g in games:
+        if g.get('id') == game_id:
+            game = g
+            break
+    
+    if not game:
+        await callback.answer("❌ Игра не найдена")
+        return
+    
+    game_type = game.get('type', 'single')
+    team1 = game.get('players', {}).get('team1', [])
+    team2 = game.get('players', {}).get('team2', [])
+    
+    def get_team_names(team_ids):
+        names = []
+        for pid in team_ids:
+            user = users.get(pid, {})
+            name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or pid
+            names.append(name)
+        return " + ".join(names) if names else "Неизвестно"
+    
+    team1_name = get_team_names(team1)
+    team2_name = get_team_names(team2)
+    
+    text = (
+        f"🏆 <b>Изменение победителя игры</b>\n\n"
+        f"🆔 ID: <code>{game_id}</code>\n"
+        f"📊 Текущий счет: <b>{game.get('score', 'Нет счета')}</b>\n\n"
+        f"Выберите нового победителя:"
+    )
+    
+    builder = InlineKeyboardBuilder()
+    
+    if game_type == 'double':
+        builder.button(text=f"🥇 Команда 1: {team1_name}", callback_data=f"admin_set_winner:{game_id}:team1")
+        builder.button(text=f"🥇 Команда 2: {team2_name}", callback_data=f"admin_set_winner:{game_id}:team2")
+    else:
+        builder.button(text=f"🥇 {team1_name}", callback_data=f"admin_set_winner:{game_id}:team1")
+        builder.button(text=f"🥇 {team2_name}", callback_data=f"admin_set_winner:{game_id}:team2")
+    
+    builder.button(text="🔙 Назад", callback_data=f"admin_view_game:{game_id}")
+    builder.adjust(1)
+    
+    await safe_edit_message(callback, text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin_set_winner:"))
+async def admin_set_winner_handler(callback: CallbackQuery):
+    """Установка нового победителя"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    parts = callback.data.split(":")
+    game_id = parts[1]
+    winner_team = parts[2]  # 'team1' или 'team2'
+    
+    # Загружаем игры
+    games = await storage.load_games()
+    
+    # Находим игру
+    game = None
+    game_index = None
+    for idx, g in enumerate(games):
+        if g.get('id') == game_id:
+            game = g
+            game_index = idx
+            break
+    
+    if not game:
+        await callback.answer("❌ Игра не найдена")
+        return
+    
+    # Устанавливаем нового победителя
+    if winner_team == 'team1':
+        winner_id = game.get('players', {}).get('team1', [None])[0]
+    else:
+        winner_id = game.get('players', {}).get('team2', [None])[0]
+    
+    if winner_id:
+        games[game_index]['winner_id'] = winner_id
+        await storage.save_games(games)
+        
+        builder = InlineKeyboardBuilder()
+        builder.button(text="📋 Просмотр игры", callback_data=f"admin_view_game:{game_id}")
+        builder.button(text="🔙 К списку игр", callback_data="admin_back_to_games")
+        builder.adjust(1)
+        
+        await safe_edit_message(
+            callback,
+            f"✅ Победитель игры успешно изменен!\n\n"
+            f"🆔 ID: <code>{game_id}</code>\n"
+            f"🏆 Новый победитель: {winner_team}",
+            reply_markup=builder.as_markup()
+        )
+    else:
+        await callback.answer("❌ Не удалось определить победителя")
+    
+    await callback.answer()
+
+
+# ==================== УДАЛЕНИЕ ИГРЫ ====================
+
+@admin_router.callback_query(F.data.startswith("admin_delete_game:"))
+async def admin_delete_game_handler(callback: CallbackQuery):
+    """Подтверждение удаления игры"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    game_id = callback.data.split(":", 1)[1]
+    
+    text = (
+        f"⚠️ <b>Удаление игры</b>\n\n"
+        f"🆔 ID: <code>{game_id}</code>\n\n"
+        f"Вы уверены, что хотите удалить эту игру?\n"
+        f"Это действие <b>нельзя отменить</b>!"
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Да, удалить", callback_data=f"admin_confirm_delete_game:{game_id}")
+    builder.button(text="❌ Отмена", callback_data=f"admin_view_game:{game_id}")
+    builder.adjust(1)
+    
+    await safe_edit_message(callback, text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin_confirm_delete_game:"))
+async def admin_confirm_delete_game_handler(callback: CallbackQuery):
+    """Подтвержденное удаление игры"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    game_id = callback.data.split(":", 1)[1]
+    
+    # Загружаем игры
+    games = await storage.load_games()
+    
+    # Находим и удаляем игру
+    game_to_delete = None
+    new_games = []
+    for g in games:
+        if g.get('id') == game_id:
+            game_to_delete = g
+        else:
+            new_games.append(g)
+    
+    if game_to_delete:
+        # Удаляем медиафайл если есть
+        media_filename = game_to_delete.get('media_filename')
+        if media_filename:
+            try:
+                from config.paths import GAMES_PHOTOS_DIR
+                file_path = os.path.join(GAMES_PHOTOS_DIR, media_filename)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception as e:
+                logger.warning(f"Не удалось удалить медиафайл: {e}")
+        
+        # Сохраняем изменения
+        await storage.save_games(new_games)
+        
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔙 К списку игр", callback_data="admin_back_to_games")
+        
+        await safe_edit_message(
+            callback,
+            f"✅ Игра успешно удалена!\n\n"
+            f"🆔 ID: <code>{game_id}</code>",
+            reply_markup=builder.as_markup()
+        )
+    else:
+        await callback.answer("❌ Игра не найдена")
+    
     await callback.answer()
