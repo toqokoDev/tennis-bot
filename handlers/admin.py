@@ -10,6 +10,7 @@ import logging
 from services.storage import storage
 from utils.admin import get_confirmation_keyboard, is_admin
 from handlers.profile import calculate_level_from_points
+from models.states import AdminEditGameStates
 
 admin_router = Router()
 logger = logging.getLogger(__name__)
@@ -47,51 +48,6 @@ async def safe_send_message(message: Message, text: str, reply_markup=None):
     except Exception as e:
         logger.error(f"Не удалось отправить сообщение: {e}")
         return False
-
-# Команда для работы с турнирами
-@admin_router.message(Command("tournaments"))
-async def tournaments_cmd(message: Message):
-    if not await is_admin(message.from_user.id):
-        await safe_send_message(message, "❌ У вас нет прав администратора")
-        return
-    
-    tournaments = await storage.load_tournaments()
-    
-    if not tournaments:
-        await safe_send_message(message, "📋 Список турниров пуст.")
-        return
-    
-    text = "🏆 Активные турниры:\n\n"
-    for tournament_id, tournament_data in tournaments.items():
-        # Формируем информацию о турнире
-        location = f"{tournament_data.get('city', 'Не указан')}"
-        if tournament_data.get('district'):
-            location += f" ({tournament_data['district']})"
-        location += f", {tournament_data.get('country', 'Не указана')}"
-        
-        text += f"🏆 {tournament_data.get('name', 'Без названия')}\n"
-        text += f"🏓 Вид спорта: {tournament_data.get('sport', 'Не указан')}\n"
-        text += f"🌍 Место: {location}\n"
-        text += f"⚔️ Тип: {tournament_data.get('type', 'Не указан')}\n"
-        text += f"👥 Пол: {tournament_data.get('gender', 'Не указан')}\n"
-        text += f"🏆 Категория: {tournament_data.get('category', 'Не указана')}\n"
-        text += f"👶 Возраст: {tournament_data.get('age_group', 'Не указан')}\n"
-        text += f"⏱️ Продолжительность: {tournament_data.get('duration', 'Не указана')}\n"
-        text += f"👥 Участников: {len(tournament_data.get('participants', {}))}/{tournament_data.get('participants_count', 'Не указано')}\n"
-        text += f"📋 В списке города: {'Да' if tournament_data.get('show_in_list', False) else 'Нет'}\n"
-        text += f"🔒 Скрыть сетку: {'Да' if tournament_data.get('hide_bracket', False) else 'Нет'}\n"
-        if tournament_data.get('comment'):
-            text += f"💬 Комментарий: {tournament_data['comment']}\n"
-        text += f"🆔 ID: {tournament_id}\n"
-        text += "─" * 30 + "\n"
-    
-    # Добавляем кнопки для управления турнирами
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📝 Создать турнир", callback_data="admin_create_tournament")
-    builder.button(text="🗑️ Удалить турнир", callback_data="admin_delete_tournament_menu")
-    builder.adjust(1)
-    
-    await safe_send_message(message, text, builder.as_markup())
 
 # Меню просмотра заявок
 @admin_router.callback_query(F.data == "admin_view_applications")
@@ -1445,8 +1401,6 @@ async def admin_edit_score_handler(callback: CallbackQuery, state: FSMContext):
     
     game_id = callback.data.split(":", 1)[1]
     await state.update_data(editing_game_id=game_id)
-    
-    from models.states import AdminEditGameStates
     await state.set_state(AdminEditGameStates.EDIT_SCORE)
     
     games = await storage.load_games()
@@ -1478,16 +1432,9 @@ async def admin_edit_score_handler(callback: CallbackQuery, state: FSMContext):
     await safe_edit_message(callback, text, reply_markup=builder.as_markup())
     await callback.answer()
 
-
-@admin_router.message(lambda message: message.from_user)
+@admin_router.message(AdminEditGameStates.EDIT_SCORE, F.text)
 async def admin_edit_score_input(message: Message, state: FSMContext):
     """Обработчик ввода нового счета"""
-    from models.states import AdminEditGameStates
-    
-    current_state = await state.get_state()
-    if current_state != AdminEditGameStates.EDIT_SCORE.state:
-        return
-    
     if not await is_admin(message.from_user.id):
         await message.answer("❌ У вас нет прав администратора")
         await state.clear()
@@ -1579,8 +1526,6 @@ async def admin_edit_media_handler(callback: CallbackQuery, state: FSMContext):
     
     game_id = callback.data.split(":", 1)[1]
     await state.update_data(editing_game_id=game_id)
-    
-    from models.states import AdminEditGameStates
     await state.set_state(AdminEditGameStates.EDIT_MEDIA)
     
     games = await storage.load_games()
@@ -1607,15 +1552,9 @@ async def admin_edit_media_handler(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@admin_router.message(lambda message: message.from_user)
+@admin_router.message(AdminEditGameStates.EDIT_MEDIA)
 async def admin_edit_media_input(message: Message, state: FSMContext):
     """Обработчик изменения медиафайла"""
-    from models.states import AdminEditGameStates
-    
-    current_state = await state.get_state()
-    if current_state != AdminEditGameStates.EDIT_MEDIA.state:
-        return
-    
     if not await is_admin(message.from_user.id):
         await message.answer("❌ У вас нет прав администратора")
         await state.clear()
