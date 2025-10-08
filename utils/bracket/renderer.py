@@ -7,20 +7,74 @@ from .models import Player, Match, TournamentBracket
 
 
 class BracketImageGenerator:
-    """Класс для генерации изображений турнирных сеток в стиле tennis-play.com"""
+    """Класс для генерации изображений турнирных сеток в стиле tennis-play.com
+    
+    Настраиваемые параметры в __init__:
+    
+    РАЗМЕРЫ ЯЧЕЕК И ОТСТУПОВ:
+    - cell_width: ширина ячейки с игроками
+    - cell_height: высота ячейки с игроками
+    - round_spacing: расстояние между раундами (горизонтально)
+    - match_spacing: вертикальный отступ между матчами
+    - mini_spacing: отступ между раундами в мини-турнирах
+    
+    РАЗМЕРЫ ШРИФТОВ:
+    - font_size: основной шрифт (подписи на линиях)
+    - name_font_size: шрифт имен игроков в ячейках
+    - title_font_size: шрифт заголовка турнира
+    - subtitle_font_size: шрифт подзаголовков
+    - score_font_size: шрифт счета матчей
+    
+    ПАРАМЕТРЫ ЛИНИЙ:
+    - line_width: толщина соединительных линий
+    - cell_border_width: толщина границ ячеек
+    - final_line_length: длина финальной линии победителя
+    - final_line_width: толщина финальной линии победителя
+    - connector_offset: расстояние от ячейки до точки схождения линий
+    - mini_tournament_gap_large: отступ между турниром за 5-6 и за 3 место
+    - mini_tournament_gap_normal: обычный отступ между мини-турнирами
+    - mini_tournament_top_offset: отступ сверху перед турниром за 3 место
+    
+    ОТСТУПЫ ДЛЯ ПОДПИСЕЙ:
+    - label_offset_above: отступ имени победителя над линией
+    - label_offset_below: отступ счета под именем победителя
+    - final_area_padding: дополнительное место для финальной линии
+    - vertical_labels_padding: пространство сверху/снизу для подписей
+    """
     
     def __init__(self):
         # Основные размеры
-        self.cell_width = 280
-        self.cell_height = 60
-        self.round_spacing = 100
-        self.match_spacing = 20
+        self.cell_width = 400
+        self.cell_height = 120
+        self.round_spacing = 250
+        self.match_spacing = 30
         self.vertical_margin = 30
-        self.font_size = 12
-        self.name_font_size = 14
-        self.title_font_size = 14
+        
+        # Размеры шрифтов
+        self.font_size = 18
+        self.name_font_size = 18
+        self.title_font_size = 18
         self.subtitle_font_size = 18
-        self.score_font_size = 13
+        self.score_font_size = 18
+        
+        # Параметры линий (для удобной настройки)
+        self.line_width = 1  # Толщина соединительных линий
+        self.cell_border_width = 2  # Толщина границ ячеек
+        self.final_line_length = 220  # Длина финальной линии победителя (увеличена)
+        self.final_line_width = 1  # Толщина финальной линии победителя (жирная)
+        self.connector_offset = 30  # Расстояние от ячейки до точки схождения линий
+        self.mini_spacing = 250  # Отступ между раундами в мини-турнирах
+        self.mini_tournament_gap_large = 140  # Отступ между турниром за 5-6 место и турниром за 3 место
+        self.mini_tournament_gap_normal = 80  # Обычный отступ между мини-турнирами
+        self.mini_tournament_top_offset = 80  # Отступ сверху перед мини-турниром за 3 место
+        
+        # Отступы для подписей на линиях
+        self.label_offset_above = 8  # Отступ имени победителя над линией
+        self.label_offset_below = 12  # Отступ счета под именем победителя
+        
+        # Дополнительные пространства для расчета размеров
+        self.final_area_padding = 250  # Дополнительное место для финальной линии и подписей
+        self.vertical_labels_padding = 80  # Дополнительное пространство сверху и снизу для подписей
         
         # Цветовая схема как на tennis-play.com
         self.bg_color = (255, 255, 255)  # Белый фон
@@ -37,13 +91,13 @@ class BracketImageGenerator:
         
         # Загрузка шрифтов с Unicode-фолбэком
         try:
-            self.font = ImageFont.truetype("arial.ttf", self.font_size)
+            self.font = ImageFont.truetype("arial.ttf", self.font_size)  # Шрифт для подписей на линиях (увеличен еще больше)
             self.bold_font = ImageFont.truetype("arialbd.ttf", self.font_size)
             self.name_font = ImageFont.truetype("arial.ttf", self.name_font_size)
             self.name_bold_font = ImageFont.truetype("arialbd.ttf", self.name_font_size)
             self.title_font = ImageFont.truetype("arialbd.ttf", self.title_font_size)
             self.subtitle_font = ImageFont.truetype("arialbd.ttf", self.subtitle_font_size)
-            self.score_font = ImageFont.truetype("arial.ttf", self.score_font_size)
+            self.score_font = ImageFont.truetype("arial.ttf", self.score_font_size)  # Шрифт для счета (увеличен еще больше)
         except Exception:
             # Пытаемся DejaVuSans (обычно доступен в Pillow)
             try:
@@ -175,15 +229,8 @@ class BracketImageGenerator:
             return "??"
 
     def _get_short_name(self, player: Player) -> str:
-        """Получает короткое имя в формате 'И. Фамилия'"""
-        name_parts = player.name.split()
-        if len(name_parts) >= 2:
-            # Берем первую букву имени и фамилию
-            return f"{name_parts[0][0]}. {name_parts[1]}"
-        elif len(name_parts) == 1:
-            return name_parts[0]
-        else:
-            return player.name
+        """Получает полное имя и фамилию"""
+        return player.name
     
     def draw_match_cell(self, draw: ImageDraw.Draw, x: int, y: int, match: Match, round_num: int = 0, 
                        is_placement: bool = False, is_mini_tournament: bool = False) -> None:
@@ -202,7 +249,7 @@ class BracketImageGenerator:
         
         # Фон ячейки
         draw.rectangle([x, y, x + self.cell_width, y + self.cell_height], 
-                      fill=self.cell_color, outline=border_color, width=1)
+                      fill=self.cell_color, outline=border_color, width=self.cell_border_width)
         
         # Счёт матча больше не рисуем над ячейкой — он выводится под подписью победителя на коннекторе
 
@@ -221,13 +268,12 @@ class BracketImageGenerator:
         
         # Разделительная линия
         draw.line([x, y + player_height, x + self.cell_width, y + player_height], 
-                 fill=border_color, width=1)
+                 fill=border_color, width=self.cell_border_width)
         
         # Игрок 2
         if player2:
             self._draw_player_in_cell(draw, player2, x, y + player_height, self.cell_width, player_height, 
                                     match.winner == player2, is_placement or is_mini_tournament)
-        
 
     def _draw_player_in_cell(self, draw: ImageDraw.Draw, player: Player, x: int, y: int, width: int, height: int, 
                            is_winner: bool, is_special: bool = False):
@@ -236,13 +282,13 @@ class BracketImageGenerator:
         if self._is_free_slot(player):
             return
         # Аватар
-        avatar_size = 30
+        avatar_size = 60
         avatar = self.create_player_avatar(player, avatar_size)
         if avatar:
-            draw._image.paste(avatar, (x + 5, y + (height - avatar_size) // 2), avatar)
+            draw._image.paste(avatar, (x + 10, y + (height - avatar_size) // 2), avatar)
         
         # Имя игрока
-        name_x = x + 5 + avatar_size + 6
+        name_x = x + 10 + avatar_size + 12
         name_y = y
         
         # Для победителя используем жирный шрифт, для остальных обычный
@@ -250,7 +296,7 @@ class BracketImageGenerator:
         color = self.winner_color if is_winner else self.text_color
         
         if font:
-            display_name = player.name[:22] + "..." if len(player.name) > 22 else player.name
+            display_name = player.name
             try:
                 bbox = draw.textbbox((0, 0), display_name, font=font)
                 text_h = bbox[3] - bbox[1]
@@ -258,11 +304,10 @@ class BracketImageGenerator:
             except Exception:
                 name_y = y + (height - self.name_font_size) // 2
             draw.text((name_x, name_y), display_name, fill=color, font=font)
-            
     
     def draw_connectors(self, draw: ImageDraw.Draw, round_positions: List[List[Tuple[int, int]]], 
                        rounds_matches: List[List[Match]], is_mini_tournament: bool = False, tournament_name: str = ""):
-        """Рисует соединительные линии между раундами и победителя над стрелочками в формате 'И. Фамилия'"""
+        """Рисует соединительные линии между раундами и победителя над стрелочками (полное имя)"""
         connector_color = self.connector_color
         
         # Больше не рисуем наконечник — только тонкая линия до следующего соединения
@@ -293,10 +338,10 @@ class BracketImageGenerator:
                         # Резервный случай
                         line_start_x = match_x
                     
-                    line_length = 120
+                    line_length = self.final_line_length
                     draw.line([line_start_x, match_center_y, 
                               line_start_x + line_length, match_center_y], 
-                             fill=connector_color, width=1)
+                             fill=connector_color, width=self.final_line_width)
                     
                     # Победитель финала над линией
                     try:
@@ -308,7 +353,7 @@ class BracketImageGenerator:
                                 text_w = bbox[2] - bbox[0]
                                 text_h = bbox[3] - bbox[1]
                                 label_x = line_start_x + (line_length - text_w) // 2
-                                label_y = match_center_y - text_h - 6
+                                label_y = match_center_y - text_h - self.label_offset_above
                                 draw.text((label_x, label_y), winner_name, fill=self.text_color, font=self.font)
                                 
                                 # Счёт под подписью
@@ -318,24 +363,12 @@ class BracketImageGenerator:
                                         sb = draw.textbbox((0, 0), score_text, font=self.score_font)
                                         sw = sb[2] - sb[0]
                                         sx = label_x + (text_w - sw) // 2
-                                        sy = label_y + text_h + 10
+                                        sy = label_y + text_h + self.label_offset_below
                                         draw.text((sx, sy), score_text, fill=self.text_color, font=self.score_font)
                                     except Exception:
                                         pass
                     except Exception:
                         pass
-                    
-                    # Рисуем название турнира справа от финальной линии для мини-турниров
-                    if is_mini_tournament and tournament_name:
-                        if self.title_font:
-                            try:
-                                # Подпись справа от линии победителя
-                                label_x = line_start_x + line_length + 20
-                                label_y = match_center_y - 10
-                                draw.text((label_x, label_y), tournament_name, 
-                                         fill=self.text_color, font=self.title_font)
-                            except Exception:
-                                pass
                 continue
             
             for match_num in range(len(next_round)):
@@ -351,7 +384,7 @@ class BracketImageGenerator:
                     try:
                         # продолжаем короткий заход (до next_x-1) вправо до начала выхода (next_x + cell_width)
                         draw.line([next_x - 1, next_center_y, next_x + self.cell_width, next_center_y],
-                                  fill=connector_color, width=1)
+                                  fill=connector_color, width=self.line_width)
                     except Exception:
                         pass
 
@@ -369,22 +402,25 @@ class BracketImageGenerator:
                     # Точка начала линии зависит от того, есть ли в текущем раунде ячейка
                     line_start_x = prev_x + (self.cell_width if current_has_cell else 0)
                     
+                    # Расстояние до точки схождения (больше для линий от ячеек, увеличено для полных имен и длинных линий)
+                    connector_offset = self.connector_offset
+                    
                     # Горизонтальная линия от предыдущего матча
                     draw.line([line_start_x, prev_center_y, 
-                              next_x - 10, prev_center_y], 
-                             fill=connector_color, width=1)
+                              next_x - connector_offset, prev_center_y], 
+                             fill=connector_color, width=self.line_width)
                     
                     # Вертикальная линия
-                    draw.line([next_x - 10, prev_center_y, 
-                              next_x - 10, next_center_y], 
-                             fill=connector_color, width=1)
+                    draw.line([next_x - connector_offset, prev_center_y, 
+                              next_x - connector_offset, next_center_y], 
+                             fill=connector_color, width=self.line_width)
                     # Тонкий заход в следующий матч без стрелки
                     try:
-                        draw.line([next_x - 10, next_center_y, next_x - 1, next_center_y], fill=connector_color, width=1)
+                        draw.line([next_x - connector_offset, next_center_y, next_x - 1, next_center_y], fill=connector_color, width=self.line_width)
                     except Exception:
                         pass
                     
-                    # Подпись победителя на линии предыдущего матча 1 в формате 'И. Фамилия'
+                    # Подпись победителя на линии предыдущего матча 1 (полное имя)
                     try:
                         match_obj = None
                         if round_num < len(rounds_matches):
@@ -398,9 +434,9 @@ class BracketImageGenerator:
                             text_h = bbox[3] - bbox[1]
                             # Центруем по горизонтальному отрезку
                             seg_left = line_start_x
-                            seg_right = next_x - 10
+                            seg_right = next_x - connector_offset
                             label_x = max(seg_left + 4, min((seg_left + seg_right - text_w) // 2, seg_right - 2 - text_w))
-                            label_y = prev_center_y - text_h - 6
+                            label_y = prev_center_y - text_h - self.label_offset_above
                             draw.text((label_x, label_y), winner_name, fill=self.text_color, font=self.font)
                             # Счёт под подписью победителя (центрируем под текстом имени)
                             if getattr(match_obj, 'score', None) and self.score_font:
@@ -409,7 +445,7 @@ class BracketImageGenerator:
                                     sb = draw.textbbox((0, 0), score_text, font=self.score_font)
                                     sw = sb[2] - sb[0]
                                     sx = label_x + (text_w - sw) // 2
-                                    sy = label_y + text_h + 10
+                                    sy = label_y + text_h + self.label_offset_below
                                     draw.text((sx, sy), score_text, fill=self.text_color, font=self.score_font)
                                 except Exception:
                                     pass
@@ -423,22 +459,25 @@ class BracketImageGenerator:
                     # Точка начала линии зависит от того, есть ли в текущем раунде ячейка
                     line_start_x = prev_x + (self.cell_width if current_has_cell else 0)
                     
+                    # Расстояние до точки схождения (больше для линий от ячеек, увеличено для полных имен и длинных линий)
+                    connector_offset = self.connector_offset
+                    
                     # Горизонтальная линия от предыдущего матча
                     draw.line([line_start_x, prev_center_y, 
-                              next_x - 10, prev_center_y], 
-                             fill=connector_color, width=1)
+                              next_x - connector_offset, prev_center_y], 
+                             fill=connector_color, width=self.line_width)
                     
                     # Вертикальная линия
-                    draw.line([next_x - 10, prev_center_y, 
-                              next_x - 10, next_center_y], 
-                             fill=connector_color, width=1)
+                    draw.line([next_x - connector_offset, prev_center_y, 
+                              next_x - connector_offset, next_center_y], 
+                             fill=connector_color, width=self.line_width)
                     # Тонкий заход в следующий матч без стрелки
                     try:
-                        draw.line([next_x - 10, next_center_y, next_x - 1, next_center_y], fill=connector_color, width=1)
+                        draw.line([next_x - connector_offset, next_center_y, next_x - 1, next_center_y], fill=connector_color, width=self.line_width)
                     except Exception:
                         pass
                     
-                    # Подпись победителя на линии предыдущего матча 2 в формате 'И. Фамилия'
+                    # Подпись победителя на линии предыдущего матча 2 (полное имя)
                     try:
                         match_obj = None
                         if round_num < len(rounds_matches):
@@ -451,9 +490,9 @@ class BracketImageGenerator:
                             text_w = bbox[2] - bbox[0]
                             text_h = bbox[3] - bbox[1]
                             seg_left = line_start_x
-                            seg_right = next_x - 10
+                            seg_right = next_x - connector_offset
                             label_x = max(seg_left + 4, min((seg_left + seg_right - text_w) // 2, seg_right - 2 - text_w))
-                            label_y = prev_center_y - text_h - 6
+                            label_y = prev_center_y - text_h - self.label_offset_above
                             draw.text((label_x, label_y), winner_name, fill=self.text_color, font=self.font)
                             # Счёт под подписью победителя (центрируем под текстом имени)
                             if getattr(match_obj, 'score', None) and self.score_font:
@@ -462,7 +501,7 @@ class BracketImageGenerator:
                                     sb = draw.textbbox((0, 0), score_text, font=self.score_font)
                                     sw = sb[2] - sb[0]
                                     sx = label_x + (text_w - sw) // 2
-                                    sy = label_y + text_h + 10
+                                    sy = label_y + text_h + self.label_offset_below
                                     draw.text((sx, sy), score_text, fill=self.text_color, font=self.score_font)
                                 except Exception:
                                     pass
@@ -478,16 +517,20 @@ class BracketImageGenerator:
             # Вычисляем размеры для мини-турниров
             mini_tournaments_height = 0
             mini_tournaments_width = 0
-            mini_tournaments_spacing = 80  # Отступ слева от основной сетки до мини-турниров
+            mini_tournaments_spacing = 50  # Отступ слева от основной сетки до мини-турниров (увеличен)
             
             if bracket.additional_tournaments:
                 for i, mini_tournament in enumerate(bracket.additional_tournaments):
+                    # Добавляем отступ сверху перед турниром за 3 место
+                    if '3' in mini_tournament.name and 'место' in mini_tournament.name:
+                        mini_tournaments_height += self.mini_tournament_top_offset
+                    
                     mini_width, mini_height = self.calculate_bracket_dimensions(mini_tournament)
                     mini_tournaments_height += mini_height
                     # Добавляем отступ только между турнирами (не после последнего)
                     if i < len(bracket.additional_tournaments) - 1:
                         # Учитываем увеличенный отступ после мини-турнира за 5-6 места
-                        spacing = 100 if (i == 0 and '5' in mini_tournament.name) else 60
+                        spacing = self.mini_tournament_gap_large if (i == 0 and '5' in mini_tournament.name) else self.mini_tournament_gap_normal
                         mini_tournaments_height += spacing
                     mini_tournaments_width = max(mini_tournaments_width, mini_width)
             
@@ -503,7 +546,7 @@ class BracketImageGenerator:
             
             has_photos = bool(photo_paths)
             # Базовый нижний отступ без фото (для заголовка и небольшого поля)
-            base_bottom_padding = 80
+            base_bottom_padding = 20
             photos_height = 380 if has_photos else 0
             
             # Высота: заголовок (100) + max(основная сетка, мини-турниры) + фото + нижний отступ
@@ -536,6 +579,10 @@ class BracketImageGenerator:
             current_y = main_bracket_y
             if bracket.additional_tournaments:
                 for i, mini_tournament in enumerate(bracket.additional_tournaments):
+                    # Добавляем отступ сверху перед турниром за 3 место
+                    if '3' in mini_tournament.name and 'место' in mini_tournament.name:
+                        current_y += self.mini_tournament_top_offset
+                    
                     tournament_x = main_bracket_width + mini_tournaments_spacing
                     tournament_y = current_y
                     
@@ -548,9 +595,9 @@ class BracketImageGenerator:
                     
                     # Увеличенный отступ после мини-турнира за 5-6 места
                     if i == 0 and '5' in mini_tournament.name:
-                        current_y += self.calculate_bracket_dimensions(mini_tournament)[1] + 100
+                        current_y += self.calculate_bracket_dimensions(mini_tournament)[1] + self.mini_tournament_gap_large
                     else:
-                        current_y += self.calculate_bracket_dimensions(mini_tournament)[1] + 60
+                        current_y += self.calculate_bracket_dimensions(mini_tournament)[1] + self.mini_tournament_gap_normal
             
             # Рисуем область для фото игр внизу только если есть фото
             if has_photos:
@@ -620,23 +667,21 @@ class BracketImageGenerator:
         """Рисует сетку мини-турнира"""
         round_positions = []
         current_x = start_x
+        first_match_y = None
         
         for round_num, round_matches in enumerate(tournament.rounds):
             if not round_matches:
                 continue
             
             # Для первого раунда используем полный промежуток с ячейкой
-            # Для остальных раундов используем только минимальный spacing без ячейки
-            mini_spacing = 80  # Увеличенный отступ для соединительных линий и подписей
+            # Отступ для соединительных линий и подписей (увеличен для полных имен и длинных линий)
             if round_num == 0:
                 round_x = current_x
-                current_x += self.cell_width + mini_spacing
+                current_x += self.cell_width + self.mini_spacing
             else:
                 round_x = current_x
-                current_x += mini_spacing
-            
-            # Убираем заголовки раундов для мини-турниров (Финал/Полуфинал) - они избыточны
-            
+                current_x += self.mini_spacing
+
             # Позиции матчей в раунде
             match_positions = []
             tournament_height = self.calculate_bracket_dimensions(tournament)[1]
@@ -644,11 +689,30 @@ class BracketImageGenerator:
             for match_num, match in enumerate(round_matches):
                 match_y = self._calculate_match_y(round_num, match_num, round_matches, round_positions, start_y, tournament_height)
                 match_positions.append((round_x, match_y))
+                
+                # Запоминаем Y-координату первой ячейки для привязки заголовка
+                if first_match_y is None and round_num == 0 and match_num == 0:
+                    first_match_y = match_y
+                
                 # Рисуем ячейки только для первого раунда, далее только линии
                 if round_num == 0:
                     self.draw_match_cell(draw, round_x, match_y, match, round_num, is_mini_tournament=True)
             
             round_positions.append(match_positions)
+        
+        # Выводим название турнира над первой ячейкой
+        tournament_title = tournament.name
+        if self.bold_font and tournament_title and first_match_y is not None:
+            try:
+                title_bbox = draw.textbbox((0, 0), tournament_title, font=self.bold_font)
+                title_height = title_bbox[3] - title_bbox[1]
+                # Заголовок начинается от левого края первой ячейки
+                title_x = start_x
+                # Привязываем к Y-координате первой ячейки с учетом высоты текста
+                draw.text((title_x, first_match_y - title_height - 5),
+                    tournament_title, fill=self.round_title_color, font=self.bold_font)
+            except:
+                pass
         
         return round_positions
     
@@ -757,14 +821,15 @@ class BracketImageGenerator:
                 width = self.cell_width + self.round_spacing  # Первый раунд
                 if num_rounds > 1:
                     width += (num_rounds - 1) * self.round_spacing  # Остальные раунды
-                width += 200  # Дополнительное место для финальной линии и подписи победителя (увеличено для длинных имен)
+                # Учитываем финальную линию и отступы для подписей
+                width += max(self.final_line_length, self.final_area_padding)
             else:
                 width = 400
             
             # Высота: учитываем максимальное количество матчей + дополнительное пространство для подписей
             max_matches = max(len(round_matches) for round_matches in bracket.rounds)
-            # Добавляем дополнительные 40 пикселей сверху и снизу для подписей победителей и счета
-            height = (max_matches * (self.cell_height + self.match_spacing) + 80)
+            # Добавляем дополнительное пространство сверху и снизу для подписей победителей и счета
+            height = (max_matches * (self.cell_height + self.match_spacing) + self.vertical_labels_padding)
             
             return (width, height)
             

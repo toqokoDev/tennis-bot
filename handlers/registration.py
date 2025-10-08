@@ -266,6 +266,13 @@ async def cmd_start(message: types.Message, state: FSMContext):
                         reply_markup=kb.as_markup()
                     )
                 return
+            elif start_param.startswith('view_tournament_'):
+                # Обработка deep-link для просмотра турнира из канала
+                tournament_id = start_param.replace('view_tournament_', '')
+                # Импортируем функцию для показа краткой информации о турнире
+                from handlers.tournament import show_tournament_brief_info
+                await show_tournament_brief_info(message, tournament_id, user_id)
+                return
     
     # Загружаем сессию если есть
     session_data = await storage.load_session(user_id)

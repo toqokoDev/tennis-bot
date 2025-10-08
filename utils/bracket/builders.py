@@ -455,13 +455,13 @@ def _build_olympic_rounds_from_tournament(
 
                     # Название мини-турнира
                     if pk == '3rd':
-                        mini_name = 'Игра за 3-4 место'
+                        mini_name = 'Игра за 3-е место'
                     elif pk == '5-6':
-                        mini_name = 'За 5-6 места'
+                        mini_name = 'Игра за 5-е место'
                     elif pk == '7th':
-                        mini_name = 'Игра за 7-8 место'
+                        mini_name = 'Игра за 7-е место'
                     else:
-                        mini_name = f'Доп. матчи: {pk}'
+                        mini_name = f'Доп. матчи за {pk}'
 
                     additional_tournaments.append(
                         TournamentBracket(

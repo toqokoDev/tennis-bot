@@ -9,21 +9,26 @@ from config.paths import GAMES_PHOTOS_DIR, BASE_DIR
 
 
 def _load_fonts():
-    # Try system fonts with Unicode support, fallback to DejaVu, then default
+    """Загрузка шрифтов с Unicode-фолбэком (стили как в олимпийской сетке)"""
     try:
-        title_font = ImageFont.truetype("arialbd.ttf", 20)
-        header_font = ImageFont.truetype("arialbd.ttf", 14)
-        cell_font = ImageFont.truetype("arial.ttf", 12)
-        return title_font, header_font, cell_font
+        # Основные шрифты (размеры как в олимпийской сетке)
+        title_font = ImageFont.truetype("arialbd.ttf", 14)  # Заголовок турнира
+        subtitle_font = ImageFont.truetype("arialbd.ttf", 18)  # Подзаголовки (например, "Фото с игр")
+        header_font = ImageFont.truetype("arialbd.ttf", 14)  # Заголовки колонок и имена игроков
+        cell_font = ImageFont.truetype("arial.ttf", 12)  # Содержимое ячеек
+        return title_font, subtitle_font, header_font, cell_font
     except Exception:
+        # Пытаемся DejaVuSans (обычно доступен в Pillow)
         try:
-            title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 20)
+            title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
+            subtitle_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 18)
             header_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
             cell_font = ImageFont.truetype("DejaVuSans.ttf", 12)
-            return title_font, header_font, cell_font
+            return title_font, subtitle_font, header_font, cell_font
         except Exception:
+            # Последний фолбэк — дефолтный
             f = ImageFont.load_default()
-            return f, f, f
+            return f, f, f, f
 
 
 def _sanitize_title(text: str) -> str:
@@ -48,15 +53,15 @@ def _sanitize_title(text: str) -> str:
         return "".join(ch for ch in str(text or "") if ord(ch) <= 0xFFFF)
 
 
-def _draw_game_photos_area(draw: ImageDraw.Draw, x: int, y: int, width: int, height: int, cell_font: ImageFont.FreeTypeFont, photo_paths: Optional[list[str]] = None):
+def _draw_game_photos_area(draw: ImageDraw.Draw, x: int, y: int, width: int, height: int, subtitle_font: ImageFont.FreeTypeFont, cell_font: ImageFont.FreeTypeFont, photo_paths: Optional[list[str]] = None):
     try:
         title = "Фото с игр турнира"
         try:
-            bbox = draw.textbbox((0, 0), title, font=cell_font)
-            draw.text((x + (width - (bbox[2]-bbox[0])) // 2, y + 6), title, fill=(31, 41, 55), font=cell_font)
+            bbox = draw.textbbox((0, 0), title, font=subtitle_font)
+            draw.text((x + (width - (bbox[2]-bbox[0])) // 2, y + 10), title, fill=(31, 41, 55), font=subtitle_font)
         except Exception:
-            draw.text((x + 10, y + 6), title, fill=(31, 41, 55), font=cell_font)
-        draw.rectangle([x, y + 28, x + width, y + height - 6], fill=(250, 250, 250), outline=(209, 213, 219), width=2)
+            draw.text((x + 10, y + 10), title, fill=(31, 41, 55), font=subtitle_font)
+        draw.rectangle([x, y + 30, x + width, y + height - 10], fill=(250, 250, 250), outline=(209, 213, 219), width=2)
         if photo_paths:
             try:
                 from PIL import Image as PILImage
@@ -74,7 +79,7 @@ def _draw_game_photos_area(draw: ImageDraw.Draw, x: int, y: int, width: int, hei
                         img = img.convert('RGB')
                         img_thumb = img.copy()
                         img_thumb.thumbnail((thumb_w, thumb_h))
-                        draw._image.paste(img_thumb, (cur_x, y + 40))
+                        draw._image.paste(img_thumb, (cur_x, y + 45))
                         cur_x += thumb_w + padding
                     except Exception:
                         pass
@@ -85,9 +90,12 @@ def _draw_game_photos_area(draw: ImageDraw.Draw, x: int, y: int, width: int, hei
             placeholder = "Здесь будут размещены фотографии с турнирных игр"
             try:
                 bbox2 = draw.textbbox((0, 0), placeholder, font=cell_font)
-                draw.text((x + (width - (bbox2[2]-bbox2[0])) // 2, y + (height // 2)), placeholder, fill=(107, 114, 128), font=cell_font)
+                text_width = bbox2[2] - bbox2[0]
+                text_x = x + (width - text_width) // 2
+                text_y = y + (height - 10) // 2
+                draw.text((text_x, text_y), placeholder, fill=(107, 114, 128), font=cell_font)
             except Exception:
-                draw.text((x + 10, y + (height // 2)), placeholder, fill=(107, 114, 128), font=cell_font)
+                draw.text((x + 10, y + (height - 10) // 2), placeholder, fill=(107, 114, 128), font=cell_font)
     except Exception:
         pass
 
@@ -98,16 +106,16 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     players: список словарей с ключами id, name
     results: опционально список завершенных игр вида {player1_id, player2_id, score, winner_id}
     """
-    title_font, header_font, cell_font = _load_fonts()
+    title_font, subtitle_font, header_font, cell_font = _load_fonts()
 
     n = len(players)
     # Размеры таблицы
     cell_w = 140
-    cell_h = 32
+    cell_h = 50  # Увеличено для больших аватаров (как в верхней строке)
     left_col_w = 260
-    top_row_h = 40
+    top_row_h = 50  # Увеличено для больших аватаров
     padding = 20
-    extra_cols = ["Игры", "Победы", "Очки", "Места"]
+    extra_cols = ["Победы", "Очки", "Места"]  # Убран столбец "Игры"
 
     width = padding * 2 + left_col_w + n * cell_w + len(extra_cols) * cell_w
     photos_h = 280
@@ -119,13 +127,13 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     image = Image.new('RGB', (max(width, 800), height), (255, 255, 255))
     draw = ImageDraw.Draw(image)
 
-    # Заголовок
+    # Заголовок турнира
     title_text = _sanitize_title(title)
     try:
-        bbox = draw.textbbox((0, 0), title_text, font=header_font)
-        draw.text(((image.width - (bbox[2] - bbox[0])) // 2, 20), title_text, fill=(31, 41, 55), font=header_font)
+        bbox = draw.textbbox((0, 0), title_text, font=title_font)
+        draw.text(((image.width - (bbox[2] - bbox[0])) // 2, 20), title_text, fill=(31, 41, 55), font=title_font)
     except Exception:
-        draw.text((padding, 20), title_text, fill=(31, 41, 55), font=header_font)
+        draw.text((padding, 20), title_text, fill=(31, 41, 55), font=title_font)
 
     start_y = padding + 40
     start_x = padding
@@ -210,21 +218,36 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
         # Нет пути к фото — рисуем заглушку
         return paste_placeholder()
 
-    # Верхняя строка: аватар + имя/инициалы
+    # Верхний левый угол: подпись "Игроки"
+    draw.rectangle([table_x, table_y, table_x + left_col_w, table_y + top_row_h], fill=(248, 250, 252), outline=(209, 213, 219))
+    players_label = "Игроки"
+    try:
+        bbox = draw.textbbox((0, 0), players_label, font=header_font)
+        label_width = bbox[2] - bbox[0]
+        label_x = table_x + (left_col_w - label_width) // 2
+        label_y = table_y + (top_row_h - 14) // 2
+        draw.text((label_x, label_y), players_label, fill=(31, 41, 55), font=header_font)
+    except Exception:
+        draw.text((table_x + 10, table_y + (top_row_h - 14) // 2), players_label, fill=(31, 41, 55), font=header_font)
+    
+    # Верхняя строка: только аватар (без имени)
     for j, p in enumerate(players):
         x0 = table_x + left_col_w + j * cell_w
         y0 = table_y
         draw.rectangle([x0, y0, x0 + cell_w, y0 + top_row_h], fill=(248, 250, 252), outline=(209, 213, 219))
-        pasted = _paste_avatar(x0 + 6, y0 + 5, p, max(24, top_row_h - 12), header_font)
-        short_name = _short_name(p)
-        name_x = x0 + (top_row_h if pasted else 10) + 6
-        draw.text((name_x, y0 + 12), short_name[:18] + ('…' if len(short_name) > 18 else ''), fill=(31, 41, 55), font=header_font)
+        # Центрируем увеличенный аватар в ячейке
+        avatar_size = top_row_h - 10  # Аватар почти на всю высоту ячейки
+        avatar_x = x0 + (cell_w - avatar_size) // 2
+        avatar_y = y0 + 5
+        _paste_avatar(avatar_x, avatar_y, p, avatar_size, header_font)
 
     # Заголовки дополнительных колонок
     xh = table_x + left_col_w + n * cell_w
     for col_name in extra_cols:
         draw.rectangle([xh, table_y, xh + cell_w, table_y + top_row_h], fill=(248, 250, 252), outline=(209, 213, 219))
-        draw.text((xh + 10, table_y + 12), col_name, fill=(31, 41, 55), font=header_font)
+        # Вертикальное центрирование заголовка
+        header_y = table_y + (top_row_h - 14) // 2
+        draw.text((xh + 10, header_y), col_name, fill=(31, 41, 55), font=header_font)
         xh += cell_w
 
     # Левая колонка с аватаром и именем
@@ -232,11 +255,12 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
         x0 = table_x
         y0 = table_y + top_row_h + i * cell_h
         draw.rectangle([x0, y0, x0 + left_col_w, y0 + cell_h], fill=(248, 250, 252), outline=(209, 213, 219))
-        # Аватар  (квадрат слева)
-        pasted = _paste_avatar(x0 + 8, y0 + 2, p, max(24, cell_h - 8), cell_font)
+        # Аватар того же размера, что и в верхней строке
+        avatar_size = 40
+        pasted = _paste_avatar(x0 + 8, y0 + (cell_h - avatar_size) // 2, p, avatar_size, cell_font)
         short_name = _short_name(p)
-        name_x = x0 + (cell_h if pasted else 10) + 12
-        draw.text((name_x, y0 + 8), short_name[:30] + ('…' if len(short_name) > 30 else ''), fill=(31, 41, 55), font=header_font)
+        name_x = x0 + 8 + avatar_size + 12
+        draw.text((name_x, y0 + (cell_h - 14) // 2), short_name[:30] + ('…' if len(short_name) > 30 else ''), fill=(31, 41, 55), font=cell_font)
 
     # Диагональ «—» и пустые клетки
     # Результаты: создадим словарь для быстрого поиска, поддерживая разные форматы
@@ -357,10 +381,14 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
         for j in range(n):
             x0 = table_x + left_col_w + j * cell_w
             y0 = table_y + top_row_h + i * cell_h
-            draw.rectangle([x0, y0, x0 + cell_w, y0 + cell_h], outline=(209, 213, 219))
+            # Вертикальное центрирование текста в увеличенной ячейке
+            text_y = y0 + (cell_h - 12) // 2
             if i == j:
-                draw.text((x0 + cell_w // 2 - 4, y0 + 8), "—", fill=(107, 114, 128), font=cell_font)
-            elif j > i:
+                # Заливаем диагональную ячейку серым цветом
+                draw.rectangle([x0, y0, x0 + cell_w, y0 + cell_h], fill=(229, 231, 235), outline=(209, 213, 219))
+            else:
+                draw.rectangle([x0, y0, x0 + cell_w, y0 + cell_h], outline=(209, 213, 219))
+            if j > i:
                 p1 = players[i]
                 p2 = players[j]
                 key = tuple(sorted([str(p1.get('id')), str(p2.get('id'))]))
@@ -368,9 +396,9 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                 if rec:
                     score = rec.get('score', '')
                     # черный цвет для счета
-                    draw.text((x0 + 8, y0 + 8), score, fill=(31, 41, 55), font=cell_font)
+                    draw.text((x0 + 8, text_y), score, fill=(31, 41, 55), font=cell_font)
                 else:
-                    draw.text((x0 + 8, y0 + 8), "", fill=(31, 41, 55), font=cell_font)
+                    draw.text((x0 + 8, text_y), "", fill=(31, 41, 55), font=cell_font)
             else:
                 # Нижняя половина: дублируем счет, чтобы был виден у обоих игроков
                 p1 = players[j]
@@ -379,26 +407,23 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                 rec = res_map.get(key)
                 if rec:
                     score = rec.get('score', '')
-                    draw.text((x0 + 8, y0 + 8), score, fill=(31, 41, 55), font=cell_font)
+                    draw.text((x0 + 8, text_y), score, fill=(31, 41, 55), font=cell_font)
                 else:
-                    draw.text((x0 + 8, y0 + 8), "", fill=(31, 41, 55), font=cell_font)
+                    draw.text((x0 + 8, text_y), "", fill=(31, 41, 55), font=cell_font)
 
-    # Правые суммарные колонки: Игры, Победы, Очки, Места
+    # Правые суммарные колонки: Победы, Очки, Места (столбец "Игры" убран)
     for i, p in enumerate(players):
         pid = str(p.get('id'))
         col_x = table_x + left_col_w + n * cell_w
         y0 = table_y + top_row_h + i * cell_h
-        # Игры
-        draw.rectangle([col_x, y0, col_x + cell_w, y0 + cell_h], outline=(209, 213, 219))
-        draw.text((col_x + cell_w // 2 - 4, y0 + 8), str(games_played.get(pid, 0)), fill=(31, 41, 55), font=cell_font)
-        col_x += cell_w
+        text_y = y0 + (cell_h - 12) // 2  # Вертикальное центрирование
         # Победы
         draw.rectangle([col_x, y0, col_x + cell_w, y0 + cell_h], outline=(209, 213, 219))
-        draw.text((col_x + cell_w // 2 - 4, y0 + 8), str(wins.get(pid, 0)), fill=(34, 197, 94), font=cell_font)
+        draw.text((col_x + cell_w // 2 - 4, text_y), str(wins.get(pid, 0)), fill=(34, 197, 94), font=cell_font)
         col_x += cell_w
         # Очки
         draw.rectangle([col_x, y0, col_x + cell_w, y0 + cell_h], outline=(209, 213, 219))
-        draw.text((col_x + cell_w // 2 - 4, y0 + 8), str(points.get(pid, 0)), fill=(31, 41, 55), font=cell_font)
+        draw.text((col_x + cell_w // 2 - 4, text_y), str(points.get(pid, 0)), fill=(31, 41, 55), font=cell_font)
         col_x += cell_w
         # Места — вычислим сортировку по points, затем tie_sd
         # Место рисуем после сортировки списка players по этим критериям
@@ -414,9 +439,10 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     # Нарисуем места
     for i, p in enumerate(players):
         pid = str(p.get('id'))
-        col_x = table_x + left_col_w + n * cell_w + 3 * cell_w
+        col_x = table_x + left_col_w + n * cell_w + 2 * cell_w  # 2 колонки до "Места": Победы, Очки
         y0 = table_y + top_row_h + i * cell_h
-        draw.text((col_x + cell_w // 2 - 4, y0 + 8), str(place_of.get(pid, i + 1)), fill=(34, 197, 94), font=cell_font)
+        text_y = y0 + (cell_h - 12) // 2  # Вертикальное центрирование
+        draw.text((col_x + cell_w // 2 - 4, text_y), str(place_of.get(pid, i + 1)), fill=(34, 197, 94), font=cell_font)
 
     # Примечание по тай-брейку
     note = "* При равенстве очков места определяются по разнице сетов в очных матчах."
@@ -428,7 +454,7 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     # Фото игр внизу: рисуем только если есть фото
     if has_photos:
         photos_y = table_y + table_h + 40
-        _draw_game_photos_area(draw, padding, photos_y, image.width - 2 * padding, photos_h, cell_font, photo_paths)
+        _draw_game_photos_area(draw, padding, photos_y, image.width - 2 * padding, photos_h, subtitle_font, cell_font, photo_paths)
 
     buf = io.BytesIO()
     image.save(buf, format='PNG')

@@ -3504,7 +3504,7 @@ async def admin_view_tournament_participants(callback: CallbackQuery, state: FSM
     builder = InlineKeyboardBuilder()
     
     if participants:
-        builder.button(text="🗑️ Удалить участника", callback_data=f"admin_remove_participant_menu:{tournament_id}")
+        builder.button(text="🗑️ Удалить участника", callback_data=f"admin_rm_part_menu:{tournament_id}")
     
     builder.button(text="➕ Добавить участника", callback_data=f"admin_add_participant:{tournament_id}")
     # Кнопка старта (если минимум участников набран и турнир еще не запущен)
@@ -3953,7 +3953,7 @@ async def _show_tournament_edit(callback: CallbackQuery, state: FSMContext, tour
     builder.button(text="👥 Кол-во", callback_data="edit_field:participants_count")
     builder.button(text="💬 Описание", callback_data="edit_field:comment")
     builder.button(text="⚙️ Ещё", callback_data="edit_tournament_more")
-    builder.button(text="👥 Участники", callback_data=f"manage_tournament_participants:{tournament_id}")
+    builder.button(text="👥 Участники", callback_data=f"manage_participants:{tournament_id}")
     
     # Кнопка посева (жеребьевки) - всегда видна
     builder.button(text="🎲 Посев", callback_data=f"tournament_seeding_menu:{tournament_id}")
@@ -4171,7 +4171,7 @@ async def update_tournament_field(callback: CallbackQuery, state: FSMContext):
     builder.button(text="👥 Кол-во", callback_data="edit_field:participants_count")
     builder.button(text="💬 Описание", callback_data="edit_field:comment")
     builder.button(text="⚙️ Ещё", callback_data="edit_tournament_more")
-    builder.button(text="👥 Участники", callback_data=f"manage_tournament_participants:{tournament_id}")
+    builder.button(text="👥 Участники", callback_data=f"manage_participants:{tournament_id}")
     builder.button(text="🗑️ Удалить", callback_data=f"delete_tournament_confirm:{tournament_id}")
     builder.button(text="🔙 Назад", callback_data="edit_tournaments_back")
     builder.adjust(2, 2, 2, 2, 1, 1, 1, 1)
@@ -4229,7 +4229,7 @@ async def edit_participants_count(message: Message, state: FSMContext):
         builder.button(text="👥 Кол-во", callback_data="edit_field:participants_count")
         builder.button(text="💬 Описание", callback_data="edit_field:comment")
         builder.button(text="⚙️ Ещё", callback_data="edit_tournament_more")
-        builder.button(text="👥 Участники", callback_data=f"manage_tournament_participants:{tournament_id}")
+        builder.button(text="👥 Участники", callback_data=f"manage_participants:{tournament_id}")
         builder.button(text="🗑️ Удалить", callback_data=f"delete_tournament_confirm:{tournament_id}")
         builder.button(text="🔙 Назад", callback_data="edit_tournaments_back")
         builder.adjust(2, 2, 2, 2, 1, 1, 1, 1)
@@ -4287,7 +4287,7 @@ async def edit_comment(message: Message, state: FSMContext):
     builder.button(text="👥 Кол-во", callback_data="edit_field:participants_count")
     builder.button(text="💬 Описание", callback_data="edit_field:comment")
     builder.button(text="⚙️ Ещё", callback_data="edit_tournament_more")
-    builder.button(text="👥 Участники", callback_data=f"manage_tournament_participants:{tournament_id}")
+    builder.button(text="👥 Участники", callback_data=f"manage_participants:{tournament_id}")
     builder.button(text="🗑️ Удалить", callback_data=f"delete_tournament_confirm:{tournament_id}")
     builder.button(text="🔙 Назад", callback_data="edit_tournaments_back")
     builder.adjust(2, 2, 2, 2, 1, 1, 1, 1)
@@ -4301,8 +4301,8 @@ async def edit_comment(message: Message, state: FSMContext):
     )
 
 # Обработчик управления участниками
-@router.callback_query(F.data.startswith("manage_tournament_participants"))
-async def manage_tournament_participants(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("manage_participants"))
+async def manage_participants(callback: CallbackQuery, state: FSMContext):
     """Обработчик управления участниками турнира"""
     parts = callback.data.split(":", 1)
     if len(parts) == 2 and parts[1]:
@@ -4339,7 +4339,7 @@ async def manage_tournament_participants(callback: CallbackQuery, state: FSMCont
     builder = InlineKeyboardBuilder()
     builder.button(text="➕ Добавить", callback_data=f"add_tournament_participant:{tournament_id}")
     if participants:
-        builder.button(text="➖ Удалить", callback_data=f"remove_tournament_participant:{tournament_id}")
+        builder.button(text="➖ Удалить", callback_data=f"remove_participant:{tournament_id}")
     
     # Кнопка запуска турнира, если готов
     if tournament_ready and tournament_data.get('status') == 'active':
@@ -4915,7 +4915,7 @@ async def search_participant_by_name(message: Message, state: FSMContext):
         builder.button(text="🔙 Назад", callback_data=f"admin_view_participants:{tournament_id}")
     else:
         builder.button(text="🔄 Поиск", callback_data=f"add_tournament_participant:{tournament_id}")
-        builder.button(text="🔙 Назад", callback_data=f"manage_tournament_participants:{tournament_id}")
+        builder.button(text="🔙 Назад", callback_data=f"manage_participants:{tournament_id}")
     builder.adjust(1)
     
     await message.answer(results_text, reply_markup=builder.as_markup())
@@ -4984,7 +4984,7 @@ async def select_participant_from_search(callback: CallbackQuery, state: FSMCont
         builder.button(text="🔙 К списку турниров", callback_data="admin_back_to_tournament_list")
     else:
         builder.button(text="➕ Добавить еще", callback_data=f"add_tournament_participant:{tournament_id}")
-        builder.button(text="👥 Управление участниками", callback_data=f"manage_tournament_participants:{tournament_id}")
+        builder.button(text="👥 Управление участниками", callback_data=f"manage_participants:{tournament_id}")
         builder.button(text="🔙 К турниру", callback_data=f"edit_tournament:{tournament_id}")
     
     builder.adjust(1)
@@ -5021,7 +5021,7 @@ async def input_participant_id(message: Message, state: FSMContext):
             if is_admin_mode:
                 back_callback = f"admin_view_participants:{tournament_id}"
             else:
-                back_callback = "manage_tournament_participants"
+                back_callback = "manage_participants"
             
             await message.answer(
                 "❌ Пользователь с таким ID не найден в системе.\n\n"
@@ -5047,7 +5047,7 @@ async def input_participant_id(message: Message, state: FSMContext):
             if is_admin_mode:
                 back_callback = f"admin_view_participants:{tournament_id}"
             else:
-                back_callback = "manage_tournament_participants"
+                back_callback = "manage_participants"
             
             await message.answer(
                 "❌ Этот пользователь уже участвует в турнире.\n\n"
@@ -5098,12 +5098,12 @@ async def input_participant_id(message: Message, state: FSMContext):
         if is_admin_mode:
             builder.button(text="➕ Добавить", callback_data=f"admin_add_participant:{tournament_id}")
             if participants:
-                builder.button(text="➖ Удалить", callback_data=f"admin_remove_participant_menu:{tournament_id}")
+                builder.button(text="➖ Удалить", callback_data=f"admin_rm_part_menu:{tournament_id}")
             builder.button(text="🔙 Назад", callback_data=f"admin_view_participants:{tournament_id}")
         else:
             builder.button(text="➕ Добавить", callback_data=f"add_tournament_participant:{tournament_id}")
             if participants:
-                builder.button(text="➖ Удалить", callback_data=f"remove_tournament_participant:{tournament_id}")
+                builder.button(text="➖ Удалить", callback_data=f"remove_participant:{tournament_id}")
             builder.button(text="🔙 Назад", callback_data=f"edit_tournament:{tournament_id}")
         builder.adjust(2, 1)
         
@@ -5119,8 +5119,8 @@ async def input_participant_id(message: Message, state: FSMContext):
         await message.answer("❌ Введите число")
 
 # Обработчик удаления участника
-@router.callback_query(F.data.startswith("remove_tournament_participant"))
-async def remove_tournament_participant(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("remove_participant"))
+async def remove_participant(callback: CallbackQuery, state: FSMContext):
     """Обработчик удаления участника из турнира"""
     parts = callback.data.split(":", 1)
     if len(parts) == 2 and parts[1]:
@@ -5146,7 +5146,7 @@ async def remove_tournament_participant(callback: CallbackQuery, state: FSMConte
         name = participant_data.get('name', 'Неизвестно')
         builder.button(text=f"➖ {name} (ID: {user_id})", callback_data=f"remove_participant:{user_id}")
     
-    builder.button(text="🔙 Назад", callback_data=f"manage_tournament_participants:{tournament_id}")
+    builder.button(text="🔙 Назад", callback_data=f"manage_participants:{tournament_id}")
     builder.adjust(1)
     
     await safe_edit_message(callback,
@@ -5165,7 +5165,7 @@ async def add_tournament_participant(callback: CallbackQuery, state: FSMContext)
     await safe_edit_message(
         callback,
         "🔍 Введите имя или фамилию:",
-        InlineKeyboardBuilder().button(text="🔙 Отмена", callback_data=f"manage_tournament_participants:{tournament_id}").as_markup()
+        InlineKeyboardBuilder().button(text="🔙 Отмена", callback_data=f"manage_participants:{tournament_id}").as_markup()
     )
     await callback.answer()
 
@@ -5211,7 +5211,7 @@ async def confirm_remove_participant(callback: CallbackQuery, state: FSMContext)
     builder = InlineKeyboardBuilder()
     builder.button(text="➕ Добавить", callback_data=f"add_tournament_participant:{tournament_id}")
     if participants:
-        builder.button(text="➖ Удалить", callback_data=f"remove_tournament_participant:{tournament_id}")
+        builder.button(text="➖ Удалить", callback_data=f"remove_participant:{tournament_id}")
     builder.button(text="🔙 Назад", callback_data=f"edit_tournament:{tournament_id}")
     builder.adjust(2, 1)
     
@@ -5283,8 +5283,8 @@ async def delete_tournament_yes(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 # Обработчик меню удаления участника (для админа)
-@router.callback_query(F.data.startswith("admin_remove_participant_menu:"))
-async def admin_remove_participant_menu(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("admin_rm_part_menu:"))
+async def admin_rm_part_menu(callback: CallbackQuery, state: FSMContext):
     """Меню удаления участника для админа"""
     if not await is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора")
@@ -5347,7 +5347,7 @@ async def admin_remove_participant(callback: CallbackQuery, state: FSMContext):
         f"🆔 ID: {user_id}\n\n"
         f"Выберите действие:",
         reply_markup=InlineKeyboardBuilder()
-        .button(text="🗑️ Удалить еще", callback_data=f"admin_remove_participant_menu:{tournament_id}")
+        .button(text="🗑️ Удалить еще", callback_data=f"admin_rm_part_menu:{tournament_id}")
         .button(text="👥 К участникам", callback_data=f"admin_view_participants:{tournament_id}")
         .button(text="🔙 К списку турниров", callback_data="admin_back_to_tournament_list")
         .adjust(1)
@@ -5480,3 +5480,97 @@ async def tournaments_main_menu(callback: CallbackQuery):
     await callback.message.delete()
     await callback.message.answer(text, reply_markup=builder.as_markup())
     await callback.answer()
+
+async def show_tournament_brief_info(message: Message, tournament_id: str, user_id: str):
+    """Показывает краткую информацию о турнире из deep link с сеткой и кнопками"""
+    try:
+        tournaments = await storage.load_tournaments()
+        
+        if tournament_id not in tournaments:
+            await message.answer("❌ Турнир не найден")
+            return
+        
+        tournament_data = tournaments[tournament_id]
+        
+        # Получаем информацию о турнире
+        tournament_name = tournament_data.get('name', 'Турнир')
+        tournament_type = tournament_data.get('type', 'Не указан')
+        tournament_status = tournament_data.get('status', 'active')
+        
+        # Подсчет участников
+        participants = tournament_data.get('participants', {}) or {}
+        participants_count = len(participants)
+        max_participants = tournament_data.get('participants_count', '?')
+        
+        # Подсчет завершенных игр турнира
+        completed_games_count = 0
+        try:
+            games = await storage.load_games()
+            for game in games:
+                if game.get('tournament_id') == tournament_id and game.get('status') in ['completed', None]:
+                    completed_games_count += 1
+        except Exception as e:
+            logger.error(f"Ошибка при подсчете игр: {e}")
+        
+        # Формируем краткий текст
+        location = tournament_data.get('city', 'Не указан')
+        if tournament_data.get('district'):
+            location += f" ({tournament_data['district']})"
+        
+        status_emoji = "🏁" if tournament_status == 'started' else "🏆" if tournament_status == 'active' else "✅"
+        status_text = "Идёт" if tournament_status == 'started' else "Активный" if tournament_status == 'active' else "Завершён"
+        
+        text = f"{status_emoji} *{tournament_name}*\n\n"
+        text += f"📊 *Статус:* {status_text}\n"
+        text += f"📍 *Место:* {location}\n"
+        text += f"🎯 *Тип:* {tournament_type}\n"
+        text += f"👥 *Участников:* {participants_count}/{max_participants}\n"
+        text += f"🎾 *Завершено игр:* {completed_games_count}\n"
+        
+        if tournament_data.get('category'):
+            text += f"🏅 *Категория:* {tournament_data['category']}\n"
+        if tournament_data.get('level'):
+            text += f"🧩 *Уровень:* {tournament_data['level']}\n"
+        
+        # Создаем клавиатуру
+        builder = InlineKeyboardBuilder()
+        
+        # Проверяем, является ли пользователь участником
+        is_registered = await storage.is_user_registered(user_id)
+        is_participant = str(user_id) in participants
+        
+        # Если зарегистрирован в боте и не участник турнира - показываем кнопку "Участвовать"
+        if is_registered and not is_participant and tournament_status == 'active':
+            max_participants_int = int(max_participants) if str(max_participants).isdigit() else 0
+            if not max_participants_int or participants_count < max_participants_int:
+                builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
+        
+        # Если пользователь - участник, показываем "Мои турниры"
+        if is_participant:
+            builder.button(text="🎯 Мои турниры", callback_data="my_tournaments_list:0")
+        
+        builder.button(text="📋 Все турниры", callback_data="view_tournaments_start")
+        builder.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
+        builder.adjust(1)
+        
+        # Генерируем изображение сетки турнира
+        try:
+            bracket_image, _ = await build_and_render_tournament_image(tournament_data, tournament_id)
+            await message.answer_photo(
+                photo=BufferedInputFile(bracket_image, filename=f"tournament_{tournament_id}_bracket.png"),
+                caption=truncate_caption(text),
+                parse_mode="Markdown",
+                reply_markup=builder.as_markup()
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при генерации сетки турнира: {e}", exc_info=True)
+            # Если не удалось сгенерировать изображение, отправляем только текст
+            await message.answer(
+                text=text,
+                parse_mode="Markdown",
+                reply_markup=builder.as_markup()
+            )
+    
+    except Exception as e:
+        logger.error(f"Ошибка при показе информации о турнире {tournament_id}: {e}", exc_info=True)
+        await message.answer("❌ Произошла ошибка при загрузке информации о турнире")

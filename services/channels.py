@@ -121,29 +121,24 @@ async def send_registration_notification(message: types.Message, profile: dict):
             
             if profile.get('dating_additional'):
                 dating_additional = escape_markdown(profile.get('dating_additional'))
-                registration_text += f"📝 *О себе:* {dating_additional}\n"
-            
-            registration_text += "\n#знакомства"
+                registration_text += f"📝 *О себе:* {dating_additional}"
             
         elif category == "meeting":
             # Для встреч
             if sport == "☕️Бизнес-завтрак":
                 if profile.get('meeting_time'):
                     meeting_time = escape_markdown(profile.get('meeting_time'))
-                    registration_text += f"☕️ *Время встречи:* {meeting_time}\n"
-                registration_text += "\n#бизнес_завтрак"
+                    registration_text += f"☕️ *Время встречи:* {meeting_time}"
             else:  # По пиву
                 if profile.get('meeting_time'):
                     meeting_time = escape_markdown(profile.get('meeting_time'))
-                    registration_text += f"🍻 *Время встречи:* {meeting_time}\n"
-                registration_text += "\n#встречи"
+                    registration_text += f"🍻 *Время встречи:* {meeting_time}"
                 
         elif category == "outdoor_sport":
             # Для активных видов спорта
             if profile.get('profile_comment'):
                 comment = escape_markdown(profile.get('profile_comment'))
-                registration_text += f"💬 *О себе:* {comment}\n"
-            registration_text += "\n#активность"
+                registration_text += f"💬 *О себе:* {comment}"
             
         else:  # court_sport
             # Добавляем способ оплаты корта
@@ -153,8 +148,7 @@ async def send_registration_notification(message: types.Message, profile: dict):
             
             if profile.get('profile_comment'):
                 comment = escape_markdown(profile.get('profile_comment'))
-                registration_text += f"💬 *О себе:* {comment}\n"
-            registration_text += "\n#игрок"
+                registration_text += f"💬 *О себе:* {comment}"
         
         if profile.get('photo_path'):
             await message.bot.send_photo(
@@ -218,8 +212,7 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             "🏆 *Завершена турнирная игра!*\n\n"
             f"🏆 *Турнир:* {escape_markdown(tournament_name)}\n\n"
             f"🥇 {winner_link} выиграл у {loser_link}\n\n"
-            f"📊 *Счет:* {score_escaped}\n\n"
-            f"#турнир #игра"
+            f"📊 *Счет:* {score_escaped}"
         )
         
         # Собираем фото игроков
@@ -286,8 +279,7 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             f"📊 *Счет:* {score_escaped}\n\n"
             f"📈 *Изменение рейтинга:*\n"
             f"• {winner_name}: {format_rating(winner_old)} → {format_rating(winner_new)} ({winner_change_str})\n"
-            f"• {loser_name}: {format_rating(loser_old)} → {format_rating(loser_new)} ({loser_change_str})\n\n"
-            f"#игра"
+            f"• {loser_name}: {format_rating(loser_old)} → {format_rating(loser_new)} ({loser_change_str})"
         )
 
         # соберем фото игроков
@@ -315,12 +307,6 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
         team2_player2_link = await create_user_profile_link(team2_player2, team2_player2_id, False)
         
         winner_side = data.get('winner_side')
-        if winner_side == "team1":
-            winner_team = f"{team1_player1_link} и {team1_player2_link}"
-            loser_team = f"{team2_player1_link} и {team2_player2_link}"
-        else:
-            winner_team = f"{team2_player1_link} и {team2_player2_link}"
-            loser_team = f"{team1_player1_link} и {team1_player2_link}"
         
         score_escaped = escape_markdown(score)
         
@@ -376,8 +362,7 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             f"🥇 *Победившая команда:* {winner_links[0]} и {winner_links[1]}\n"
             f"🥈 *Проигравшая команда:* {loser_links[0]} и {loser_links[1]}\n\n"
             f"📊 *Счет:* {score_escaped}\n\n"
-            f"{rating_changes_text}\n"
-            f"#игра"
+            f"{rating_changes_text}"
         )
 
         # соберем фото игроков (до 4)
@@ -388,31 +373,50 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
                 )
 
     # --- Отправка в канал ---
+    # Создаем кнопку для турнирной игры
+    reply_markup = None
+    if game_type == 'tournament' and tournament_id:
+        builder = InlineKeyboardBuilder()
+        deep_link = f"https://t.me/{BOT_USERNAME}?start=view_tournament_{tournament_id}"
+        builder.row(InlineKeyboardButton(text="👀 Смотреть турнир", url=deep_link))
+        reply_markup = builder.as_markup()
+    
     if 'photo_id' in data:
         await bot.send_photo(
             chat_id=channel_id,
             photo=data['photo_id'],
             caption=game_text,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=reply_markup
         )
     elif 'video_id' in data:
         await bot.send_video(
             chat_id=channel_id,
             video=data['video_id'],
             caption=game_text,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=reply_markup
         )
     elif media_group:
         # если фото/видео игры нет, шлём фото игроков как альбом
         media_group[0].caption = game_text
         media_group[0].parse_mode = "Markdown"
         await bot.send_media_group(chat_id=channel_id, media=media_group)
+        # Для media_group отправляем кнопку отдельным сообщением (если есть)
+        if reply_markup:
+            await bot.send_message(
+                chat_id=channel_id,
+                text="🏆 *Информация о турнире:*",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
     else:
         # если вообще нет фото — только текст
         await bot.send_message(
             chat_id=channel_id,
             text=game_text,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=reply_markup
         )
 
 async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_id: str, user_data: Dict[str, Any]):
@@ -562,16 +566,6 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
         if game_data.get('comment'):
             comment_escaped = escape_markdown(game_data['comment'])
             offer_text += f"\n💬 *Комментарий:* {comment_escaped}"
-        
-        # Добавляем хештег
-        if category == "dating":
-            offer_text += " \n\n#знакомства"
-        elif category == "meeting":
-            offer_text += " \n\n#встречи"
-        elif category == "outdoor_sport":
-            offer_text += " \n\n#активность"
-        else:
-            offer_text += " \n\n#предложение"
             
         # Получаем ID канала для данного вида спорта
         channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
@@ -631,8 +625,6 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         if user_data.get('vacation_comment'):
             vacation_comment = escape_markdown(user_data['vacation_comment'])
             tour_text += f"\n💬 *Комментарий:* {vacation_comment}"
-        
-        tour_text += "\n\n#тур"
         
         print(f"Сформирован текст тура: {tour_text[:100]}...")
             
@@ -729,34 +721,28 @@ async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[s
                 dating_additional = escape_markdown(user_data.get('dating_additional'))
                 profile_text += f"📝 <b>О себе:</b> {dating_additional}\n"
             
-            profile_text += "#знакомства"
-            
         elif category == "meeting":
             # Для встреч
             if sport == "☕️Бизнес-завтрак":
                 if user_data.get('meeting_time'):
                     meeting_time = escape_markdown(user_data.get('meeting_time'))
                     profile_text += f"☕️ <b>Время встречи:</b> {meeting_time}\n"
-                profile_text += "#бизнес_завтрак"
             else:  # По пиву
                 if user_data.get('meeting_time'):
                     meeting_time = escape_markdown(user_data.get('meeting_time'))
                     profile_text += f"🍻 <b>Время встречи:</b> {meeting_time}\n"
-                profile_text += "#встречи"
                 
         elif category == "outdoor_sport":
             # Для активных видов спорта
             if user_data.get('profile_comment'):
                 comment = escape_markdown(user_data.get('profile_comment'))
                 profile_text += f"💬 <b>О себе:</b> {comment}\n"
-            profile_text += "#активность"
             
         else:  # court_sport
             # Для спортивных видов с кортами
             if user_data.get('profile_comment'):
                 comment = escape_markdown(user_data.get('profile_comment'))
                 profile_text += f"💬 <b>О себе:</b> {comment}\n"
-            profile_text += "#игрок"
         
         photo_path = user_data.get("photo_path")
 
@@ -813,7 +799,6 @@ async def send_tournament_created_to_channel(bot: Bot, tournament_id: str, tourn
         )
         if comment_escaped:
             text += f"\n💬 *Описание:* {comment_escaped}"
-        text += "\n\n#турнир"
 
         # Кнопка "Участвовать" как ссылка с deep-link
         builder = InlineKeyboardBuilder()
@@ -855,7 +840,7 @@ async def send_tournament_application_to_channel(
             f"🏆 *Турнир:* {name}\n"
             f"👤 *Игрок:* {user_link}\n"
             f"👥 *Участников:* {current}/{total_text}\n\n"
-            "Присоединяйтесь и участвуйте!\n\n#турнир"
+            "Присоединяйтесь и участвуйте!"
         )
 
         builder = InlineKeyboardBuilder()
@@ -907,7 +892,7 @@ async def send_tournament_started_to_channel(
             f"🏅 *Категория:* {category}\n"
             f"🧩 *Уровень:* {level}\n"
             f"👥 *Участников:* {participants_count}\n\n"
-            f"Турнир запущен! Следите за результатами!\n\n#турнир"
+            f"Турнир запущен! Следите за результатами!"
         )
 
         builder = InlineKeyboardBuilder()
