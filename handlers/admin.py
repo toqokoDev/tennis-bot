@@ -1,6 +1,6 @@
 from datetime import datetime
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
@@ -509,6 +509,7 @@ async def edit_tournaments_handler(callback: CallbackQuery):
         button_text = f"{name[:30]}... ({city})" if len(name) > 30 else f"{name} ({city})"
         builder.button(text=button_text, callback_data=f"edit_tournament:{tournament_id}")
     
+    builder.button(text="🎮 Управление играми", callback_data="admin_games_menu")
     builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
     builder.adjust(1)
     
@@ -1152,20 +1153,24 @@ async def ban_user_handler(callback: CallbackQuery):
 
 # ==================== УПРАВЛЕНИЕ ИГРАМИ ====================
 
-@admin_router.message(Command("games"))
-async def games_cmd(message: Message):
-    """Команда для просмотра всех игр"""
-    if not await is_admin(message.from_user.id):
-        await safe_send_message(message, "❌ У вас нет прав администратора")
+@admin_router.callback_query(F.data == "admin_games_menu")
+async def admin_games_menu_handler(callback: CallbackQuery):
+    """Обработчик кнопки управления играми"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
         return
     
     games = await storage.load_games()
     
     if not games:
-        await safe_send_message(message, "📋 Список игр пуст.")
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔙 Назад", callback_data="admin_edit_tournaments")
+        await safe_edit_message(callback, "📋 Список игр пуст.", builder.as_markup())
+        await callback.answer()
         return
     
-    await show_games_page(message, page=0)
+    await show_games_page(callback.message, page=0, callback=callback)
+    await callback.answer()
 
 
 async def show_games_page(message: Message, page: int = 0, callback: CallbackQuery = None):
@@ -1251,6 +1256,8 @@ async def show_games_page(message: Message, page: int = 0, callback: CallbackQue
     
     if nav_buttons:
         builder.row(*nav_buttons)
+    
+    builder.row(InlineKeyboardButton(text="🔙 К управлению турнирами", callback_data="admin_edit_tournaments"))
     
     if callback:
         await safe_edit_message(callback, text, reply_markup=builder.as_markup())
@@ -1362,6 +1369,7 @@ async def admin_view_game_handler(callback: CallbackQuery):
     builder.button(text="🏆 Изменить победителя", callback_data=f"admin_edit_winner:{game_id}")
     builder.button(text="🗑️ Удалить игру", callback_data=f"admin_delete_game:{game_id}")
     builder.button(text="🔙 К списку игр", callback_data="admin_back_to_games")
+    builder.button(text="🔙 К турнирам", callback_data="admin_edit_tournaments")
     builder.adjust(1)
     
     await safe_edit_message(callback, text, reply_markup=builder.as_markup())
@@ -1376,6 +1384,17 @@ async def admin_back_to_games_handler(callback: CallbackQuery):
         return
     
     await show_games_page(callback.message, page=0, callback=callback)
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin_back_to_tournaments")
+async def admin_back_to_tournaments_handler(callback: CallbackQuery):
+    """Возврат к управлению турнирами"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    await edit_tournaments_handler(callback)
     await callback.answer()
 
 
