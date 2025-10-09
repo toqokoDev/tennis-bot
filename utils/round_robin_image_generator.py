@@ -500,7 +500,7 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                 except Exception:
                     return ImageFont.load_default()
 
-        small_note_font = _load_small_font(12)
+        small_note_font = _load_small_font(16)
         y_pos = table_y + table_h + 10
         for line in note.split('\n'):
             draw.text((padding, y_pos), line, fill=(107, 114, 128), font=small_note_font)
