@@ -60,6 +60,35 @@ def get_cities_for_country(country):
     cities = cities_data.get(country, [])
     return cities + ["Другое"] if cities else ["Другое"]
 
+async def get_other_countries_from_tournaments(sport: str) -> list[str]:
+    """Получить страны из турниров, которых нет в основном списке"""
+    tournaments = await storage.load_tournaments()
+    other_countries = set()
+    
+    for tournament in tournaments.values():
+        if tournament.get('sport') == sport and tournament.get('status') in ['active', 'started']:
+            country = tournament.get('country', '')
+            if country and country not in COUNTRIES:
+                other_countries.add(country)
+    
+    return sorted(list(other_countries))[:5]  # Максимум 5
+
+async def get_other_cities_from_tournaments(sport: str, country: str) -> list[str]:
+    """Получить города из турниров, которых нет в списке для страны"""
+    tournaments = await storage.load_tournaments()
+    known_cities = set(cities_data.get(country, []))
+    other_cities = set()
+    
+    for tournament in tournaments.values():
+        if (tournament.get('sport') == sport and 
+            tournament.get('country') == country and 
+            tournament.get('status') in ['active', 'started']):
+            city = tournament.get('city', '')
+            if city and city not in known_cities:
+                other_cities.add(city)
+    
+    return sorted(list(other_cities))[:5]  # Максимум 5
+
 # Проверка соответствия уровня игрока диапазону уровня турнира вида "x.y-a.b"
 def _is_level_match(user_level: str | None, tournament_level: str | None) -> bool:
     try:
@@ -1833,18 +1862,28 @@ async def select_country_for_view(callback: CallbackQuery, state: FSMContext):
     sport = data.get('selected_sport')
 
     if country == "Другое":
-        # Переходим на ввод страны вручную
-        await state.set_state(ViewTournamentsStates.COUNTRY_INPUT)
-        await state.update_data(selected_country=None)
+        # Получаем другие страны из турниров
+        other_countries = await get_other_countries_from_tournaments(sport)
+        
+        builder = InlineKeyboardBuilder()
+        # Показываем страны из турниров (макс 5)
+        for other_country in other_countries:
+            builder.button(text=other_country, callback_data=f"view_tournament_country:{other_country}")
+        builder.adjust(2)
+        
+        # Кнопка "Написать" отдельно внизу
+        builder.row(InlineKeyboardButton(text="✏️ Написать", callback_data="view_tournament_country_manual"))
+        
         try:
             await callback.message.delete()
         except Exception:
             pass
+        
         await callback.message.answer(
             f"🏆 Просмотр турниров\n\n"
-            f"📋 Шаг 2/5: Введите страну\n"
-            f"✅ Вид спорта: {sport}\n\n"
-            f"Введите название страны:",
+            f"📋 Шаг 2/5: Выберите страну или напишите свою\n"
+            f"✅ Вид спорта: {sport}",
+            reply_markup=builder.as_markup()
         )
         await callback.answer()
         return
@@ -1867,6 +1906,28 @@ async def select_country_for_view(callback: CallbackQuery, state: FSMContext):
         f"✅ Вид спорта: {sport}\n"
         f"✅ Страна: {country}",
         reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "view_tournament_country_manual")
+async def view_tournament_country_manual(callback: CallbackQuery, state: FSMContext):
+    """Обработчик кнопки 'Написать' для ручного ввода страны"""
+    data = await state.get_data()
+    sport = data.get('selected_sport')
+    
+    await state.set_state(ViewTournamentsStates.COUNTRY_INPUT)
+    await state.update_data(selected_country=None)
+    
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
+    await callback.message.answer(
+        f"🏆 Просмотр турниров\n\n"
+        f"📋 Шаг 2/5: Введите страну\n"
+        f"✅ Вид спорта: {sport}\n\n"
+        f"Введите название страны:",
     )
     await callback.answer()
 
@@ -1956,15 +2017,51 @@ async def select_city_for_view(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "view_tournament_city_input")
 async def view_city_input_request(callback: CallbackQuery, state: FSMContext):
-    """Запрос ввода города вручную"""
+    """Запрос показа других городов или ввода вручную"""
     data = await state.get_data()
     sport = data.get('selected_sport')
     country = data.get('selected_country')
-    await state.set_state(ViewTournamentsStates.CITY_INPUT)
+    
+    # Получаем другие города из турниров
+    other_cities = await get_other_cities_from_tournaments(sport, country)
+    
+    builder = InlineKeyboardBuilder()
+    # Показываем города из турниров (макс 5)
+    for other_city in other_cities:
+        builder.button(text=other_city, callback_data=f"view_tournament_city:{other_city}")
+    builder.adjust(2)
+    
+    # Кнопка "Написать" отдельно внизу
+    builder.row(InlineKeyboardButton(text="✏️ Написать", callback_data="view_tournament_city_manual"))
+    
     try:
         await callback.message.delete()
     except Exception:
         pass
+    
+    await callback.message.answer(
+        f"🏆 Просмотр турниров\n\n"
+        f"📋 Шаг 3/5: Выберите город или напишите свой\n"
+        f"✅ Вид спорта: {sport}\n"
+        f"✅ Страна: {country}",
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "view_tournament_city_manual")
+async def view_tournament_city_manual(callback: CallbackQuery, state: FSMContext):
+    """Обработчик кнопки 'Написать' для ручного ввода города"""
+    data = await state.get_data()
+    sport = data.get('selected_sport')
+    country = data.get('selected_country')
+    
+    await state.set_state(ViewTournamentsStates.CITY_INPUT)
+    
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
     await callback.message.answer(
         f"🏆 Просмотр турниров\n\n"
         f"📋 Шаг 3/5: Введите город\n"
@@ -2747,8 +2844,17 @@ async def apply_tournament_handler(callback: CallbackQuery):
     # Готовим визуализацию сетки
     bracket_image, bracket_text = await build_and_render_tournament_image(tournament_data, tournament_id)
     
+    # Проверяем статус оплаты
+    entry_fee = int(tournament_data.get('entry_fee', 0) or 100)
+    is_paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
+    
     # Кнопки
     builder = InlineKeyboardBuilder()
+    
+    # Добавляем кнопку оплаты, если требуется
+    if entry_fee > 0 and not is_paid:
+        builder.button(text="💳 Оплатить участие", callback_data=f"tournament_pay:{tournament_id}")
+    
     builder.button(text="📋 Все турниры", callback_data="view_tournaments_start")
     builder.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
     builder.adjust(1)
@@ -2759,6 +2865,13 @@ async def apply_tournament_handler(callback: CallbackQuery):
         f"👥 Участников: {len(tournament_data.get('participants', {}))}/{tournament_data.get('participants_count', '—')}"
         f"{auto_started_text}"
     )
+    
+    # Добавляем информацию об оплате
+    if entry_fee > 0:
+        if is_paid:
+            caption += f"\n💳 Оплата: ✅ Оплачено ({entry_fee} ₽)"
+        else:
+            caption += f"\n💳 Оплата: ❌ Требуется оплата ({entry_fee} ₽)"
     
     try:
         await callback.message.delete()
@@ -2853,8 +2966,17 @@ async def apply_proposed_tournament(callback: CallbackQuery, state: FSMContext):
 
     # Визуализация сетки
     bracket_image, bracket_text = await build_and_render_tournament_image(tournament_data, tournament_id)
+    
+    # Проверяем статус оплаты
+    entry_fee = int(tournament_data.get('entry_fee', 0) or 100)
+    is_paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
 
     builder = InlineKeyboardBuilder()
+    
+    # Добавляем кнопку оплаты, если требуется
+    if entry_fee > 0 and not is_paid:
+        builder.button(text="💳 Оплатить участие", callback_data=f"tournament_pay:{tournament_id}")
+    
     builder.button(text="📋 Все турниры", callback_data="view_tournaments_start")
     builder.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
     builder.adjust(1)
@@ -2865,6 +2987,13 @@ async def apply_proposed_tournament(callback: CallbackQuery, state: FSMContext):
         f"👥 Участников: {len(tournament_data.get('participants', {}))}/{tournament_data.get('participants_count', '—')}"
         f"{auto_started_text}"
     )
+    
+    # Добавляем информацию об оплате
+    if entry_fee > 0:
+        if is_paid:
+            caption += f"\n💳 Оплата: ✅ Оплачено ({entry_fee} ₽)"
+        else:
+            caption += f"\n💳 Оплата: ❌ Требуется оплата ({entry_fee} ₽)"
 
     try:
         await callback.message.delete()
@@ -2952,13 +3081,14 @@ async def tournament_pay_confirm(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     payment_id = data.get('payment_id')
     tournament_id = callback.data.split(":")[1]
+    user_id = callback.from_user.id
     try:
         payment = Payment.find_one(payment_id)
         if payment.status == 'succeeded':
             tournaments = await storage.load_tournaments()
             tournament = tournaments.get(tournament_id, {})
             payments = tournament.get('payments', {})
-            payments[str(callback.from_user.id)] = {
+            payments[str(user_id)] = {
                 'payment_id': payment_id,
                 'status': 'succeeded',
                 'amount': float(payment.amount.value),  # Преобразуем Decimal в float для JSON
@@ -2968,7 +3098,28 @@ async def tournament_pay_confirm(callback: CallbackQuery, state: FSMContext):
             tournament['payments'] = payments
             tournaments[tournament_id] = tournament
             await storage.save_tournaments(tournaments)
-            await callback.message.answer("✅ Оплата успешно подтверждена! Удачи в турнире.")
+            
+            # Показываем турнир с обновленной информацией
+            entry_fee = int(tournament.get('entry_fee', 0) or 0)
+            bracket_image, bracket_text = await build_and_render_tournament_image(tournament, tournament_id)
+            
+            builder = InlineKeyboardBuilder()
+            builder.button(text="🎯 Мои турниры", callback_data="my_tournaments_list:0")
+            builder.button(text="📋 Все турниры", callback_data="view_tournaments_start")
+            builder.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
+            builder.adjust(1)
+            
+            caption = (
+                "✅ Оплата успешно подтверждена! Удачи в турнире.\n\n"
+                f"🏆 {tournament.get('name', 'Турнир')}\n"
+                f"💳 Оплата: ✅ Оплачено ({entry_fee} ₽)"
+            )
+            
+            await callback.message.answer_photo(
+                photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
+                caption=truncate_caption(caption),
+                reply_markup=builder.as_markup()
+            )
         else:
             await callback.message.answer("⌛ Платеж еще не завершен. Подождите и попробуйте снова.")
     except Exception as e:
@@ -3082,11 +3233,22 @@ async def my_tournaments_list(callback: CallbackQuery):
     tournament_id, tournament_data = user_tournaments[page]
     participant_data = tournament_data['participants'][str(user_id)]
     
+    # Проверяем статус оплаты
+    entry_fee = int(tournament_data.get('entry_fee', 0) or 100)
+    is_paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
+    
     # Компактный текст для текущего турнира
     text = f"🏆 Турнир {page + 1}/{total_pages}\n\n"
     text += f"{tournament_data.get('name', 'Без названия')}\n"
     text += f"📍 {tournament_data.get('city', 'Не указан')} | {tournament_data.get('type', 'Не указан')}\n"
     text += f"👥 {len(tournament_data.get('participants', {}))} участников"
+    
+    # Добавляем информацию об оплате
+    if entry_fee > 0:
+        if is_paid:
+            text += f"\n💳 Оплата: ✅ Оплачено ({entry_fee} ₽)"
+        else:
+            text += f"\n💳 Оплата: ❌ Требуется оплата ({entry_fee} ₽)"
     
     # Создаем клавиатуру с пагинацией
     builder = InlineKeyboardBuilder()
@@ -3105,6 +3267,10 @@ async def my_tournaments_list(callback: CallbackQuery):
                 InlineKeyboardButton(text="⬅️", callback_data=f"my_tournaments_list:{page-1}"),
                 InlineKeyboardButton(text="➡️", callback_data=f"my_tournaments_list:{page+1}")
             )
+    
+    # Кнопка оплаты, если требуется
+    if entry_fee > 0 and not is_paid:
+        builder.row(InlineKeyboardButton(text="💳 Оплатить участие", callback_data=f"tournament_pay:{tournament_id}"))
     
     # Остальные кнопки всегда в отдельном ряду
     builder.row(
@@ -3419,36 +3585,6 @@ async def view_tournament_participants_command(message: Message, state: FSMConte
     await message.answer(
         "👥 Просмотр участников турниров\n\n"
         "Выберите турнир для просмотра участников:",
-        reply_markup=builder.as_markup()
-    )
-
-# Команда редактирования турниров (только для админов)
-@router.message(Command("edit_tournaments"))
-async def edit_tournaments_command(message: Message, state: FSMContext):
-    """Команда для редактирования турниров (только админы)"""
-    if not await is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора")
-        return
-    
-    tournaments = await storage.load_tournaments()
-    
-    if not tournaments:
-        await message.answer("📋 Нет турниров")
-        return
-    
-    builder = InlineKeyboardBuilder()
-    for tournament_id, tournament_data in tournaments.items():
-        name = tournament_data.get('name', 'Без названия')
-        city = tournament_data.get('city', 'Не указан')
-        # Короткое название для кнопки
-        button_text = f"{name[:30]}... ({city})" if len(name) > 30 else f"{name} ({city})"
-        builder.button(text=button_text, callback_data=f"edit_tournament:{tournament_id}")
-    
-    builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
-    builder.adjust(1)
-    
-    await message.answer(
-        "🏆 Выберите турнир:",
         reply_markup=builder.as_markup()
     )
 
@@ -5427,13 +5563,14 @@ async def edit_tournaments_back(callback: CallbackQuery, state: FSMContext):
     
     builder = InlineKeyboardBuilder()
     for tournament_id, tournament_data in tournaments.items():
-        name = tournament_data.get('name', 'Без названия')
+        level = tournament_data.get('level', 'Без уровня')
         city = tournament_data.get('city', 'Не указан')
-        button_text = f"{name[:30]}... ({city})" if len(name) > 30 else f"{name} ({city})"
+
+        button_text = f" {level} ({city})"
         builder.button(text=button_text, callback_data=f"edit_tournament:{tournament_id}")
     
     builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
-    builder.adjust(1)
+    builder.adjust(2)
     
     await callback.message.delete()
     await callback.message.answer(
@@ -5548,8 +5685,23 @@ async def show_tournament_brief_info(message: Message, tournament_id: str, user_
             if not max_participants_int or participants_count < max_participants_int:
                 builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
         
-        # Если пользователь - участник, показываем "Мои турниры"
+        # Если пользователь - участник, показываем "Мои турниры" и кнопку оплаты (если нужна)
         if is_participant:
+            # Проверяем статус оплаты
+            entry_fee = int(tournament_data.get('entry_fee', 0) or 100)
+            is_paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
+            
+            # Добавляем информацию об оплате в текст
+            if entry_fee > 0:
+                if is_paid:
+                    text += f"\n💳 *Оплата:* ✅ Оплачено ({entry_fee} ₽)"
+                else:
+                    text += f"\n💳 *Оплата:* ❌ Требуется оплата ({entry_fee} ₽)"
+            
+            # Кнопка оплаты, если требуется
+            if entry_fee > 0 and not is_paid:
+                builder.button(text="💳 Оплатить участие", callback_data=f"tournament_pay:{tournament_id}")
+            
             builder.button(text="🎯 Мои турниры", callback_data="my_tournaments_list:0")
         
         builder.button(text="📋 Все турниры", callback_data="view_tournaments_start")

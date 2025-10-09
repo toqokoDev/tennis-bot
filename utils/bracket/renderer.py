@@ -2,7 +2,7 @@ import os
 from typing import List, Tuple, Optional
 from PIL import Image, ImageDraw, ImageFont
 
-from config.paths import GAMES_PHOTOS_DIR, BASE_DIR
+from config.paths import BASE_DIR
 from .models import Player, Match, TournamentBracket
 
 
@@ -50,17 +50,17 @@ class BracketImageGenerator:
         self.match_spacing = 30
         self.vertical_margin = 30
         
-        # Размеры шрифтов
-        self.font_size = 18
-        self.name_font_size = 18
-        self.title_font_size = 18
-        self.subtitle_font_size = 18
-        self.score_font_size = 18
+        # Размеры шрифтов (увеличены)
+        self.font_size = 20
+        self.name_font_size = 22
+        self.title_font_size = 24
+        self.subtitle_font_size = 20
+        self.score_font_size = 20
         
         # Параметры линий (для удобной настройки)
         self.line_width = 1  # Толщина соединительных линий
         self.cell_border_width = 2  # Толщина границ ячеек
-        self.final_line_length = 220  # Длина финальной линии победителя (увеличена)
+        self.final_line_length = self.cell_width  # Длина финальной линии победителя равна ширине ячейки
         self.final_line_width = 1  # Толщина финальной линии победителя (жирная)
         self.connector_offset = 30  # Расстояние от ячейки до точки схождения линий
         self.mini_spacing = 250  # Отступ между раундами в мини-турнирах
@@ -85,10 +85,13 @@ class BracketImageGenerator:
         self.winner_color = (31, 41, 55)  # Темный для победителя (жирный)
         self.winner_bg_color = (220, 252, 231)  # Светло-зеленый фон победителя
         self.connector_color = (156, 163, 175)  # Цвет соединительных линий
-        self.round_title_color = (59, 130, 246)  # Синий для заголовков раундов
+        self.round_title_color = (107, 114, 128)  # Серый для заголовков раундов
         self.placement_color = (139, 69, 19)  # Коричневый для игр за мест
         self.mini_tournament_color = (101, 163, 13)  # Зеленый для мини-турниров (не использовать для оформления)
         
+        # Увеличенный отступ между подписью мини-сетки и первой ячейкой
+        self.mini_title_spacing = 24
+
         # Загрузка шрифтов с Unicode-фолбэком
         try:
             self.font = ImageFont.truetype("arial.ttf", self.font_size)  # Шрифт для подписей на линиях (увеличен еще больше)
@@ -127,6 +130,16 @@ class BracketImageGenerator:
                     self.subtitle_font = None
                     self.score_font = None
 
+        # Нормализация отступов и длин линий относительно ширины ячейки
+        # Чтобы горизонтальные соединительные линии были длиной ровно в ширину ячейки,
+        # выбираем расстояние между раундами как (ширина ячейки + смещение коннектора)
+        try:
+            self.round_spacing = self.cell_width + self.connector_offset
+            self.mini_spacing = self.cell_width + self.connector_offset
+            self.final_line_length = self.cell_width
+        except Exception:
+            pass
+
     @staticmethod
     def _sanitize_title(text: str) -> str:
         """Удаляет эмодзи и связанные служебные символы из строки заголовка."""
@@ -150,11 +163,11 @@ class BracketImageGenerator:
         except Exception:
             return "".join(ch for ch in str(text or "") if ord(ch) <= 0xFFFF)
 
-    def create_player_avatar(self, player: Player, size: int = 24) -> Image.Image:
+    def create_player_avatar(self, player: Optional[Player], size: int = 24) -> Image.Image:
         """Создает квадратный аватар игрока"""
         # Пробуем загрузить пользовательское фото, если имеется
         try:
-            if getattr(player, 'photo_url', None):
+            if player is not None and getattr(player, 'photo_url', None):
                 raw_path = str(player.photo_url)
                 abs_path = raw_path if os.path.isabs(raw_path) else os.path.join(BASE_DIR, raw_path)
                 if os.path.exists(abs_path):
@@ -175,23 +188,8 @@ class BracketImageGenerator:
             # Игнорируем и используем заглушку
             pass
 
-        # Заглушка: цветной квадрат с инициалами
-        avatar = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(avatar)
-        color = (100, 150, 200)
-        draw.rectangle([0, 0, size, size], fill=color)
-        initials = self._get_player_initials(player)
-        if self.font:
-            try:
-                bbox = draw.textbbox((0, 0), initials, font=self.font)
-                text_width = bbox[2] - bbox[0]
-                text_height = bbox[3] - bbox[1]
-                x = (size - text_width) // 2
-                y = (size - text_height) // 2
-                draw.text((x, y), initials, fill=(255, 255, 255), font=self.font)
-            except Exception:
-                pass
-        return avatar
+        # Заглушка: однотонный серый квадрат
+        return Image.new('RGBA', (size, size), (200, 200, 200, 255))
     
     def _is_free_slot(self, player: Optional[Player]) -> bool:
         """Определяет, является ли слот свободным местом (плейсхолдер).
@@ -261,27 +259,23 @@ class BracketImageGenerator:
         player_height = self.cell_height // 2
         player_y = y
         
-        # Игрок 1
-        if player1:
-            self._draw_player_in_cell(draw, player1, x, player_y, self.cell_width, player_height, 
-                                    match.winner == player1, is_placement or is_mini_tournament)
+        # Игрок 1 (рисуем даже при отсутствии игрока — будет серый аватар)
+        self._draw_player_in_cell(draw, player1, x, player_y, self.cell_width, player_height, 
+                                  match.winner == player1 if player1 else False, is_placement or is_mini_tournament)
         
         # Разделительная линия
         draw.line([x, y + player_height, x + self.cell_width, y + player_height], 
                  fill=border_color, width=self.cell_border_width)
         
-        # Игрок 2
-        if player2:
-            self._draw_player_in_cell(draw, player2, x, y + player_height, self.cell_width, player_height, 
-                                    match.winner == player2, is_placement or is_mini_tournament)
+        # Игрок 2 (рисуем даже при отсутствии игрока — будет серый аватар)
+        self._draw_player_in_cell(draw, player2, x, y + player_height, self.cell_width, player_height, 
+                                  match.winner == player2 if player2 else False, is_placement or is_mini_tournament)
 
-    def _draw_player_in_cell(self, draw: ImageDraw.Draw, player: Player, x: int, y: int, width: int, height: int, 
+    def _draw_player_in_cell(self, draw: ImageDraw.Draw, player: Optional[Player], x: int, y: int, width: int, height: int, 
                            is_winner: bool, is_special: bool = False):
         """Рисует информацию об игроке в ячейке"""
-        # Если это свободный слот — ничего не рисуем
-        if self._is_free_slot(player):
-            return
-        # Аватар
+        # Аватар (серый квадрат если слот свободен или нет фото)
+        is_free = self._is_free_slot(player)
         avatar_size = 60
         avatar = self.create_player_avatar(player, avatar_size)
         if avatar:
@@ -295,7 +289,7 @@ class BracketImageGenerator:
         font = self.name_bold_font if is_winner else self.name_font
         color = self.winner_color if is_winner else self.text_color
         
-        if font:
+        if font and not is_free and player is not None:
             display_name = player.name
             try:
                 bbox = draw.textbbox((0, 0), display_name, font=font)
@@ -514,10 +508,10 @@ class BracketImageGenerator:
             # Вычисляем размеры для основной сетки
             main_bracket_width, main_bracket_height = self.calculate_bracket_dimensions(bracket)
             
-            # Вычисляем размеры для мини-турниров
+            # Вычисляем размеры для мини-турниров (которые будут снизу)
             mini_tournaments_height = 0
             mini_tournaments_width = 0
-            mini_tournaments_spacing = 50  # Отступ слева от основной сетки до мини-турниров (увеличен)
+            bottom_gap = 40  # Вертикальный зазор между основной сеткой и мини-сетками
             
             if bracket.additional_tournaments:
                 for i, mini_tournament in enumerate(bracket.additional_tournaments):
@@ -534,38 +528,33 @@ class BracketImageGenerator:
                         mini_tournaments_height += spacing
                     mini_tournaments_width = max(mini_tournaments_width, mini_width)
             
-            # Общие размеры изображения
-            # Ширина: левый отступ (50) + основная сетка + отступ до мини-турниров + мини-турниры + правый отступ (50)
-            if mini_tournaments_width > 0:
-                total_width = 50 + main_bracket_width + mini_tournaments_spacing + mini_tournaments_width + 50
-            else:
-                total_width = 50 + main_bracket_width + 50
-            
-            # Минимальная ширина
-            total_width = max(total_width, 1200)
-            
-            has_photos = bool(photo_paths)
-            # Базовый нижний отступ без фото (для заголовка и небольшого поля)
+            # Общие размеры изображения: минимально необходимая ширина без лишнего правого отступа
+            # Ширина: левый отступ (50) + max(основная сетка, мини-турниры) + правый отступ (20)
+            total_width = 50 + max(main_bracket_width, mini_tournaments_width) + 20
+
+            # Нижний отступ
             base_bottom_padding = 20
-            photos_height = 380 if has_photos else 0
-            
-            # Высота: заголовок (100) + max(основная сетка, мини-турниры) + фото + нижний отступ
-            content_height = max(main_bracket_height, mini_tournaments_height)
-            total_height = 100 + content_height + photos_height + base_bottom_padding
+
+            # Высота: заголовок (100) + основная сетка + (зазор + мини-сетки, если есть) + нижний отступ
+            if mini_tournaments_height > 0:
+                content_height = main_bracket_height + bottom_gap + mini_tournaments_height
+            else:
+                content_height = main_bracket_height
+            total_height = 100 + content_height + base_bottom_padding
             
             # Создаем изображение
             image = Image.new('RGB', (total_width, total_height), self.bg_color)
             draw = ImageDraw.Draw(image)
             
-            # Заголовок турнира
+            # Заголовок турнира (черный, без жирного)
             title = self._sanitize_title(bracket.name)
-            if self.title_font:
+            if self.font:
                 try:
-                    title_bbox = draw.textbbox((0, 0), title, font=self.title_font)
+                    title_bbox = draw.textbbox((0, 0), title, font=self.font)
                     title_width = title_bbox[2] - title_bbox[0]
                     draw.text(((total_width - title_width) // 2, 20), title, 
-                             fill=self.text_color, font=self.title_font)
-                except:
+                             fill=(0, 0, 0), font=self.font)
+                except Exception:
                     pass
             
             # Рисуем основную сетку
@@ -575,36 +564,30 @@ class BracketImageGenerator:
             # Рисуем соединительные линии для основной сетки
             self.draw_connectors(draw, round_positions, bracket.rounds)
             
-            # Рисуем мини-турниры справа от основной сетки
-            current_y = main_bracket_y
+            # Рисуем мини-турниры снизу от основной сетки с переупорядочиванием: 3-е место, 5-е, 7-е
+            current_y = main_bracket_y + main_bracket_height + bottom_gap
             if bracket.additional_tournaments:
-                for i, mini_tournament in enumerate(bracket.additional_tournaments):
-                    # Добавляем отступ сверху перед турниром за 3 место
-                    if '3' in mini_tournament.name and 'место' in mini_tournament.name:
-                        current_y += self.mini_tournament_top_offset
-                    
-                    tournament_x = main_bracket_width + mini_tournaments_spacing
+                # Сортировка: сначала содержащие '3 место', потом '5', затем '7'
+                def _order_key(t):
+                    name = (t.name or '').lower()
+                    if '3' in name and 'мест' in name:
+                        return 0
+                    if '5' in name and 'мест' in name:
+                        return 1
+                    if '7' in name and 'мест' in name:
+                        return 2
+                    return 3
+                sorted_minis = sorted(bracket.additional_tournaments, key=_order_key)
+                for i, mini_tournament in enumerate(sorted_minis):
+                    tournament_x = 50
                     tournament_y = current_y
-                    
-                    # Рисуем сетку мини-турнира
                     mini_round_positions = self._draw_mini_tournament_grid(draw, mini_tournament, tournament_x, tournament_y)
-                    
-                    # Рисуем соединительные линии для мини-турнира
                     self.draw_connectors(draw, mini_round_positions, mini_tournament.rounds, 
                                         is_mini_tournament=True, tournament_name=mini_tournament.name)
-                    
-                    # Увеличенный отступ после мини-турнира за 5-6 места
-                    if i == 0 and '5' in mini_tournament.name:
-                        current_y += self.calculate_bracket_dimensions(mini_tournament)[1] + self.mini_tournament_gap_large
-                    else:
-                        current_y += self.calculate_bracket_dimensions(mini_tournament)[1] + self.mini_tournament_gap_normal
+                    mini_w, mini_h = self.calculate_bracket_dimensions(mini_tournament)
+                    current_y += mini_h + self.mini_tournament_gap_normal
             
-            # Рисуем область для фото игр внизу только если есть фото
-            if has_photos:
-                # Позиция фото: начало контента (100) + высота контента + небольшой отступ
-                photos_y = 100 + content_height + 20
-                photos_area_height = photos_height - 40  # Оставляем место для отступов
-                self._draw_game_photos_area(draw, 50, photos_y, total_width - 100, photos_area_height, photo_paths or [])
+            # Блок фотографий отключен по требованиям
             
             return image
             
@@ -630,23 +613,19 @@ class BracketImageGenerator:
                 round_x = current_x
                 current_x += self.round_spacing
             
-            # Заголовок раунда
+            # Заголовок раунда (цифровой номер круга, последний — Финал), серым и без жирного
             round_title = self._get_round_title(round_num, len(bracket.rounds))
             if self.font:
                 try:
-                    title_bbox = draw.textbbox((0, 0), round_title, font=self.bold_font)
+                    title_bbox = draw.textbbox((0, 0), round_title, font=self.font)
                     title_width = title_bbox[2] - title_bbox[0]
-                    # Центрируем заголовок:
-                    # - для первого раунда - над центром ячейки
-                    # - для остальных - над областью соединительных линий
                     if round_num == 0:
                         title_x = round_x + (self.cell_width - title_width) // 2
                     else:
-                        # Для остальных раундов центрируем над областью spacing
                         title_x = round_x + (self.round_spacing - title_width) // 2
                     draw.text((title_x, start_y - 40), 
-                        round_title, fill=self.round_title_color, font=self.bold_font)
-                except:
+                        round_title, fill=self.round_title_color, font=self.font)
+                except Exception:
                     pass
             
             # Позиции матчей в раунде
@@ -687,6 +666,7 @@ class BracketImageGenerator:
             tournament_height = self.calculate_bracket_dimensions(tournament)[1]
             
             for match_num, match in enumerate(round_matches):
+                # Для мини-сеток start_y — это верх мини-блока; total_height — высота мини-блока
                 match_y = self._calculate_match_y(round_num, match_num, round_matches, round_positions, start_y, tournament_height)
                 match_positions.append((round_x, match_y))
                 
@@ -700,32 +680,26 @@ class BracketImageGenerator:
             
             round_positions.append(match_positions)
         
-        # Выводим название турнира над первой ячейкой
+        # Выводим название мини-турнира над первой ячейкой с увеличенным отступом
         tournament_title = tournament.name
         if self.bold_font and tournament_title and first_match_y is not None:
             try:
-                title_bbox = draw.textbbox((0, 0), tournament_title, font=self.bold_font)
+                title_bbox = draw.textbbox((0, 0), tournament_title, font=self.font)
                 title_height = title_bbox[3] - title_bbox[1]
-                # Заголовок начинается от левого края первой ячейки
                 title_x = start_x
-                # Привязываем к Y-координате первой ячейки с учетом высоты текста
-                draw.text((title_x, first_match_y - title_height - 5),
-                    tournament_title, fill=self.round_title_color, font=self.bold_font)
-            except:
+                draw.text((title_x, first_match_y - title_height - self.mini_title_spacing),
+                    tournament_title, fill=self.round_title_color, font=self.font)
+            except Exception:
                 pass
         
         return round_positions
     
     def _get_round_title(self, round_num: int, total_rounds: int) -> str:
-        """Возвращает заголовок для раунда"""
+        """Возвращает заголовок для раунда: "1-й круг", ..., последний — "Финал""" 
         if round_num == total_rounds - 1:
             return "Финал"
-        elif round_num == total_rounds - 2:
-            return "Полуфинал"
-        elif round_num == total_rounds - 3:
-            return "Четвертьфинал"
-        else:
-            return f"Раунд {round_num + 1}"
+        # Нумерованные круги (1-й круг, 2-й круг, ...)
+        return f"{round_num + 1}-й круг"
     
     def _calculate_match_y(self, round_num: int, match_num: int, round_matches: List[Match], 
                           round_positions: List[List[Tuple[int, int]]], start_y: int, total_height: int) -> int:
@@ -733,8 +707,10 @@ class BracketImageGenerator:
         if round_num == 0:
             # Первый раунд - равномерное распределение
             total_matches = len(round_matches)
-            return (start_y + match_num * (self.cell_height + self.match_spacing) + 
-                    (total_height - start_y - total_matches * (self.cell_height + self.match_spacing)) // 2)
+            # total_height здесь трактуем как ВЫСОТУ области, а не абсолютную координату низа
+            available_height = max(total_height, 0)
+            offset_top = max((available_height - total_matches * (self.cell_height + self.match_spacing)) // 2, 0)
+            return start_y + offset_top + match_num * (self.cell_height + self.match_spacing)
         else:
             # Последующие раунды - позиционируем между матчами предыдущего раунда
             prev_match1_idx = match_num * 2
@@ -749,10 +725,11 @@ class BracketImageGenerator:
                     y2 = prev_round[prev_match2_idx][1] + self.cell_height // 2
                     return (y1 + y2) // 2 - self.cell_height // 2
             
-            # Fallback равномерное распределение
+            # Fallback равномерное распределение в доступной области
             total_matches = len(round_matches)
-            return (start_y + match_num * (self.cell_height + self.match_spacing) + 
-                    (total_height - start_y - total_matches * (self.cell_height + self.match_spacing)) // 2)
+            available_height = max(total_height, 0)
+            offset_top = max((available_height - total_matches * (self.cell_height + self.match_spacing)) // 2, 0)
+            return start_y + offset_top + match_num * (self.cell_height + self.match_spacing)
     
     def _draw_game_photos_area(self, draw: ImageDraw.Draw, x: int, y: int, width: int, height: int, photo_paths: list[str]):
         """Рисует область для фото игр внизу по всей ширине"""

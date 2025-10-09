@@ -294,39 +294,6 @@ async def admin_create_tournament_handler(callback: CallbackQuery, state: FSMCon
     from handlers.tournament import create_tournament_callback
     await create_tournament_callback(callback, state)
 
-# Обработчик кнопки участников турниров в админской панели
-@admin_router.callback_query(F.data == "admin_view_tournament_participants")
-async def admin_view_tournament_participants_handler(callback: CallbackQuery):
-    """Обработчик кнопки просмотра участников турниров в админской панели"""
-    if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
-        return
-    
-    tournaments = await storage.load_tournaments()
-    
-    if not tournaments:
-        await safe_edit_message(callback, "📋 Нет турниров для просмотра")
-        return
-    
-    builder = InlineKeyboardBuilder()
-    for tournament_id, tournament_data in tournaments.items():
-        name = tournament_data.get('name', 'Без названия')
-        city = tournament_data.get('city', 'Не указан')
-        participants_count = len(tournament_data.get('participants', {}))
-        builder.button(text=f"🏆 {name} ({city}) - {participants_count} участников", 
-                      callback_data=f"admin_view_participants:{tournament_id}")
-    
-    builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
-    builder.adjust(1)
-    
-    await safe_edit_message(
-        callback,
-        "👥 Просмотр участников турниров\n\n"
-        "Выберите турнир для просмотра участников:",
-        builder.as_markup()
-    )
-    await callback.answer()
-
 # Обработчик кнопки турниров в админской панели
 @admin_router.callback_query(F.data == "admin_tournaments")
 async def tournaments_handler(callback: CallbackQuery):
@@ -460,13 +427,14 @@ async def edit_tournaments_handler(callback: CallbackQuery):
     
     builder = InlineKeyboardBuilder()
     for tournament_id, tournament_data in tournaments.items():
-        name = tournament_data.get('name', 'Без названия')
+        level = tournament_data.get('level', 'Без уровня')
         city = tournament_data.get('city', 'Не указан')
-        button_text = f"{name[:30]}... ({city})" if len(name) > 30 else f"{name} ({city})"
+
+        button_text = f" {level} ({city})"
         builder.button(text=button_text, callback_data=f"edit_tournament:{tournament_id}")
     
     builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
-    builder.adjust(1)
+    builder.adjust(2)
     
     await safe_edit_message(
         callback,
