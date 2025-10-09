@@ -131,7 +131,8 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     extra_cols = ["Победы", "Очки", "Места"]  # Убран столбец "Игры"
 
     width = padding * 2 + left_col_w + n * cell_w + len(extra_cols) * extra_cell_w
-    height = padding * 2 + top_row_h + n * cell_h + 250  # Увеличено для полного описания
+    # Уменьшаем дополнительную высоту под описание турнира
+    height = padding * 2 + top_row_h + n * cell_h + 160
 
     image = Image.new('RGB', (max(width, 800), height), (255, 255, 255))
     draw = ImageDraw.Draw(image)
@@ -464,7 +465,7 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
         text_y = y0 + (cell_h - 24) // 2  # Вертикальное центрирование для увеличенного шрифта
         draw.text((col_x + extra_cell_w // 2 - 12, text_y), str(place_of.get(pid, i + 1)), fill=(31, 41, 55), font=cell_font)
 
-    # Примечание по тай-брейку (используем меньший шрифт для описания)
+    # Примечание по тай-брейку (уменьшенный шрифт для описания)
     note = """* В столбце "Очки" показана общая разница в сетах между игроками с равным количеством побед.
 Она используется для определения победителя между ними.
 
@@ -478,11 +479,32 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
 
 В случае, когда число побед у игрока не совпадает с другими, дополнительный учёт очков в сетах не требуется."""
     try:
-        # Используем header_font (размер 14) вместо cell_font (24) для описания
+        # Подгрузим уменьшенный шрифт для описания
+        def _load_small_font(sz: int = 12) -> ImageFont.FreeTypeFont:
+            candidates = [
+                ("Circe-Regular.ttf", sz),
+                ("Circe.ttf", sz),
+                (os.path.join(BASE_DIR, "fonts", "Circe-Regular.ttf"), sz),
+                (os.path.join(BASE_DIR, "fonts", "Circe.ttf"), sz),
+            ]
+            for path, size in candidates:
+                try:
+                    return ImageFont.truetype(path, size)
+                except Exception:
+                    continue
+            try:
+                return ImageFont.truetype("arial.ttf", sz)
+            except Exception:
+                try:
+                    return ImageFont.truetype("DejaVuSans.ttf", sz)
+                except Exception:
+                    return ImageFont.load_default()
+
+        small_note_font = _load_small_font(12)
         y_pos = table_y + table_h + 10
         for line in note.split('\n'):
-            draw.text((padding, y_pos), line, fill=(107, 114, 128), font=header_font)
-            y_pos += 18
+            draw.text((padding, y_pos), line, fill=(107, 114, 128), font=small_note_font)
+            y_pos += 14
     except Exception:
         pass
 
