@@ -7,73 +7,39 @@ from .models import Player, Match, TournamentBracket
 
 
 class BracketImageGenerator:
-    """Класс для генерации изображений турнирных сеток в стиле tennis-play.com
-    
-    Настраиваемые параметры в __init__:
-    
-    РАЗМЕРЫ ЯЧЕЕК И ОТСТУПОВ:
-    - cell_width: ширина ячейки с игроками
-    - cell_height: высота ячейки с игроками
-    - round_spacing: расстояние между раундами (горизонтально)
-    - match_spacing: вертикальный отступ между матчами
-    - mini_spacing: отступ между раундами в мини-турнирах
-    
-    РАЗМЕРЫ ШРИФТОВ:
-    - font_size: основной шрифт (подписи на линиях)
-    - name_font_size: шрифт имен игроков в ячейках
-    - title_font_size: шрифт заголовка турнира
-    - subtitle_font_size: шрифт подзаголовков
-    - score_font_size: шрифт счета матчей
-    
-    ПАРАМЕТРЫ ЛИНИЙ:
-    - line_width: толщина соединительных линий
-    - cell_border_width: толщина границ ячеек
-    - final_line_length: длина финальной линии победителя
-    - final_line_width: толщина финальной линии победителя
-    - connector_offset: расстояние от ячейки до точки схождения линий
-    - mini_tournament_gap_large: отступ между турниром за 5-6 и за 3 место
-    - mini_tournament_gap_normal: обычный отступ между мини-турнирами
-    - mini_tournament_top_offset: отступ сверху перед турниром за 3 место
-    
-    ОТСТУПЫ ДЛЯ ПОДПИСЕЙ:
-    - label_offset_above: отступ имени победителя над линией
-    - label_offset_below: отступ счета под именем победителя
-    - final_area_padding: дополнительное место для финальной линии
-    - vertical_labels_padding: пространство сверху/снизу для подписей
-    """
     
     def __init__(self):
         # Основные размеры
-        self.cell_width = 400
-        self.cell_height = 120
+        self.cell_width = 700
+        self.cell_height = 220
         self.round_spacing = 250
         self.match_spacing = 30
         self.vertical_margin = 30
         
-        # Размеры шрифтов (увеличены)
-        self.font_size = 20
-        self.name_font_size = 22
-        self.title_font_size = 24
-        self.subtitle_font_size = 20
-        self.score_font_size = 20
+        # Размеры шрифтов (увеличены в 2 раза)
+        self.font_size = 44
+        self.name_font_size = 44
+        self.title_font_size = 48
+        self.subtitle_font_size = 44
+        self.score_font_size = 44
         
         # Параметры линий (для удобной настройки)
-        self.line_width = 1  # Толщина соединительных линий
-        self.cell_border_width = 2  # Толщина границ ячеек
-        self.final_line_length = self.cell_width  # Длина финальной линии победителя равна ширине ячейки
-        self.final_line_width = 1  # Толщина финальной линии победителя (жирная)
+        self.line_width = 3  # Толщина соединительных линий
+        self.cell_border_width = 5  # Толщина границ ячеек
+        self.final_line_length = self.cell_width - 100  # Длина финальной линии победителя равна ширине ячейки
+        self.final_line_width = 3  # Толщина финальной линии победителя (жирная)
         self.connector_offset = 30  # Расстояние от ячейки до точки схождения линий
         self.mini_spacing = 250  # Отступ между раундами в мини-турнирах
         self.mini_tournament_gap_large = 140  # Отступ между турниром за 5-6 место и турниром за 3 место
-        self.mini_tournament_gap_normal = 80  # Обычный отступ между мини-турнирами
-        self.mini_tournament_top_offset = 80  # Отступ сверху перед мини-турниром за 3 место
+        self.mini_tournament_gap_normal = 40  # Обычный отступ между мини-турнирами
+        self.mini_tournament_top_offset = 40  # Отступ сверху перед мини-турниром за 3 место
         
         # Отступы для подписей на линиях
         self.label_offset_above = 8  # Отступ имени победителя над линией
         self.label_offset_below = 12  # Отступ счета под именем победителя
         
         # Дополнительные пространства для расчета размеров
-        self.final_area_padding = 250  # Дополнительное место для финальной линии и подписей
+        self.final_area_padding = 0  # Без дополнительного места справа после финала
         self.vertical_labels_padding = 80  # Дополнительное пространство сверху и снизу для подписей
         
         # Цветовая схема как на tennis-play.com
@@ -87,48 +53,149 @@ class BracketImageGenerator:
         self.connector_color = (156, 163, 175)  # Цвет соединительных линий
         self.round_title_color = (107, 114, 128)  # Серый для заголовков раундов
         self.placement_color = (139, 69, 19)  # Коричневый для игр за мест
-        self.mini_tournament_color = (101, 163, 13)  # Зеленый для мини-турниров (не использовать для оформления)
         
         # Увеличенный отступ между подписью мини-сетки и первой ячейкой
         self.mini_title_spacing = 24
 
-        # Загрузка шрифтов с Unicode-фолбэком
-        try:
-            self.font = ImageFont.truetype("arial.ttf", self.font_size)  # Шрифт для подписей на линиях (увеличен еще больше)
-            self.bold_font = ImageFont.truetype("arialbd.ttf", self.font_size)
-            self.name_font = ImageFont.truetype("arial.ttf", self.name_font_size)
-            self.name_bold_font = ImageFont.truetype("arialbd.ttf", self.name_font_size)
-            self.title_font = ImageFont.truetype("arialbd.ttf", self.title_font_size)
-            self.subtitle_font = ImageFont.truetype("arialbd.ttf", self.subtitle_font_size)
-            self.score_font = ImageFont.truetype("arial.ttf", self.score_font_size)  # Шрифт для счета (увеличен еще больше)
-        except Exception:
-            # Пытаемся DejaVuSans (обычно доступен в Pillow)
+        # Загрузка шрифтов: сначала Circe, затем Arial/DejaVu, затем дефолт
+        def _try_load_font(candidates, size):
+            for path in candidates:
+                try:
+                    return ImageFont.truetype(path, size)
+                except Exception:
+                    continue
+            return None
+
+        circe_regular_candidates = [
+            "Circe-Regular.ttf",
+            "Circe.ttf",
+            os.path.join(BASE_DIR, "fonts", "Circe-Regular.ttf"),
+            os.path.join(BASE_DIR, "fonts", "Circe.ttf"),
+        ]
+        circe_bold_candidates = [
+            "Circe-Bold.ttf",
+            os.path.join(BASE_DIR, "fonts", "Circe-Bold.ttf"),
+        ]
+
+        # Пытаемся Circe
+        self.font = _try_load_font(circe_regular_candidates, self.font_size)
+        self.bold_font = _try_load_font(circe_bold_candidates, self.font_size)
+        self.name_font = _try_load_font(circe_regular_candidates, self.name_font_size)
+        self.name_bold_font = _try_load_font(circe_bold_candidates, self.name_font_size)
+        self.title_font = _try_load_font(circe_bold_candidates, self.title_font_size)
+        self.subtitle_font = _try_load_font(circe_regular_candidates, self.subtitle_font_size)
+        self.score_font = _try_load_font(circe_regular_candidates, self.score_font_size)
+
+        # Фолбэк Arial
+        if not self.font:
+            try:
+                self.font = ImageFont.truetype("arial.ttf", self.font_size)
+            except Exception:
+                self.font = None
+        if not self.bold_font:
+            try:
+                self.bold_font = ImageFont.truetype("arialbd.ttf", self.font_size)
+            except Exception:
+                self.bold_font = None
+        if not self.name_font:
+            try:
+                self.name_font = ImageFont.truetype("arial.ttf", self.name_font_size)
+            except Exception:
+                self.name_font = None
+        if not self.name_bold_font:
+            try:
+                self.name_bold_font = ImageFont.truetype("arialbd.ttf", self.name_font_size)
+            except Exception:
+                self.name_bold_font = None
+        if not self.title_font:
+            try:
+                self.title_font = ImageFont.truetype("arialbd.ttf", self.title_font_size)
+            except Exception:
+                self.title_font = None
+        if not self.subtitle_font:
+            try:
+                self.subtitle_font = ImageFont.truetype("arial.ttf", self.subtitle_font_size)
+            except Exception:
+                self.subtitle_font = None
+        if not self.score_font:
+            try:
+                self.score_font = ImageFont.truetype("arial.ttf", self.score_font_size)
+            except Exception:
+                self.score_font = None
+
+        # Фолбэк DejaVuSans
+        if not self.font:
             try:
                 self.font = ImageFont.truetype("DejaVuSans.ttf", self.font_size)
+            except Exception:
+                self.font = None
+        if not self.bold_font:
+            try:
                 self.bold_font = ImageFont.truetype("DejaVuSans-Bold.ttf", self.font_size)
+            except Exception:
+                self.bold_font = None
+        if not self.name_font:
+            try:
                 self.name_font = ImageFont.truetype("DejaVuSans.ttf", self.name_font_size)
+            except Exception:
+                self.name_font = None
+        if not self.name_bold_font:
+            try:
                 self.name_bold_font = ImageFont.truetype("DejaVuSans-Bold.ttf", self.name_font_size)
+            except Exception:
+                self.name_bold_font = None
+        if not self.title_font:
+            try:
                 self.title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", self.title_font_size)
+            except Exception:
+                self.title_font = None
+        if not self.subtitle_font:
+            try:
                 self.subtitle_font = ImageFont.truetype("DejaVuSans.ttf", self.subtitle_font_size)
+            except Exception:
+                self.subtitle_font = None
+        if not self.score_font:
+            try:
                 self.score_font = ImageFont.truetype("DejaVuSans.ttf", self.score_font_size)
             except Exception:
-                # Последний фолбэк — дефолтный, но он может не поддерживать кириллицу
-                try:
-                    self.font = ImageFont.load_default()
-                    self.bold_font = ImageFont.load_default()
-                    self.name_font = ImageFont.load_default()
-                    self.name_bold_font = ImageFont.load_default()
-                    self.title_font = ImageFont.load_default()
-                    self.subtitle_font = ImageFont.load_default()
-                    self.score_font = ImageFont.load_default()
-                except Exception:
-                    self.font = None
-                    self.bold_font = None
-                    self.name_font = None
-                    self.name_bold_font = None
-                    self.title_font = None
-                    self.subtitle_font = None
-                    self.score_font = None
+                self.score_font = None
+
+        # Последний фолбэк — дефолтный
+        if not self.font:
+            try:
+                self.font = ImageFont.load_default()
+            except Exception:
+                self.font = None
+        if not self.bold_font:
+            try:
+                self.bold_font = ImageFont.load_default()
+            except Exception:
+                self.bold_font = None
+        if not self.name_font:
+            try:
+                self.name_font = ImageFont.load_default()
+            except Exception:
+                self.name_font = None
+        if not self.name_bold_font:
+            try:
+                self.name_bold_font = ImageFont.load_default()
+            except Exception:
+                self.name_bold_font = None
+        if not self.title_font:
+            try:
+                self.title_font = ImageFont.load_default()
+            except Exception:
+                self.title_font = None
+        if not self.subtitle_font:
+            try:
+                self.subtitle_font = ImageFont.load_default()
+            except Exception:
+                self.subtitle_font = None
+        if not self.score_font:
+            try:
+                self.score_font = ImageFont.load_default()
+            except Exception:
+                self.score_font = None
 
         # Нормализация отступов и длин линий относительно ширины ячейки
         # Чтобы горизонтальные соединительные линии были длиной ровно в ширину ячейки,
@@ -136,7 +203,7 @@ class BracketImageGenerator:
         try:
             self.round_spacing = self.cell_width + self.connector_offset
             self.mini_spacing = self.cell_width + self.connector_offset
-            self.final_line_length = self.cell_width
+            self.final_line_length = self.cell_width - 100
         except Exception:
             pass
 
@@ -164,32 +231,61 @@ class BracketImageGenerator:
             return "".join(ch for ch in str(text or "") if ord(ch) <= 0xFFFF)
 
     def create_player_avatar(self, player: Optional[Player], size: int = 24) -> Image.Image:
-        """Создает квадратный аватар игрока"""
+        """Создает квадратный аватар игрока. Осветляет фото; инициалы рисует ТОЛЬКО если фото отсутствует."""
+        img = None
+        had_photo = False
         # Пробуем загрузить пользовательское фото, если имеется
         try:
             if player is not None and getattr(player, 'photo_url', None):
                 raw_path = str(player.photo_url)
                 abs_path = raw_path if os.path.isabs(raw_path) else os.path.join(BASE_DIR, raw_path)
                 if os.path.exists(abs_path):
-                    img = Image.open(abs_path)
-                    img = img.convert('RGBA')
-                    w, h = img.size
+                    src = Image.open(abs_path)
+                    src = src.convert('RGBA')
+                    w, h = src.size
                     side = min(w, h)
                     left = (w - side) // 2
                     top = (h - side) // 2
-                    img = img.crop((left, top, left + side, top + side))
+                    src = src.crop((left, top, left + side, top + side))
                     try:
                         resample = Image.Resampling.LANCZOS  # Pillow>=9
                     except Exception:
                         resample = Image.LANCZOS
-                    img = img.resize((size, size), resample)
-                    return img
+                    img = src.resize((size, size), resample)
+                    had_photo = True
         except Exception:
-            # Игнорируем и используем заглушку
-            pass
+            img = None
 
-        # Заглушка: однотонный серый квадрат
-        return Image.new('RGBA', (size, size), (200, 200, 200, 255))
+        # Если фото нет — создаем светло-серый фон
+        if img is None:
+            img = Image.new('RGBA', (size, size), (229, 229, 229, 255))
+
+        # Делаем изображение чуть светлее только для реальных фото
+        if had_photo:
+            try:
+                overlay = Image.new('RGBA', (size, size), (255, 255, 255, 40))
+                img = Image.alpha_composite(img, overlay)
+            except Exception:
+                pass
+
+        # Рисуем инициалы по центру ТОЛЬКО если фото отсутствует
+        if not had_photo:
+            try:
+                initials = self._get_player_initials(player) if player else ""
+                if initials:
+                    draw = ImageDraw.Draw(img)
+                    # Выбираем доступный шрифт
+                    font = self.name_bold_font or self.bold_font or self.font
+                    bbox = draw.textbbox((0, 0), initials, font=font)
+                    text_w = max(0, bbox[2] - bbox[0])
+                    text_h = max(0, bbox[3] - bbox[1])
+                    x = (size - text_w) // 2
+                    y = (size - text_h) // 2
+                    draw.text((x, y), initials, fill=(255, 255, 255), font=font)
+            except Exception:
+                pass
+
+        return img
     
     def _is_free_slot(self, player: Optional[Player]) -> bool:
         """Определяет, является ли слот свободным местом (плейсхолдер).
@@ -224,7 +320,7 @@ class BracketImageGenerator:
         elif len(name_parts) == 1:
             return name_parts[0][0].upper()
         else:
-            return "??"
+            return ""
 
     def _get_short_name(self, player: Player) -> str:
         """Получает полное имя и фамилию"""
@@ -274,14 +370,13 @@ class BracketImageGenerator:
     def _draw_player_in_cell(self, draw: ImageDraw.Draw, player: Optional[Player], x: int, y: int, width: int, height: int, 
                            is_winner: bool, is_special: bool = False):
         """Рисует информацию об игроке в ячейке"""
-        # Аватар (серый квадрат если слот свободен или нет фото)
+        # Аватар: делаем крупнее и хорошо видимым (в пределах половины ячейки)
         is_free = self._is_free_slot(player)
-        avatar_size = 60
-        avatar = self.create_player_avatar(player, avatar_size)
+        # Размер аватара ограничиваем высотой строки игрока
+        avatar_size = max(60, min(height - 10, int(height * 0.8)))
+        avatar = self.create_player_avatar(player if not is_free else None, avatar_size)
         if avatar:
             draw._image.paste(avatar, (x + 10, y + (height - avatar_size) // 2), avatar)
-        
-        # Имя игрока
         name_x = x + 10 + avatar_size + 12
         name_y = y
         
@@ -505,13 +600,20 @@ class BracketImageGenerator:
     def generate_olympic_bracket_image(self, bracket: TournamentBracket, photo_paths: Optional[list[str]] = None) -> Image.Image:
         """Генерирует изображение сетки олимпийской системы"""
         try:
+            # Автонастройка размеров ячеек и линий под текущие шрифты и тексты
+            self._autosize_layout(bracket)
+            
+            # Внешние отступы изображения
+            margin = 20
+            title_gap = 10
             # Вычисляем размеры для основной сетки
             main_bracket_width, main_bracket_height = self.calculate_bracket_dimensions(bracket)
             
             # Вычисляем размеры для мини-турниров (которые будут снизу)
             mini_tournaments_height = 0
             mini_tournaments_width = 0
-            bottom_gap = 40  # Вертикальный зазор между основной сеткой и мини-сетками
+            bottom_gap = 40  # Базовый зазор между основной сеткой и мини-сетками
+            gap_between_main_and_minis = max(10, bottom_gap // 2)
             
             if bracket.additional_tournaments:
                 for i, mini_tournament in enumerate(bracket.additional_tournaments):
@@ -519,7 +621,7 @@ class BracketImageGenerator:
                     if '3' in mini_tournament.name and 'место' in mini_tournament.name:
                         mini_tournaments_height += self.mini_tournament_top_offset
                     
-                    mini_width, mini_height = self.calculate_bracket_dimensions(mini_tournament)
+                    mini_width, mini_height = self.calculate_bracket_dimensions(mini_tournament, is_mini=True)
                     mini_tournaments_height += mini_height
                     # Добавляем отступ только между турнирами (не после последнего)
                     if i < len(bracket.additional_tournaments) - 1:
@@ -528,19 +630,31 @@ class BracketImageGenerator:
                         mini_tournaments_height += spacing
                     mini_tournaments_width = max(mini_tournaments_width, mini_width)
             
-            # Общие размеры изображения: минимально необходимая ширина без лишнего правого отступа
-            # Ширина: левый отступ (50) + max(основная сетка, мини-турниры) + правый отступ (20)
-            total_width = 50 + max(main_bracket_width, mini_tournaments_width) + 20
+            # Общие размеры изображения: ровно по контенту + 20px слева/справа
+            content_width = max(main_bracket_width, mini_tournaments_width)
+            total_width = margin * 2 + content_width
 
-            # Нижний отступ
-            base_bottom_padding = 20
+            # Нижний отступ отсутствует
+            base_bottom_padding = 0
 
-            # Высота: заголовок (100) + основная сетка + (зазор + мини-сетки, если есть) + нижний отступ
+            # Высота: заголовок + основная сетка + (зазор + мини-сетки, если есть) + нижний отступ
             if mini_tournaments_height > 0:
-                content_height = main_bracket_height + bottom_gap + mini_tournaments_height
+                content_height = main_bracket_height + gap_between_main_and_minis + mini_tournaments_height
             else:
                 content_height = main_bracket_height
-            total_height = 100 + content_height + base_bottom_padding
+            # Высота заголовка (для расчета вертикального отступа контента)
+            # Временный draw для измерения, фактический рисуем ниже
+            title = self._sanitize_title(bracket.name)
+            tmp_img = Image.new('RGB', (1, 1), self.bg_color)
+            tmp_draw = ImageDraw.Draw(tmp_img)
+            title_h = 0
+            if self.font:
+                try:
+                    tb = tmp_draw.textbbox((0, 0), title, font=self.font)
+                    title_h = max(0, tb[3] - tb[1])
+                except Exception:
+                    title_h = 0
+            total_height = margin + title_h + title_gap + content_height + margin
             
             # Создаем изображение
             image = Image.new('RGB', (total_width, total_height), self.bg_color)
@@ -552,20 +666,20 @@ class BracketImageGenerator:
                 try:
                     title_bbox = draw.textbbox((0, 0), title, font=self.font)
                     title_width = title_bbox[2] - title_bbox[0]
-                    draw.text(((total_width - title_width) // 2, 20), title, 
+                    draw.text(((total_width - title_width) // 2, margin), title, 
                              fill=(0, 0, 0), font=self.font)
                 except Exception:
                     pass
             
             # Рисуем основную сетку
-            main_bracket_y = 100
-            round_positions = self._draw_bracket_grid(draw, bracket, 50, main_bracket_y, main_bracket_width, main_bracket_height)
+            main_bracket_y = margin + title_h + title_gap
+            round_positions = self._draw_bracket_grid(draw, bracket, margin, main_bracket_y, main_bracket_width, main_bracket_height)
             
             # Рисуем соединительные линии для основной сетки
             self.draw_connectors(draw, round_positions, bracket.rounds)
             
             # Рисуем мини-турниры снизу от основной сетки с переупорядочиванием: 3-е место, 5-е, 7-е
-            current_y = main_bracket_y + main_bracket_height + bottom_gap
+            current_y = main_bracket_y + main_bracket_height + gap_between_main_and_minis
             if bracket.additional_tournaments:
                 # Сортировка: сначала содержащие '3 место', потом '5', затем '7'
                 def _order_key(t):
@@ -579,13 +693,13 @@ class BracketImageGenerator:
                     return 3
                 sorted_minis = sorted(bracket.additional_tournaments, key=_order_key)
                 for i, mini_tournament in enumerate(sorted_minis):
-                    tournament_x = 50
+                    tournament_x = margin
                     tournament_y = current_y
                     mini_round_positions = self._draw_mini_tournament_grid(draw, mini_tournament, tournament_x, tournament_y)
                     self.draw_connectors(draw, mini_round_positions, mini_tournament.rounds, 
                                         is_mini_tournament=True, tournament_name=mini_tournament.name)
-                    mini_w, mini_h = self.calculate_bracket_dimensions(mini_tournament)
-                    current_y += mini_h + self.mini_tournament_gap_normal
+                    mini_w, mini_h = self.calculate_bracket_dimensions(mini_tournament, is_mini=True)
+                    current_y += mini_h + 10
             
             # Блок фотографий отключен по требованиям
             
@@ -594,6 +708,98 @@ class BracketImageGenerator:
         except Exception as e:
             print(f"Ошибка генерации олимпийской сетки: {e}")
             return self._create_error_image(str(e))
+
+    def _text_size(self, text: str, font: Optional[ImageFont.ImageFont]) -> tuple[int, int]:
+        """Безопасно измеряет размер текста для заданного шрифта."""
+        try:
+            if not font:
+                return (0, 0)
+            # Используем временное изображение для расчёта bbox
+            dummy = Image.new('RGB', (1, 1))
+            d = ImageDraw.Draw(dummy)
+            bbox = d.textbbox((0, 0), str(text or ''), font=font)
+            return (max(0, bbox[2] - bbox[0]), max(0, bbox[3] - bbox[1]))
+        except Exception:
+            return (0, 0)
+
+    def _collect_all_player_names(self, bracket: TournamentBracket) -> list[str]:
+        names: list[str] = []
+        try:
+            for rnd in (bracket.rounds or []):
+                for m in (rnd or []):
+                    if getattr(m, 'player1', None) and getattr(m.player1, 'name', None):
+                        names.append(m.player1.name)
+                    if getattr(m, 'player2', None) and getattr(m.player2, 'name', None):
+                        names.append(m.player2.name)
+            for mini in (bracket.additional_tournaments or []):
+                for rnd in (mini.rounds or []):
+                    for m in (rnd or []):
+                        if getattr(m, 'player1', None) and getattr(m.player1, 'name', None):
+                            names.append(m.player1.name)
+                        if getattr(m, 'player2', None) and getattr(m.player2, 'name', None):
+                            names.append(m.player2.name)
+        except Exception:
+            pass
+        # Фолбэк, чтобы не получить пустой набор
+        if not names:
+            names = ["Игрок"]
+        return names
+
+    def _autosize_layout(self, bracket: TournamentBracket) -> None:
+        """Подгоняет размеры ячеек и расстояния между раундами под размеры шрифтов и текстов."""
+        try:
+            names = self._collect_all_player_names(bracket)
+            # Максимальная ширина имени в ячейке
+            max_name_w = 0
+            name_h = 0
+            for n in names:
+                w, h = self._text_size(n, self.name_font)
+                if w > max_name_w:
+                    max_name_w = w
+                if h > name_h:
+                    name_h = h
+
+            # Максимальная ширина подписи победителя на линиях (используется self.font)
+            max_label_w = 0
+            label_h = 0
+            for n in names:
+                w, h = self._text_size(n, self.font)
+                if w > max_label_w:
+                    max_label_w = w
+                if h > label_h:
+                    label_h = h
+
+            # Параметры отступов
+            horizontal_padding = 20  # внутри ячейки
+            vertical_padding = max(10, self.font_size // 4)
+
+            # Новая ширина ячейки: левый отступ + имя + правый отступ
+            new_cell_width = horizontal_padding + max_name_w + horizontal_padding
+            # Минимальное ограничение, чтобы не было слишком узко
+            self.cell_width = max(self.cell_width, new_cell_width)
+
+            # Новая высота ячейки: два ряда текста (два игрока) c вертикальными отступами
+            # и минимальная высота под аватар (делаем аватар крупнее и читаемым)
+            row_height = max(name_h + vertical_padding * 2, int(self.name_font_size * 1.2))
+            new_cell_height = max(row_height * 2, int(self.name_font_size * 3))
+            self.cell_height = max(self.cell_height, new_cell_height)
+
+            # Сегмент горизонтальной линии коннектора должен умещать полную подпись победителя
+            segment_len_required = max(self.cell_width, max_label_w + 16)
+            self.final_line_length = segment_len_required
+            self.round_spacing = segment_len_required + self.connector_offset
+            self.mini_spacing = segment_len_required + self.connector_offset
+
+            # Вертикальные отступы между матчами уменьшаем, но не меньше 6
+            self.match_spacing = max(6, min(self.match_spacing, vertical_padding * 2))
+
+            # Подписи над/под линиями – увеличим вертикальные поля для читаемости
+            self.label_offset_above = max(self.label_offset_above, 6)
+            self.label_offset_below = max(self.label_offset_below, 8)
+            self.vertical_labels_padding = max(self.vertical_labels_padding, label_h * 3)
+        except Exception:
+            # В случае ошибки не рушим процесс
+            pass
     
     def _draw_bracket_grid(self, draw: ImageDraw.Draw, bracket: TournamentBracket, start_x: int, start_y: int, width: int, height: int) -> List[List[Tuple[int, int]]]:
         """Рисует основную сетку турнира и возвращает позиции матчей"""
@@ -623,7 +829,7 @@ class BracketImageGenerator:
                         title_x = round_x + (self.cell_width - title_width) // 2
                     else:
                         title_x = round_x + (self.round_spacing - title_width) // 2
-                    draw.text((title_x, start_y - 40), 
+                    draw.text((title_x, start_y - 5), 
                         round_title, fill=self.round_title_color, font=self.font)
                 except Exception:
                     pass
@@ -784,22 +990,21 @@ class BracketImageGenerator:
         except Exception as e:
             print(f"Ошибка отрисовки области для фото: {e}")
     
-    def calculate_bracket_dimensions(self, bracket: TournamentBracket) -> Tuple[int, int]:
+    def calculate_bracket_dimensions(self, bracket: TournamentBracket, is_mini: bool = False) -> Tuple[int, int]:
         """Вычисляет размеры для сетки"""
         try:
             if not bracket.rounds:
                 return (400, 200)
             
             # Ширина: первый раунд с ячейкой, остальные только spacing
-            # Первый раунд: cell_width + round_spacing
-            # Остальные раунды: round_spacing каждый
+            # Корректная формула без лишнего правого отступа:
+            # width = cell_width + (num_rounds - 1) * spacing + final_line_length
             num_rounds = len(bracket.rounds)
             if num_rounds > 0:
-                width = self.cell_width + self.round_spacing  # Первый раунд
-                if num_rounds > 1:
-                    width += (num_rounds - 1) * self.round_spacing  # Остальные раунды
-                # Учитываем финальную линию и отступы для подписей
-                width += max(self.final_line_length, self.final_area_padding)
+                spacing = self.mini_spacing if is_mini else self.round_spacing
+                width = self.cell_width + max(0, num_rounds - 1) * spacing
+                # Добавляем только длину финальной линии
+                width += self.final_line_length
             else:
                 width = 400
             

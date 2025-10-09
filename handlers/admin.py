@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 # Пагинация для списка игр
 GAMES_PER_PAGE = 10
 
-async def safe_edit_message(callback: CallbackQuery, text: str, reply_markup=None):
+async def safe_edit_message(callback: CallbackQuery, text: str, reply_markup=None, parse_mode: str = "HTML"):
     """
     Безопасное редактирование сообщения с обработкой ошибок
     """
     try:
-        await callback.message.edit_text(text, reply_markup=reply_markup)
+        await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
         return True
     except Exception as e:
         logger.warning(f"Не удалось отредактировать сообщение: {e}")
@@ -32,18 +32,18 @@ async def safe_edit_message(callback: CallbackQuery, text: str, reply_markup=Non
         except:
             pass
         try:
-            await callback.message.answer(text, reply_markup=reply_markup)
+            await callback.message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
             return True
         except Exception as e2:
             logger.error(f"Не удалось отправить новое сообщение: {e2}")
             return False
 
-async def safe_send_message(message: Message, text: str, reply_markup=None):
+async def safe_send_message(message: Message, text: str, reply_markup=None, parse_mode: str = "HTML"):
     """
     Безопасная отправка сообщения
     """
     try:
-        await message.answer(text, reply_markup=reply_markup)
+        await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
         return True
     except Exception as e:
         logger.error(f"Не удалось отправить сообщение: {e}")
@@ -1287,40 +1287,42 @@ async def admin_view_game_handler(callback: CallbackQuery):
     
     text = f"<b>🎾 Информация об игре</b>\n\n"
     text += f"🆔 ID: <code>{game_id}</code>\n"
-    text += f"📅 Дата: {date_str}\n"
+    text += f"📅 Дата: <b>{date_str}</b>\n"
     
     if game_type == 'single':
-        text += f"🎮 Тип: Одиночная игра\n\n"
+        text += f"🎮 Тип: <b>Одиночная игра</b>\n\n"
         if team1 and team2:
-            text += f"👤 Игрок 1: {get_player_info(team1[0])}\n"
-            text += f"👤 Игрок 2: {get_player_info(team2[0])}\n\n"
+            text += f"👤 <b>Игрок 1:</b> {get_player_info(team1[0])}\n"
+            text += f"👤 <b>Игрок 2:</b> {get_player_info(team2[0])}\n\n"
     elif game_type == 'double':
-        text += f"🎮 Тип: Парная игра\n\n"
-        text += f"👥 Команда 1:\n"
+        text += f"🎮 Тип: <b>Парная игра</b>\n\n"
+        text += f"👥 <b>Команда 1:</b>\n"
         for pid in team1:
             text += f"  • {get_player_info(pid)}\n"
-        text += f"\n👥 Команда 2:\n"
+        text += f"\n👥 <b>Команда 2:</b>\n"
         for pid in team2:
             text += f"  • {get_player_info(pid)}\n\n"
     else:
-        text += f"🎮 Тип: Турнирная игра\n"
+        text += f"🎮 Тип: <b>Турнирная игра</b>\n"
         if tournament_id:
             text += f"🏆 Турнир ID: <code>{tournament_id}</code>\n\n"
         if team1 and team2:
-            text += f"👤 Игрок 1: {get_player_info(team1[0])}\n"
-            text += f"👤 Игрок 2: {get_player_info(team2[0])}\n\n"
+            text += f"👤 <b>Игрок 1:</b> {get_player_info(team1[0])}\n"
+            text += f"👤 <b>Игрок 2:</b> {get_player_info(team2[0])}\n\n"
     
     text += f"📊 Счет: <b>{score}</b>\n"
     
     if winner_id:
         winner = users.get(winner_id, {})
         winner_name = f"{winner.get('first_name', '')} {winner.get('last_name', '')}".strip() or winner_id
-        text += f"🏆 Победитель: {winner_name}\n"
+        text += f"🏆 Победитель: <b>{winner_name}</b>\n"
+    else:
+        text += f"🏆 Победитель: <i>Не определен</i>\n"
     
     if media:
-        text += f"📷 Медиа: Есть\n"
+        text += f"📷 Медиа: <b>Есть</b>\n"
     else:
-        text += f"📷 Медиа: Нет\n"
+        text += f"📷 Медиа: <i>Нет</i>\n"
     
     # Кнопки редактирования
     builder = InlineKeyboardBuilder()
@@ -1336,7 +1338,11 @@ async def admin_view_game_handler(callback: CallbackQuery):
     
     builder.adjust(1)
     
-    await safe_edit_message(callback, text, reply_markup=builder.as_markup())
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    except Exception as e:
+        logger.warning(f"Не удалось отредактировать сообщение: {e}")
+        await callback.message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     await callback.answer()
 
 
@@ -1397,14 +1403,18 @@ async def admin_edit_score_handler(callback: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.button(text="🔙 Назад", callback_data=f"admin_view_game:{game_id}")
     
-    await safe_edit_message(callback, text, reply_markup=builder.as_markup())
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    except Exception as e:
+        logger.warning(f"Не удалось отредактировать сообщение: {e}")
+        await callback.message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     await callback.answer()
 
 @admin_router.message(AdminEditGameStates.EDIT_SCORE, F.text)
 async def admin_edit_score_input(message: Message, state: FSMContext):
     """Обработчик ввода нового счета"""
     if not await is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора")
+        await message.answer("❌ У вас нет прав администратора", parse_mode="HTML")
         await state.clear()
         return
     
@@ -1412,8 +1422,9 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
     data = await state.get_data()
     game_id = data.get('editing_game_id')
     
-    # Загружаем игры
+    # Загружаем игры и пользователей
     games = await storage.load_games()
+    users = await storage.load_users()
     
     # Находим игру
     game = None
@@ -1425,7 +1436,7 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
             break
     
     if not game:
-        await message.answer("❌ Игра не найдена")
+        await message.answer("❌ Игра не найдена", parse_mode="HTML")
         await state.clear()
         return
     
@@ -1444,19 +1455,41 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
         games[game_index]['sets'] = sets
         
         # Пересчитываем победителя по новому счету
-        team1_wins = sum(1 for s in sets if int(s.split(':')[0]) > int(s.split(':')[1]))
-        team2_wins = sum(1 for s in sets if int(s.split(':')[0]) < int(s.split(':')[1]))
+        team1_wins = 0
+        team2_wins = 0
+        
+        for s in sets:
+            parts = s.split(':')
+            score1 = int(parts[0])
+            score2 = int(parts[1])
+            
+            if score1 > score2:
+                team1_wins += 1
+            elif score2 > score1:
+                team2_wins += 1
         
         team1_players = game.get('players', {}).get('team1', [])
         team2_players = game.get('players', {}).get('team2', [])
         
+        # Определяем победителя
+        winner_id = None
+        winner_name = "Не определен"
+        
         if team1_wins > team2_wins and team1_players:
-            games[game_index]['winner_id'] = team1_players[0]
+            winner_id = team1_players[0]
+            games[game_index]['winner_id'] = winner_id
+            if winner_id in users:
+                winner_name = f"{users[winner_id].get('first_name', '')} {users[winner_id].get('last_name', '')}".strip()
         elif team2_wins > team1_wins and team2_players:
-            games[game_index]['winner_id'] = team2_players[0]
+            winner_id = team2_players[0]
+            games[game_index]['winner_id'] = winner_id
+            if winner_id in users:
+                winner_name = f"{users[winner_id].get('first_name', '')} {users[winner_id].get('last_name', '')}".strip()
         
         # Сохраняем изменения
         await storage.save_games(games)
+        
+        logger.info(f"Счет игры {game_id} изменен на {new_score}, победитель: {winner_id} ({winner_name})")
         
         builder = InlineKeyboardBuilder()
         builder.button(text="📋 Просмотр игры", callback_data=f"admin_view_game:{game_id}")
@@ -1464,20 +1497,30 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
         builder.adjust(1)
         
         await message.answer(
-            f"✅ Счет игры успешно изменен!\n\n"
+            f"✅ <b>Счет игры успешно изменен!</b>\n\n"
             f"🆔 ID: <code>{game_id}</code>\n"
-            f"📊 Новый счет: <b>{new_score}</b>",
-            reply_markup=builder.as_markup()
+            f"📊 Новый счет: <b>{new_score}</b>\n"
+            f"🏆 Победитель: <b>{winner_name}</b>\n"
+            f"🎯 Счет по сетам: {team1_wins}:{team2_wins}",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
         )
         
-    except ValueError:
+    except ValueError as e:
         builder = InlineKeyboardBuilder()
         builder.button(text="🔙 Назад", callback_data=f"admin_view_game:{game_id}")
         
         await message.answer(
-            "❌ Неверный формат счета!\n\n"
+            "❌ <b>Неверный формат счета!</b>\n\n"
             "Используйте формат: <code>6:4, 6:2</code>",
-            reply_markup=builder.as_markup()
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при изменении счета: {e}")
+        await message.answer(
+            f"❌ <b>Ошибка при изменении счета:</b> {str(e)}",
+            parse_mode="HTML"
         )
     
     await state.clear()
@@ -1508,7 +1551,7 @@ async def admin_edit_media_handler(callback: CallbackQuery, state: FSMContext):
     text = (
         f"📷 <b>Изменение медиафайла игры</b>\n\n"
         f"🆔 ID: <code>{game_id}</code>\n"
-        f"📁 Текущий медиафайл: {current_media}\n\n"
+        f"📁 Текущий медиафайл: <code>{current_media}</code>\n\n"
         f"Отправьте новое фото или видео для игры.\n"
         f"Или отправьте текст <code>удалить</code> чтобы удалить медиафайл."
     )
@@ -1516,7 +1559,11 @@ async def admin_edit_media_handler(callback: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.button(text="🔙 Назад", callback_data=f"admin_view_game:{game_id}")
     
-    await safe_edit_message(callback, text, reply_markup=builder.as_markup())
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    except Exception as e:
+        logger.warning(f"Не удалось отредактировать сообщение: {e}")
+        await callback.message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     await callback.answer()
 
 
@@ -1524,7 +1571,7 @@ async def admin_edit_media_handler(callback: CallbackQuery, state: FSMContext):
 async def admin_edit_media_input(message: Message, state: FSMContext):
     """Обработчик изменения медиафайла"""
     if not await is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора")
+        await message.answer("❌ У вас нет прав администратора", parse_mode="HTML")
         await state.clear()
         return
     
@@ -1544,7 +1591,7 @@ async def admin_edit_media_input(message: Message, state: FSMContext):
             break
     
     if not game:
-        await message.answer("❌ Игра не найдена")
+        await message.answer("❌ Игра не найдена", parse_mode="HTML")
         await state.clear()
         return
     
@@ -1566,13 +1613,15 @@ async def admin_edit_media_input(message: Message, state: FSMContext):
                 file_path = os.path.join(GAMES_PHOTOS_DIR, old_media)
                 if os.path.exists(file_path):
                     os.remove(file_path)
+                    logger.info(f"Удален медиафайл: {old_media}")
             except Exception as e:
                 logger.warning(f"Не удалось удалить медиафайл: {e}")
         
         await message.answer(
-            f"✅ Медиафайл игры удален!\n\n"
+            f"✅ <b>Медиафайл игры удален!</b>\n\n"
             f"🆔 ID: <code>{game_id}</code>",
-            reply_markup=builder.as_markup()
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
         )
     elif message.photo:
         # Сохраняем новое фото
@@ -1583,17 +1632,20 @@ async def admin_edit_media_input(message: Message, state: FSMContext):
             filename = await save_media_file(message.bot, photo.file_id, 'photo')
             games[game_index]['media_filename'] = filename
             await storage.save_games(games)
+            logger.info(f"Сохранено новое фото для игры {game_id}: {filename}")
             
             await message.answer_photo(
                 photo=photo.file_id,
-                caption=f"✅ Новое фото для игры сохранено!\n\n🆔 ID: <code>{game_id}</code>",
-                reply_markup=builder.as_markup()
+                caption=f"✅ <b>Новое фото для игры сохранено!</b>\n\n🆔 ID: <code>{game_id}</code>",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
             )
         except Exception as e:
             logger.error(f"Ошибка сохранения фото: {e}")
             await message.answer(
-                f"❌ Ошибка при сохранении фото: {e}",
-                reply_markup=builder.as_markup()
+                f"❌ <b>Ошибка при сохранении фото:</b> {str(e)}",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
             )
     elif message.video:
         # Сохраняем новое видео
@@ -1604,22 +1656,26 @@ async def admin_edit_media_input(message: Message, state: FSMContext):
             filename = await save_media_file(message.bot, video.file_id, 'video')
             games[game_index]['media_filename'] = filename
             await storage.save_games(games)
+            logger.info(f"Сохранено новое видео для игры {game_id}: {filename}")
             
             await message.answer_video(
                 video=video.file_id,
-                caption=f"✅ Новое видео для игры сохранено!\n\n🆔 ID: <code>{game_id}</code>",
-                reply_markup=builder.as_markup()
+                caption=f"✅ <b>Новое видео для игры сохранено!</b>\n\n🆔 ID: <code>{game_id}</code>",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
             )
         except Exception as e:
             logger.error(f"Ошибка сохранения видео: {e}")
             await message.answer(
-                f"❌ Ошибка при сохранении видео: {e}",
-                reply_markup=builder.as_markup()
+                f"❌ <b>Ошибка при сохранении видео:</b> {str(e)}",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
             )
     else:
         await message.answer(
             "❌ Отправьте фото, видео или напишите <code>удалить</code>",
-            reply_markup=builder.as_markup()
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
         )
     
     await state.clear()
@@ -1685,7 +1741,11 @@ async def admin_edit_winner_handler(callback: CallbackQuery):
     builder.button(text="🔙 Назад", callback_data=f"admin_view_game:{game_id}")
     builder.adjust(1)
     
-    await safe_edit_message(callback, text, reply_markup=builder.as_markup())
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    except Exception as e:
+        logger.warning(f"Не удалось отредактировать сообщение: {e}")
+        await callback.message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     await callback.answer()
 
 
@@ -1700,8 +1760,9 @@ async def admin_set_winner_handler(callback: CallbackQuery):
     game_id = parts[1]
     winner_team = parts[2]  # 'team1' или 'team2'
     
-    # Загружаем игры
+    # Загружаем игры и пользователей
     games = await storage.load_games()
+    users = await storage.load_users()
     
     # Находим игру
     game = None
@@ -1726,18 +1787,35 @@ async def admin_set_winner_handler(callback: CallbackQuery):
         games[game_index]['winner_id'] = winner_id
         await storage.save_games(games)
         
+        # Получаем имя победителя
+        winner_name = "Неизвестно"
+        if winner_id in users:
+            winner_name = f"{users[winner_id].get('first_name', '')} {users[winner_id].get('last_name', '')}".strip()
+        
+        logger.info(f"Победитель игры {game_id} изменен на {winner_id} ({winner_name})")
+        
         builder = InlineKeyboardBuilder()
         builder.button(text="📋 Просмотр игры", callback_data=f"admin_view_game:{game_id}")
         builder.button(text="🔙 К списку игр", callback_data="admin_back_to_games")
         builder.adjust(1)
         
-        await safe_edit_message(
-            callback,
-            f"✅ Победитель игры успешно изменен!\n\n"
-            f"🆔 ID: <code>{game_id}</code>\n"
-            f"🏆 Новый победитель: {winner_team}",
-            reply_markup=builder.as_markup()
-        )
+        try:
+            await callback.message.edit_text(
+                f"✅ <b>Победитель игры успешно изменен!</b>\n\n"
+                f"🆔 ID: <code>{game_id}</code>\n"
+                f"🏆 Новый победитель: <b>{winner_name}</b> (Команда {winner_team[-1]})",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось отредактировать сообщение: {e}")
+            await callback.message.answer(
+                f"✅ <b>Победитель игры успешно изменен!</b>\n\n"
+                f"🆔 ID: <code>{game_id}</code>\n"
+                f"🏆 Новый победитель: <b>{winner_name}</b> (Команда {winner_team[-1]})",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
     else:
         await callback.answer("❌ Не удалось определить победителя")
     
@@ -1767,7 +1845,11 @@ async def admin_delete_game_handler(callback: CallbackQuery):
     builder.button(text="❌ Отмена", callback_data=f"admin_view_game:{game_id}")
     builder.adjust(1)
     
-    await safe_edit_message(callback, text, reply_markup=builder.as_markup())
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    except Exception as e:
+        logger.warning(f"Не удалось отредактировать сообщение: {e}")
+        await callback.message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     await callback.answer()
 
 
@@ -1801,21 +1883,32 @@ async def admin_confirm_delete_game_handler(callback: CallbackQuery):
                 file_path = os.path.join(GAMES_PHOTOS_DIR, media_filename)
                 if os.path.exists(file_path):
                     os.remove(file_path)
+                    logger.info(f"Удален медиафайл: {media_filename}")
             except Exception as e:
                 logger.warning(f"Не удалось удалить медиафайл: {e}")
         
         # Сохраняем изменения
         await storage.save_games(new_games)
+        logger.info(f"Игра {game_id} успешно удалена")
         
         builder = InlineKeyboardBuilder()
         builder.button(text="🔙 К списку игр", callback_data="admin_back_to_games")
         
-        await safe_edit_message(
-            callback,
-            f"✅ Игра успешно удалена!\n\n"
-            f"🆔 ID: <code>{game_id}</code>",
-            reply_markup=builder.as_markup()
-        )
+        try:
+            await callback.message.edit_text(
+                f"✅ <b>Игра успешно удалена!</b>\n\n"
+                f"🆔 ID: <code>{game_id}</code>",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось отредактировать сообщение: {e}")
+            await callback.message.answer(
+                f"✅ <b>Игра успешно удалена!</b>\n\n"
+                f"🆔 ID: <code>{game_id}</code>",
+                reply_markup=builder.as_markup(),
+                parse_mode="HTML"
+            )
     else:
         await callback.answer("❌ Игра не найдена")
     

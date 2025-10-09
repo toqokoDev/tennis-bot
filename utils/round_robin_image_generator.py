@@ -8,26 +8,86 @@ from config.paths import BASE_DIR
 
 
 def _load_fonts():
-    """Загрузка шрифтов с Unicode-фолбэком (стили как в олимпийской сетке)"""
-    try:
-        # Основные шрифты (размеры как в олимпийской сетке)
-        title_font = ImageFont.truetype("arialbd.ttf", 18)  # Заголовок турнира
-        subtitle_font = ImageFont.truetype("arialbd.ttf", 18)  # Подзаголовки (например, "Фото с игр")
-        header_font = ImageFont.truetype("arialbd.ttf", 16)  # Заголовки колонок и имена игроков
-        cell_font = ImageFont.truetype("arial.ttf", 24)  # Содержимое ячеек (увеличено в 2 раза)
-        return title_font, subtitle_font, header_font, cell_font
-    except Exception:
-        # Пытаемся DejaVuSans (обычно доступен в Pillow)
+    """Загрузка шрифтов с приоритетом Circe, затем Arial/DejaVu, затем дефолт."""
+    def _try_font(paths, size):
+        for p in paths:
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                continue
+        return None
+
+    circe_regular = [
+        "Circe-Regular.ttf",
+        "Circe.ttf",
+        os.path.join(BASE_DIR, "fonts", "Circe-Regular.ttf"),
+        os.path.join(BASE_DIR, "fonts", "Circe.ttf"),
+    ]
+    circe_bold = [
+        "Circe-Bold.ttf",
+        os.path.join(BASE_DIR, "fonts", "Circe-Bold.ttf"),
+    ]
+
+    # Пытаемся Circe
+    title_font = _try_font(circe_bold, 18)
+    subtitle_font = _try_font(circe_regular, 18)
+    header_font = _try_font(circe_bold, 18)
+    cell_font = _try_font(circe_regular, 24)
+
+    # Фолбэк Arial
+    if not title_font:
+        try:
+            title_font = ImageFont.truetype("arialbd.ttf", 18)
+        except Exception:
+            title_font = None
+    if not subtitle_font:
+        try:
+            subtitle_font = ImageFont.truetype("arial.ttf", 18)
+        except Exception:
+            subtitle_font = None
+    if not header_font:
+        try:
+            header_font = ImageFont.truetype("arialbd.ttf", 18)
+        except Exception:
+            header_font = None
+    if not cell_font:
+        try:
+            cell_font = ImageFont.truetype("arial.ttf", 24)
+        except Exception:
+            cell_font = None
+
+    # Фолбэк DejaVu
+    if not title_font:
         try:
             title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 18)
-            subtitle_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 18)
-            header_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 16)
-            cell_font = ImageFont.truetype("DejaVuSans.ttf", 24)  # Увеличено в 2 раза
-            return title_font, subtitle_font, header_font, cell_font
         except Exception:
-            # Последний фолбэк — дефолтный
-            f = ImageFont.load_default()
-            return f, f, f, f
+            title_font = None
+    if not subtitle_font:
+        try:
+            subtitle_font = ImageFont.truetype("DejaVuSans.ttf", 18)
+        except Exception:
+            subtitle_font = None
+    if not header_font:
+        try:
+            header_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 18)
+        except Exception:
+            header_font = None
+    if not cell_font:
+        try:
+            cell_font = ImageFont.truetype("DejaVuSans.ttf", 24)
+        except Exception:
+            cell_font = None
+
+    # Последний фолбэк — дефолт
+    if not title_font:
+        title_font = ImageFont.load_default()
+    if not subtitle_font:
+        subtitle_font = ImageFont.load_default()
+    if not header_font:
+        header_font = ImageFont.load_default()
+    if not cell_font:
+        cell_font = ImageFont.load_default()
+    return title_font, subtitle_font, header_font, cell_font
 
 
 def _sanitize_title(text: str) -> str:
@@ -121,8 +181,21 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     def _paste_avatar(px: int, py: int, p: Dict[str, Any], size: int, font: ImageFont.FreeTypeFont) -> bool:
         def paste_placeholder() -> bool:
             try:
-                # Простой серый квадрат без инициалов
-                img = PILImage.new('RGBA', (size, size), (200, 200, 200, 255))
+                # Светло-серый квадрат (#e5e5e5) с инициалами (если есть)
+                img = PILImage.new('RGBA', (size, size), (229, 229, 229, 255))
+                try:
+                    initials = _initials(p)
+                    if initials and initials != '??' and font:
+                        d = ImageDraw.Draw(img)
+                        bbox = d.textbbox((0, 0), initials, font=font)
+                        tw = max(0, bbox[2] - bbox[0])
+                        th = max(0, bbox[3] - bbox[1])
+                        tx = (size - tw) // 2
+                        ty = (size - th) // 2
+                        # Текст белым без обводки (как в олимпийской сетке)
+                        d.text((tx, ty), initials, fill=(255, 255, 255), font=font)
+                except Exception:
+                    pass
                 draw._image.paste(img, (px, py), img)
                 return True
             except Exception:
@@ -145,6 +218,12 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                     except Exception:
                         resample = Image.LANCZOS
                     img = img.resize((size, size), resample)
+                    # Слегка осветлим реальное фото (без инициалов на фото)
+                    try:
+                        overlay = PILImage.new('RGBA', (size, size), (255, 255, 255, 40))
+                        img = PILImage.alpha_composite(img, overlay)
+                    except Exception:
+                        pass
                     draw._image.paste(img, (px, py), img)
                     return True
             except Exception:
@@ -160,10 +239,10 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
         bbox = draw.textbbox((0, 0), players_label, font=header_font)
         label_width = bbox[2] - bbox[0]
         label_x = table_x + (left_col_w - label_width) // 2
-        label_y = table_y + (top_row_h - 14) // 2
+        label_y = table_y + (top_row_h - 24) // 2
         draw.text((label_x, label_y), players_label, fill=(31, 41, 55), font=header_font)
     except Exception:
-        draw.text((table_x + 10, table_y + (top_row_h - 14) // 2), players_label, fill=(31, 41, 55), font=header_font)
+        draw.text((table_x + 10, table_y + (top_row_h - 24) // 2), players_label, fill=(31, 41, 55), font=header_font)
     
     # Верхняя строка: только аватар (без имени)
     for j, p in enumerate(players):
@@ -181,7 +260,7 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     for col_name in extra_cols:
         draw.rectangle([xh, table_y, xh + extra_cell_w, table_y + top_row_h], fill=(248, 250, 252), outline=(209, 213, 219))
         # Вертикальное центрирование заголовка
-        header_y = table_y + (top_row_h - 14) // 2
+        header_y = table_y + (top_row_h - 24) // 2
         try:
             bbox = draw.textbbox((0, 0), col_name, font=header_font)
             text_width = bbox[2] - bbox[0]
@@ -325,8 +404,8 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
             # Вертикальное центрирование текста в увеличенной ячейке (с учетом увеличенного шрифта)
             text_y = y0 + (cell_h - 24) // 2
             if i == j:
-                # Заливаем диагональную ячейку серым цветом
-                draw.rectangle([x0, y0, x0 + cell_w, y0 + cell_h], fill=(229, 231, 235), outline=(209, 213, 219))
+                # Заливаем диагональную ячейку цветом #E5E5E5
+                draw.rectangle([x0, y0, x0 + cell_w, y0 + cell_h], fill=(229, 229, 229), outline=(209, 213, 219))
             else:
                 draw.rectangle([x0, y0, x0 + cell_w, y0 + cell_h], outline=(209, 213, 219))
             if j > i:
