@@ -1486,8 +1486,36 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
             if winner_id in users:
                 winner_name = f"{users[winner_id].get('first_name', '')} {users[winner_id].get('last_name', '')}".strip()
         
-        # Сохраняем изменения
+        # Сохраняем изменения в games.json
         await storage.save_games(games)
+        
+        # Если это турнирная игра, обновляем данные в tournaments.json
+        tournament_id = game.get('tournament_id')
+        if tournament_id:
+            tournaments = await storage.load_tournaments()
+            if tournament_id in tournaments:
+                tournament = tournaments[tournament_id]
+                # Ищем соответствующий матч в турнире
+                if 'matches' in tournament:
+                    for match in tournament['matches']:
+                        # Сопоставляем по ID или по игрокам
+                        match_player1 = match.get('player1_id')
+                        match_player2 = match.get('player2_id')
+                        game_team1 = team1_players[0] if team1_players else None
+                        game_team2 = team2_players[0] if team2_players else None
+                        
+                        # Проверяем, совпадают ли игроки (в любом порядке)
+                        if ((match_player1 == game_team1 and match_player2 == game_team2) or
+                            (match_player1 == game_team2 and match_player2 == game_team1)):
+                            # Обновляем счет и победителя в матче
+                            match['score'] = new_score
+                            match['winner_id'] = winner_id
+                            logger.info(f"Обновлен матч {match.get('id')} в турнире {tournament_id}")
+                            break
+                    
+                    # Сохраняем изменения в tournaments.json
+                    await storage.save_tournaments(tournaments)
+                    logger.info(f"Турнир {tournament_id} обновлен")
         
         logger.info(f"Счет игры {game_id} изменен на {new_score}, победитель: {winner_id} ({winner_name})")
         
@@ -1496,12 +1524,20 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
         builder.button(text="🔙 К списку игр", callback_data="admin_back_to_games")
         builder.adjust(1)
         
-        await message.answer(
+        success_text = (
             f"✅ <b>Счет игры успешно изменен!</b>\n\n"
             f"🆔 ID: <code>{game_id}</code>\n"
             f"📊 Новый счет: <b>{new_score}</b>\n"
             f"🏆 Победитель: <b>{winner_name}</b>\n"
-            f"🎯 Счет по сетам: {team1_wins}:{team2_wins}",
+            f"🎯 Счет по сетам: {team1_wins}:{team2_wins}"
+        )
+        
+        # Добавляем информацию о турнире, если игра турнирная
+        if tournament_id:
+            success_text += f"\n\n🏆 <i>Данные турнира также обновлены</i>"
+        
+        await message.answer(
+            success_text,
             reply_markup=builder.as_markup(),
             parse_mode="HTML"
         )
@@ -1792,6 +1828,35 @@ async def admin_set_winner_handler(callback: CallbackQuery):
         if winner_id in users:
             winner_name = f"{users[winner_id].get('first_name', '')} {users[winner_id].get('last_name', '')}".strip()
         
+        # Если это турнирная игра, обновляем данные в tournaments.json
+        tournament_id = game.get('tournament_id')
+        if tournament_id:
+            tournaments = await storage.load_tournaments()
+            if tournament_id in tournaments:
+                tournament = tournaments[tournament_id]
+                # Ищем соответствующий матч в турнире
+                if 'matches' in tournament:
+                    team1_players = game.get('players', {}).get('team1', [])
+                    team2_players = game.get('players', {}).get('team2', [])
+                    game_team1 = team1_players[0] if team1_players else None
+                    game_team2 = team2_players[0] if team2_players else None
+                    
+                    for match in tournament['matches']:
+                        match_player1 = match.get('player1_id')
+                        match_player2 = match.get('player2_id')
+                        
+                        # Проверяем, совпадают ли игроки (в любом порядке)
+                        if ((match_player1 == game_team1 and match_player2 == game_team2) or
+                            (match_player1 == game_team2 and match_player2 == game_team1)):
+                            # Обновляем победителя в матче
+                            match['winner_id'] = winner_id
+                            logger.info(f"Обновлен победитель матча {match.get('id')} в турнире {tournament_id}")
+                            break
+                    
+                    # Сохраняем изменения в tournaments.json
+                    await storage.save_tournaments(tournaments)
+                    logger.info(f"Турнир {tournament_id} обновлен")
+        
         logger.info(f"Победитель игры {game_id} изменен на {winner_id} ({winner_name})")
         
         builder = InlineKeyboardBuilder()
@@ -1799,20 +1864,26 @@ async def admin_set_winner_handler(callback: CallbackQuery):
         builder.button(text="🔙 К списку игр", callback_data="admin_back_to_games")
         builder.adjust(1)
         
+        success_text = (
+            f"✅ <b>Победитель игры успешно изменен!</b>\n\n"
+            f"🆔 ID: <code>{game_id}</code>\n"
+            f"🏆 Новый победитель: <b>{winner_name}</b> (Команда {winner_team[-1]})"
+        )
+        
+        # Добавляем информацию о турнире, если игра турнирная
+        if tournament_id:
+            success_text += f"\n\n🏆 <i>Данные турнира также обновлены</i>"
+        
         try:
             await callback.message.edit_text(
-                f"✅ <b>Победитель игры успешно изменен!</b>\n\n"
-                f"🆔 ID: <code>{game_id}</code>\n"
-                f"🏆 Новый победитель: <b>{winner_name}</b> (Команда {winner_team[-1]})",
+                success_text,
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
         except Exception as e:
             logger.warning(f"Не удалось отредактировать сообщение: {e}")
             await callback.message.answer(
-                f"✅ <b>Победитель игры успешно изменен!</b>\n\n"
-                f"🆔 ID: <code>{game_id}</code>\n"
-                f"🏆 Новый победитель: <b>{winner_name}</b> (Команда {winner_team[-1]})",
+                success_text,
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
@@ -1887,6 +1958,39 @@ async def admin_confirm_delete_game_handler(callback: CallbackQuery):
             except Exception as e:
                 logger.warning(f"Не удалось удалить медиафайл: {e}")
         
+        # Если это турнирная игра, обновляем данные в tournaments.json
+        tournament_id = game_to_delete.get('tournament_id')
+        if tournament_id:
+            tournaments = await storage.load_tournaments()
+            if tournament_id in tournaments:
+                tournament = tournaments[tournament_id]
+                # Ищем соответствующий матч в турнире и сбрасываем его
+                if 'matches' in tournament:
+                    team1_players = game_to_delete.get('players', {}).get('team1', [])
+                    team2_players = game_to_delete.get('players', {}).get('team2', [])
+                    game_team1 = team1_players[0] if team1_players else None
+                    game_team2 = team2_players[0] if team2_players else None
+                    
+                    for match in tournament['matches']:
+                        match_player1 = match.get('player1_id')
+                        match_player2 = match.get('player2_id')
+                        
+                        # Проверяем, совпадают ли игроки (в любом порядке)
+                        if ((match_player1 == game_team1 and match_player2 == game_team2) or
+                            (match_player1 == game_team2 and match_player2 == game_team1)):
+                            # Сбрасываем результат матча
+                            match['winner_id'] = None
+                            match['score'] = None
+                            match['status'] = 'pending'
+                            if 'completed_at' in match:
+                                del match['completed_at']
+                            logger.info(f"Сброшен матч {match.get('id')} в турнире {tournament_id}")
+                            break
+                    
+                    # Сохраняем изменения в tournaments.json
+                    await storage.save_tournaments(tournaments)
+                    logger.info(f"Турнир {tournament_id} обновлен после удаления игры")
+        
         # Сохраняем изменения
         await storage.save_games(new_games)
         logger.info(f"Игра {game_id} успешно удалена")
@@ -1894,18 +1998,22 @@ async def admin_confirm_delete_game_handler(callback: CallbackQuery):
         builder = InlineKeyboardBuilder()
         builder.button(text="🔙 К списку игр", callback_data="admin_back_to_games")
         
+        success_text = f"✅ <b>Игра успешно удалена!</b>\n\n🆔 ID: <code>{game_id}</code>"
+        
+        # Добавляем информацию о турнире, если игра была турнирной
+        if tournament_id:
+            success_text += f"\n\n🏆 <i>Матч в турнире сброшен</i>"
+        
         try:
             await callback.message.edit_text(
-                f"✅ <b>Игра успешно удалена!</b>\n\n"
-                f"🆔 ID: <code>{game_id}</code>",
+                success_text,
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
         except Exception as e:
             logger.warning(f"Не удалось отредактировать сообщение: {e}")
             await callback.message.answer(
-                f"✅ <b>Игра успешно удалена!</b>\n\n"
-                f"🆔 ID: <code>{game_id}</code>",
+                success_text,
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
