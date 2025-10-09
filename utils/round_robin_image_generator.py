@@ -132,7 +132,7 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
 
     width = padding * 2 + left_col_w + n * cell_w + len(extra_cols) * extra_cell_w
     # Уменьшаем дополнительную высоту под описание турнира
-    height = padding * 2 + top_row_h + n * cell_h + 160
+    height = padding * 2 + top_row_h + n * cell_h + 260
 
     image = Image.new('RGB', (max(width, 800), height), (255, 255, 255))
     draw = ImageDraw.Draw(image)
