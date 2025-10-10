@@ -233,4 +233,5 @@ class AdminEditGameStates(StatesGroup):
     EDIT_SCORE = State()
     EDIT_MEDIA = State()
     EDIT_WINNER = State()
+    ENTER_TOURNAMENT_SCORE = State()  # Для внесения счета матча турнира
     

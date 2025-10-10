@@ -101,22 +101,88 @@ async def delete_tournament_menu(callback: CallbackQuery):
         await callback.answer("❌ Нет прав администратора")
         return
     
+    # Начинаем с первой страницы
+    await show_delete_tournaments_page(callback, page=0)
+
+async def show_delete_tournaments_page(callback: CallbackQuery, page: int = 0):
+    """Показывает страницу со списком турниров для удаления с пагинацией"""
     tournaments = await storage.load_tournaments()
     
     if not tournaments:
         await callback.answer("📋 Нет активных турниров")
         return
     
+    import re
+    TOURNAMENTS_PER_PAGE = 5
+    
+    # Преобразуем в список для пагинации
+    tournament_items = list(tournaments.items())
+    total_tournaments = len(tournament_items)
+    total_pages = (total_tournaments + TOURNAMENTS_PER_PAGE - 1) // TOURNAMENTS_PER_PAGE
+    
+    # Проверяем границы страницы
+    if page < 0:
+        page = 0
+    if page >= total_pages:
+        page = total_pages - 1
+    
+    # Получаем турниры для текущей страницы
+    start_idx = page * TOURNAMENTS_PER_PAGE
+    end_idx = min(start_idx + TOURNAMENTS_PER_PAGE, total_tournaments)
+    page_tournaments = tournament_items[start_idx:end_idx]
+    
     builder = InlineKeyboardBuilder()
-    for tournament_id, tournament_data in tournaments.items():
-        text = f"🗑️ {tournament_data.get('name', 'Без названия')} ({tournament_data.get('date', '')})"
+    
+    for tournament_id, tournament_data in page_tournaments:
+        level = tournament_data.get('level', '?')
+        city = tournament_data.get('city', 'Не указан')
+        district = tournament_data.get('district', '')
+        country = tournament_data.get('country', '')
+        name = tournament_data.get('name', 'Без названия')
+        
+        # Формируем место проведения
+        if city == "Москва" and district:
+            location = f"{city}, {district}"
+        elif city and country:
+            location = f"{city}, {country}"
+        else:
+            location = city or 'Не указано'
+        
+        # Извлекаем номер из названия турнира
+        number_match = re.search(r'№(\d+)', name)
+        tournament_number = number_match.group(1) if number_match else '?'
+        
+        text = f"🗑️ №{tournament_number} | {level} | {location}"
         builder.button(text=text, callback_data=f"admin_delete_tournament:{tournament_id}")
     
-    builder.button(text="🔙 Назад", callback_data="admin_back_to_tournaments")
     builder.adjust(1)
     
-    await safe_edit_message(callback, "🗑️ Выберите турнир для удаления:", builder.as_markup())
+    # Кнопки навигации
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton(text="⬅️", callback_data=f"admin_delete_tournaments_page:{page-1}"))
+    if page < total_pages - 1:
+        nav_buttons.append(InlineKeyboardButton(text="➡️", callback_data=f"admin_delete_tournaments_page:{page+1}"))
+    
+    if nav_buttons:
+        builder.row(*nav_buttons)
+    
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back_to_tournaments"))
+    
+    text = f"🗑️ Выберите турнир для удаления:\n\nСтраница {page + 1}/{total_pages} (всего: {total_tournaments})"
+    
+    await safe_edit_message(callback, text, builder.as_markup())
     await callback.answer()
+
+# Обработчик пагинации для удаления турниров
+@admin_router.callback_query(F.data.startswith("admin_delete_tournaments_page:"))
+async def admin_delete_tournaments_page_handler(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    page = int(callback.data.split(":", 1)[1])
+    await show_delete_tournaments_page(callback, page=page)
 
 # Обработчик удаления турнира
 @admin_router.callback_query(F.data.startswith("admin_delete_tournament:"))
@@ -134,15 +200,34 @@ async def delete_tournament_handler(callback: CallbackQuery):
     
     tournament_data = tournaments[tournament_id]
     
+    # Формируем информацию о месте
+    import re
+    city = tournament_data.get('city', 'Не указан')
+    district = tournament_data.get('district', '')
+    country = tournament_data.get('country', '')
+    name = tournament_data.get('name', 'Без названия')
+    level = tournament_data.get('level', 'Не указан')
+    
+    # Извлекаем номер из названия турнира
+    number_match = re.search(r'№(\d+)', name)
+    tournament_number = number_match.group(1) if number_match else '?'
+    
+    # Формируем место проведения
+    if city == "Москва" and district:
+        location = f"{city} ({district})"
+    else:
+        location = f"{city}, {country}"
+    
     # Создаем клавиатуру подтверждения
     keyboard = await get_confirmation_keyboard("delete_tournament", tournament_id)
     
     await safe_edit_message(
         callback,
         f"⚠️ Вы уверены, что хотите удалить турнир?\n\n"
-        f"🎯 Название: {tournament_data.get('name', 'Без названия')}\n"
-        f"📅 Дата: {tournament_data.get('date', 'Неизвестно')}\n"
-        f"📍 Место: {tournament_data.get('location', 'Неизвестно')}\n"
+        f"🎯 Название: {name}\n"
+        f"🔢 Номер: {tournament_number}\n"
+        f"📊 Уровень: {level}\n"
+        f"📍 Место: {location}\n"
         f"👥 Участников: {len(tournament_data.get('participants', {}))}\n\n"
         "Это действие удалит все данные о турнире!",
         keyboard
@@ -165,6 +250,24 @@ async def confirm_delete_tournament(callback: CallbackQuery):
     
     tournament_data = tournaments[tournament_id]
     
+    # Формируем информацию о месте
+    import re
+    city = tournament_data.get('city', 'Не указан')
+    district = tournament_data.get('district', '')
+    country = tournament_data.get('country', '')
+    name = tournament_data.get('name', 'Без названия')
+    level = tournament_data.get('level', 'Не указан')
+    
+    # Извлекаем номер из названия турнира
+    number_match = re.search(r'№(\d+)', name)
+    tournament_number = number_match.group(1) if number_match else '?'
+    
+    # Формируем место проведения
+    if city == "Москва" and district:
+        location = f"{city} ({district})"
+    else:
+        location = f"{city}, {country}"
+    
     # Удаляем турнир
     del tournaments[tournament_id]
     await storage.save_tournaments(tournaments)
@@ -172,8 +275,10 @@ async def confirm_delete_tournament(callback: CallbackQuery):
     await safe_edit_message(
         callback,
         f"✅ Турнир удален!\n\n"
-        f"🎯 Название: {tournament_data.get('name', 'Без названия')}\n"
-        f"📅 Дата: {tournament_data.get('date', 'Неизвестно')}\n\n"
+        f"🎯 Название: {name}\n"
+        f"🔢 Номер: {tournament_number}\n"
+        f"📊 Уровень: {level}\n"
+        f"📍 Место: {location}\n\n"
         f"Все данные о турнире удалены из системы."
     )
     await callback.answer()
@@ -191,11 +296,29 @@ async def back_to_tournaments(callback: CallbackQuery):
         await safe_edit_message(callback, "📋 Список турниров пуст.")
         return
     
+    import re
     text = "🏆 Активные турниры:\n\n"
     for tournament_id, tournament_data in tournaments.items():
-        text += f"🎯 {tournament_data.get('name', 'Без названия')}\n"
-        text += f"📅 Дата: {tournament_data.get('date', 'Не указана')}\n"
-        text += f"📍 Место: {tournament_data.get('location', 'Не указано')}\n"
+        city = tournament_data.get('city', 'Не указан')
+        district = tournament_data.get('district', '')
+        country = tournament_data.get('country', '')
+        name = tournament_data.get('name', 'Без названия')
+        level = tournament_data.get('level', 'Не указан')
+        
+        # Извлекаем номер из названия турнира
+        number_match = re.search(r'№(\d+)', name)
+        tournament_number = number_match.group(1) if number_match else '?'
+        
+        # Формируем место проведения
+        if city == "Москва" and district:
+            location = f"{city} ({district})"
+        else:
+            location = f"{city}, {country}"
+        
+        text += f"🎯 {name}\n"
+        text += f"🔢 Номер: {tournament_number}\n"
+        text += f"📊 Уровень: {level}\n"
+        text += f"📍 Место: {location}\n"
         text += f"👥 Участников: {len(tournament_data.get('participants', {}))}\n"
         text += f"🆔 ID: {tournament_id}\n"
         text += "─" * 20 + "\n"
@@ -307,15 +430,29 @@ async def tournaments_handler(callback: CallbackQuery):
         await safe_edit_message(callback, "📋 Список турниров пуст.")
         return
     
+    import re
     text = "🏆 Активные турниры:\n\n"
     for tournament_id, tournament_data in tournaments.items():
         # Формируем информацию о турнире
-        location = f"{tournament_data.get('city', 'Не указан')}"
-        if tournament_data.get('district'):
-            location += f" ({tournament_data['district']})"
-        location += f", {tournament_data.get('country', 'Не указана')}"
+        city = tournament_data.get('city', 'Не указан')
+        district = tournament_data.get('district', '')
+        country = tournament_data.get('country', 'Не указана')
+        name = tournament_data.get('name', 'Без названия')
+        level = tournament_data.get('level', 'Не указан')
         
-        text += f"🏆 {tournament_data.get('name', 'Без названия')}\n"
+        # Извлекаем номер из названия турнира
+        number_match = re.search(r'№(\d+)', name)
+        tournament_number = number_match.group(1) if number_match else '?'
+        
+        # Формируем место проведения
+        if city == "Москва" and district:
+            location = f"{city} ({district})"
+        else:
+            location = f"{city}, {country}"
+        
+        text += f"🏆 {name}\n"
+        text += f"🔢 Номер: {tournament_number}\n"
+        text += f"📊 Уровень: {level}\n"
         text += f"🏓 Вид спорта: {tournament_data.get('sport', 'Не указан')}\n"
         text += f"🌍 Место: {location}\n"
         text += f"⚔️ Тип: {tournament_data.get('type', 'Не указан')}\n"
@@ -419,29 +556,92 @@ async def edit_tournaments_handler(callback: CallbackQuery):
         await callback.answer("❌ Нет прав администратора")
         return
     
+    # Начинаем с первой страницы
+    await show_tournaments_page(callback, page=0)
+
+async def show_tournaments_page(callback: CallbackQuery, page: int = 0):
+    """Показывает страницу со списком турниров с пагинацией"""
     tournaments = await storage.load_tournaments()
     
     if not tournaments:
         await safe_edit_message(callback, "📋 Нет турниров")
         return
     
+    import re
+    TOURNAMENTS_PER_PAGE = 5
+    
+    # Преобразуем в список для пагинации
+    tournament_items = list(tournaments.items())
+    total_tournaments = len(tournament_items)
+    total_pages = (total_tournaments + TOURNAMENTS_PER_PAGE - 1) // TOURNAMENTS_PER_PAGE
+    
+    # Проверяем границы страницы
+    if page < 0:
+        page = 0
+    if page >= total_pages:
+        page = total_pages - 1
+    
+    # Получаем турниры для текущей страницы
+    start_idx = page * TOURNAMENTS_PER_PAGE
+    end_idx = min(start_idx + TOURNAMENTS_PER_PAGE, total_tournaments)
+    page_tournaments = tournament_items[start_idx:end_idx]
+    
     builder = InlineKeyboardBuilder()
-    for tournament_id, tournament_data in tournaments.items():
-        level = tournament_data.get('level', 'Без уровня')
+    
+    for tournament_id, tournament_data in page_tournaments:
+        level = tournament_data.get('level', '?')
         city = tournament_data.get('city', 'Не указан')
-
-        button_text = f" {level} ({city})"
+        district = tournament_data.get('district', '')
+        country = tournament_data.get('country', '')
+        name = tournament_data.get('name', '')
+        
+        # Формируем место проведения
+        if city == "Москва" and district:
+            location = f"{city}, {district}"
+        elif city and country:
+            location = f"{city}, {country}"
+        else:
+            location = city or 'Не указано'
+        
+        # Извлекаем номер из названия турнира (если есть)
+        number_match = re.search(r'№(\d+)', name)
+        tournament_number = number_match.group(1) if number_match else '?'
+        
+        button_text = f"№{tournament_number} | {level} | {location}"
         builder.button(text=button_text, callback_data=f"edit_tournament:{tournament_id}")
     
-    builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
-    builder.adjust(2)
+    builder.adjust(1)
+    
+    # Кнопки навигации
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton(text="⬅️", callback_data=f"admin_tournaments_page:{page-1}"))
+    if page < total_pages - 1:
+        nav_buttons.append(InlineKeyboardButton(text="➡️", callback_data=f"admin_tournaments_page:{page+1}"))
+    
+    if nav_buttons:
+        builder.row(*nav_buttons)
+    
+    builder.row(InlineKeyboardButton(text="🔙 К меню", callback_data="admin_back_to_main"))
+    
+    text = f"🏆 Выберите турнир:\n\nСтраница {page + 1}/{total_pages} (всего: {total_tournaments})"
     
     await safe_edit_message(
         callback,
-        "🏆 Выберите турнир:",
+        text,
         builder.as_markup()
     )
     await callback.answer()
+
+# Обработчик пагинации турниров
+@admin_router.callback_query(F.data.startswith("admin_tournaments_page:"))
+async def admin_tournaments_page_handler(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    page = int(callback.data.split(":", 1)[1])
+    await show_tournaments_page(callback, page=page)
 
 @admin_router.callback_query(F.data == "admin_clear_all_bans")
 async def clear_all_bans_handler(callback: CallbackQuery):
@@ -1507,15 +1707,23 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
                         # Проверяем, совпадают ли игроки (в любом порядке)
                         if ((match_player1 == game_team1 and match_player2 == game_team2) or
                             (match_player1 == game_team2 and match_player2 == game_team1)):
-                            # Обновляем счет и победителя в матче
+                            # Обновляем счет, победителя и статус в матче
                             match['score'] = new_score
                             match['winner_id'] = winner_id
+                            match['status'] = 'completed'
+                            if 'completed_at' not in match:
+                                match['completed_at'] = datetime.now().isoformat()
                             logger.info(f"Обновлен матч {match.get('id')} в турнире {tournament_id}")
                             break
                     
                     # Сохраняем изменения в tournaments.json
                     await storage.save_tournaments(tournaments)
                     logger.info(f"Турнир {tournament_id} обновлен")
+                    
+                    # Пересобираем сетку и продвигаем раунды
+                    from utils.tournament_manager import tournament_manager
+                    await tournament_manager._rebuild_next_round(tournament_id)
+                    await tournament_manager.advance_tournament_round(tournament_id)
         
         logger.info(f"Счет игры {game_id} изменен на {new_score}, победитель: {winner_id} ({winner_name})")
         
@@ -1848,14 +2056,22 @@ async def admin_set_winner_handler(callback: CallbackQuery):
                         # Проверяем, совпадают ли игроки (в любом порядке)
                         if ((match_player1 == game_team1 and match_player2 == game_team2) or
                             (match_player1 == game_team2 and match_player2 == game_team1)):
-                            # Обновляем победителя в матче
+                            # Обновляем победителя и статус в матче
                             match['winner_id'] = winner_id
+                            match['status'] = 'completed'
+                            if 'completed_at' not in match:
+                                match['completed_at'] = datetime.now().isoformat()
                             logger.info(f"Обновлен победитель матча {match.get('id')} в турнире {tournament_id}")
                             break
                     
                     # Сохраняем изменения в tournaments.json
                     await storage.save_tournaments(tournaments)
                     logger.info(f"Турнир {tournament_id} обновлен")
+                    
+                    # Пересобираем сетку и продвигаем раунды
+                    from utils.tournament_manager import tournament_manager
+                    await tournament_manager._rebuild_next_round(tournament_id)
+                    await tournament_manager.advance_tournament_round(tournament_id)
         
         logger.info(f"Победитель игры {game_id} изменен на {winner_id} ({winner_name})")
         

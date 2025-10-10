@@ -4092,8 +4092,12 @@ async def _show_tournament_edit(callback: CallbackQuery, state: FSMContext, tour
     builder.button(text="👥 Участники", callback_data=f"manage_participants:{tournament_id}")
     
     # Кнопка посева (жеребьевки) — показываем только до старта турнира
-    if tournament_data.get('status') != 'started':
+    if tournament_data.get('status') not in ['started', 'finished']:
         builder.button(text="🎲 Посев", callback_data=f"tournament_seeding_menu:{tournament_id}")
+    
+    # Кнопка внесения счета матчей (показываем когда турнир запущен)
+    if tournament_data.get('status') == 'started':
+        builder.button(text="📝 Внести счет", callback_data=f"admin_enter_match_score:{tournament_id}")
     
     # Кнопка управления играми
     builder.button(text="🎮 Управление играми", callback_data=f"admin_tournament_games:{tournament_id}")
@@ -5554,6 +5558,10 @@ async def admin_back_to_tournament_list(callback: CallbackQuery, state: FSMConte
 @router.callback_query(F.data == "edit_tournaments_back")
 async def edit_tournaments_back(callback: CallbackQuery, state: FSMContext):
     """Возврат к списку турниров для редактирования"""
+    await show_edit_tournaments_page(callback, page=0)
+
+async def show_edit_tournaments_page(callback: CallbackQuery, page: int = 0):
+    """Показывает страницу со списком турниров для редактирования с пагинацией"""
     tournaments = await storage.load_tournaments()
     
     if not tournaments:
@@ -5562,23 +5570,78 @@ async def edit_tournaments_back(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     
+    import re
+    TOURNAMENTS_PER_PAGE = 5
+    
+    # Преобразуем в список для пагинации
+    tournament_items = list(tournaments.items())
+    total_tournaments = len(tournament_items)
+    total_pages = (total_tournaments + TOURNAMENTS_PER_PAGE - 1) // TOURNAMENTS_PER_PAGE
+    
+    # Проверяем границы страницы
+    if page < 0:
+        page = 0
+    if page >= total_pages:
+        page = total_pages - 1
+    
+    # Получаем турниры для текущей страницы
+    start_idx = page * TOURNAMENTS_PER_PAGE
+    end_idx = min(start_idx + TOURNAMENTS_PER_PAGE, total_tournaments)
+    page_tournaments = tournament_items[start_idx:end_idx]
+    
     builder = InlineKeyboardBuilder()
-    for tournament_id, tournament_data in tournaments.items():
-        level = tournament_data.get('level', 'Без уровня')
+    
+    for tournament_id, tournament_data in page_tournaments:
+        level = tournament_data.get('level', '?')
         city = tournament_data.get('city', 'Не указан')
-
-        button_text = f" {level} ({city})"
+        district = tournament_data.get('district', '')
+        country = tournament_data.get('country', '')
+        name = tournament_data.get('name', '')
+        
+        # Формируем место проведения
+        if city == "Москва" and district:
+            location = f"{city}, {district}"
+        elif city and country:
+            location = f"{city}, {country}"
+        else:
+            location = city or 'Не указано'
+        
+        # Извлекаем номер из названия турнира (если есть)
+        number_match = re.search(r'№(\d+)', name)
+        tournament_number = number_match.group(1) if number_match else '?'
+        
+        button_text = f"№{tournament_number} | {level} | {location}"
         builder.button(text=button_text, callback_data=f"edit_tournament:{tournament_id}")
     
-    builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
-    builder.adjust(2)
+    builder.adjust(1)
     
-    await callback.message.delete()
-    await callback.message.answer(
-        "🏆 Выберите турнир:",
-        reply_markup=builder.as_markup()
-    )
+    # Кнопки навигации
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton(text="⬅️", callback_data=f"edit_tournaments_page:{page-1}"))
+    if page < total_pages - 1:
+        nav_buttons.append(InlineKeyboardButton(text="➡️", callback_data=f"edit_tournaments_page:{page+1}"))
+    
+    if nav_buttons:
+        builder.row(*nav_buttons)
+    
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back_to_main"))
+    
+    text = f"🏆 Выберите турнир:\n\nСтраница {page + 1}/{total_pages} (всего: {total_tournaments})"
+    
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    except:
+        await callback.message.delete()
+        await callback.message.answer(text, reply_markup=builder.as_markup())
+    
     await callback.answer()
+
+# Обработчик пагинации для списка редактирования турниров
+@router.callback_query(F.data.startswith("edit_tournaments_page:"))
+async def edit_tournaments_page_handler(callback: CallbackQuery):
+    page = int(callback.data.split(":", 1)[1])
+    await show_edit_tournaments_page(callback, page=page)
 
 @router.callback_query(F.data == "edit_tournament_back")
 async def edit_tournament_back(callback: CallbackQuery, state: FSMContext):
@@ -5730,3 +5793,348 @@ async def show_tournament_brief_info(message: Message, tournament_id: str, user_
     except Exception as e:
         logger.error(f"Ошибка при показе информации о турнире {tournament_id}: {e}", exc_info=True)
         await message.answer("❌ Произошла ошибка при загрузке информации о турнире")
+
+
+# ==================== ВНЕСЕНИЕ СЧЕТА МАТЧЕЙ ТУРНИРА ====================
+
+@router.callback_query(F.data.startswith("admin_enter_match_score:"))
+async def admin_enter_match_score_menu(callback: CallbackQuery, state: FSMContext):
+    """Показывает список незавершенных матчей турнира для внесения счета"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    tournament_id = callback.data.split(":", 1)[1]
+    await state.update_data(editing_tournament_id=tournament_id)
+    
+    tournaments = await storage.load_tournaments()
+    tournament_data = tournaments.get(tournament_id, {})
+    
+    if not tournament_data:
+        await callback.answer("❌ Турнир не найден")
+        return
+    
+    matches = tournament_data.get('matches', [])
+    participants = tournament_data.get('participants', {})
+    
+    # Фильтруем незавершенные матчи (не BYE)
+    pending_matches = [m for m in matches 
+                      if m.get('status') == 'pending' 
+                      and not m.get('is_bye', False)
+                      and m.get('player1_id') and m.get('player2_id')]
+    
+    if not pending_matches:
+        await callback.answer("📋 Нет незавершенных матчей", show_alert=True)
+        return
+    
+    # Группируем матчи по раундам
+    from collections import defaultdict
+    rounds = defaultdict(list)
+    for match in pending_matches:
+        round_num = match.get('round', 0)
+        rounds[round_num].append(match)
+    
+    # Создаем список матчей с индексами для коротких callback_data
+    match_list = []
+    for round_num in sorted(rounds.keys()):
+        match_list.extend(rounds[round_num])
+    
+    # Сохраняем список в состоянии для дальнейшего использования
+    await state.update_data(pending_matches_list=[m.get('id') for m in match_list])
+    
+    builder = InlineKeyboardBuilder()
+    
+    for idx, match in enumerate(match_list):
+        p1_id = match.get('player1_id')
+        p2_id = match.get('player2_id')
+        p1_name = participants.get(str(p1_id), {}).get('name', 'Игрок 1')
+        p2_name = participants.get(str(p2_id), {}).get('name', 'Игрок 2')
+        
+        round_num = match.get('round', 0)
+        match_label = f"Раунд {round_num + 1}"
+        if match.get('is_consolation'):
+            place = match.get('consolation_place', '')
+            match_label = f"За {place} место"
+        
+        button_text = f"{match_label}: {p1_name} vs {p2_name}"
+        # Используем индекс вместо полного ID для короткого callback_data
+        builder.button(text=button_text, callback_data=f"admin_match:{idx}")
+    
+    builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="🔙 К турниру", callback_data=f"edit_tournament:{tournament_id}"))
+    
+    text = f"📝 <b>Внесение счета матча</b>\n\n"
+    text += f"🏆 {tournament_data.get('name', 'Турнир')}\n"
+    text += f"📊 Незавершенных матчей: {len(pending_matches)}\n\n"
+    text += f"Выберите матч для внесения счета:"
+    
+    try:
+        await callback.message.edit_caption(caption=text, reply_markup=builder.as_markup(), parse_mode='HTML')
+    except:
+        await callback.message.delete()
+        await callback.message.answer(text, reply_markup=builder.as_markup(), parse_mode='HTML')
+    
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin_match:"))
+async def admin_select_match_for_score(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора матча для внесения счета"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    # Получаем индекс матча из callback_data
+    match_idx = int(callback.data.split(":", 1)[1])
+    
+    # Получаем данные из состояния
+    data = await state.get_data()
+    tournament_id = data.get('editing_tournament_id')
+    pending_matches_list = data.get('pending_matches_list', [])
+    
+    if not tournament_id or match_idx >= len(pending_matches_list):
+        await callback.answer("❌ Ошибка: данные не найдены")
+        return
+    
+    # Получаем ID матча по индексу
+    match_id = pending_matches_list[match_idx]
+    
+    await state.update_data(editing_match_id=match_id)
+    
+    tournaments = await storage.load_tournaments()
+    tournament_data = tournaments.get(tournament_id, {})
+    participants = tournament_data.get('participants', {})
+    
+    # Находим матч
+    match = None
+    for m in tournament_data.get('matches', []):
+        if m.get('id') == match_id:
+            match = m
+            break
+    
+    if not match:
+        await callback.answer("❌ Матч не найден")
+        return
+    
+    p1_id = match.get('player1_id')
+    p2_id = match.get('player2_id')
+    p1_name = participants.get(str(p1_id), {}).get('name', 'Игрок 1')
+    p2_name = participants.get(str(p2_id), {}).get('name', 'Игрок 2')
+    
+    match_label = f"Раунд {match.get('round', 0) + 1}"
+    if match.get('is_consolation'):
+        place = match.get('consolation_place', '')
+        match_label = f"Матч за {place} место"
+    
+    text = f"📝 <b>Внесение счета</b>\n\n"
+    text += f"🏆 {tournament_data.get('name', 'Турнир')}\n"
+    text += f"📊 {match_label}\n\n"
+    text += f"👤 <b>Игрок 1:</b> {p1_name}\n"
+    text += f"👤 <b>Игрок 2:</b> {p2_name}\n\n"
+    text += f"<b>Кто победил?</b>"
+    
+    # Сохраняем ID игроков в состоянии
+    await state.update_data(
+        match_player1_id=p1_id,
+        match_player2_id=p2_id
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text=f"🥇 {p1_name}", callback_data="admin_winner:1")
+    builder.button(text=f"🥇 {p2_name}", callback_data="admin_winner:2")
+    builder.button(text="🔙 Назад", callback_data=f"admin_enter_match_score:{tournament_id}")
+    builder.adjust(1)
+    
+    try:
+        await callback.message.edit_caption(caption=text, reply_markup=builder.as_markup(), parse_mode='HTML')
+    except:
+        await callback.message.delete()
+        await callback.message.answer(text, reply_markup=builder.as_markup(), parse_mode='HTML')
+    
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin_winner:"))
+async def admin_set_winner_and_ask_score(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора победителя, запрашивает счет"""
+    if not await is_admin(callback.message.chat.id):
+        await callback.answer("❌ Нет прав администратора")
+        return
+    
+    # Получаем номер игрока (1 или 2)
+    player_num = callback.data.split(":", 1)[1]
+    
+    # Получаем данные из состояния
+    data = await state.get_data()
+    tournament_id = data.get('editing_tournament_id')
+    match_id = data.get('editing_match_id')
+    
+    # Определяем ID победителя
+    if player_num == "1":
+        winner_id = data.get('match_player1_id')
+    else:
+        winner_id = data.get('match_player2_id')
+    
+    if not winner_id or not tournament_id or not match_id:
+        await callback.answer("❌ Ошибка: данные не найдены")
+        return
+    
+    await state.update_data(match_winner_id=winner_id)
+    await state.set_state(AdminEditGameStates.ENTER_TOURNAMENT_SCORE)
+    
+    tournaments = await storage.load_tournaments()
+    tournament_data = tournaments.get(tournament_id, {})
+    participants = tournament_data.get('participants', {})
+    
+    winner_name = participants.get(str(winner_id), {}).get('name', 'Игрок')
+    
+    text = (
+        f"📝 <b>Внесение счета</b>\n\n"
+        f"🏆 Победитель: <b>{winner_name}</b>\n\n"
+        f"Введите счет матча в формате:\n"
+        f"<code>6:4, 6:2</code> (для нескольких сетов)\n"
+        f"или\n"
+        f"<code>6:4</code> (для одного сета)\n\n"
+        f"Примеры:\n"
+        f"• <code>6:4, 6:2</code>\n"
+        f"• <code>7:5, 6:4, 6:2</code>\n"
+        f"• <code>6:0</code>"
+    )
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 Отмена", callback_data=f"admin_enter_match_score:{tournament_id}")
+    
+    try:
+        await callback.message.edit_caption(caption=text, reply_markup=builder.as_markup(), parse_mode='HTML')
+    except:
+        await callback.message.delete()
+        await callback.message.answer(text, reply_markup=builder.as_markup(), parse_mode='HTML')
+    
+    await callback.answer()
+
+
+@router.message(AdminEditGameStates.ENTER_TOURNAMENT_SCORE, F.text)
+async def admin_process_tournament_score_input(message: Message, state: FSMContext):
+    """Обработчик ввода счета матча турнира"""
+    if not await is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет прав администратора")
+        await state.clear()
+        return
+    
+    score = message.text.strip()
+    data = await state.get_data()
+    tournament_id = data.get('editing_tournament_id')
+    match_id = data.get('editing_match_id')
+    winner_id = data.get('match_winner_id')
+    
+    # Валидация счета
+    try:
+        sets = [s.strip() for s in score.split(',')]
+        for s in sets:
+            parts = s.split(':')
+            if len(parts) != 2:
+                raise ValueError("Неверный формат счета")
+            int(parts[0])
+            int(parts[1])
+    except ValueError:
+        await message.answer(
+            "❌ <b>Неверный формат счета!</b>\n\n"
+            "Используйте формат: <code>6:4, 6:2</code>",
+            parse_mode='HTML'
+        )
+        return
+    
+    success = await tournament_manager.update_match_result(match_id, winner_id, score, message.bot)
+    
+    if success:
+        # Создаем запись в games.json
+        try:
+            tournaments = await storage.load_tournaments()
+            tournament_data = tournaments.get(tournament_id, {})
+            
+            # Находим обновленный матч
+            match = None
+            for m in tournament_data.get('matches', []):
+                if m.get('id') == match_id:
+                    match = m
+                    break
+            
+            if match:
+                # Формируем данные игры
+                game_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+                p1_id = str(match.get('player1_id'))
+                p2_id = str(match.get('player2_id'))
+                
+                game_data = {
+                    'id': game_id,
+                    'date': datetime.now().isoformat(),
+                    'type': 'tournament',
+                    'score': score,
+                    'sets': [s.strip() for s in score.split(',')],
+                    'media_filename': None,
+                    'players': {
+                        'team1': [p1_id],
+                        'team2': [p2_id]
+                    },
+                    'rating_changes': {},  # Рейтинг для турнирных игр не меняется
+                    'tournament_id': tournament_id,
+                    'status': 'completed',
+                    'winner_id': str(winner_id)
+                }
+                
+                # Сохраняем в games.json
+                games = await storage.load_games()
+                games.append(game_data)
+                await storage.save_games(games)
+                logger.info(f"Создана запись игры {game_id} в games.json для матча {match_id}")
+        except Exception as e:
+            logger.error(f"Ошибка создания записи в games.json: {e}")
+        
+        await message.answer(
+            f"✅ <b>Счет успешно внесен!</b>\n\n"
+            f"📊 Счет: <b>{score}</b>\n\n"
+            f"Матч завершен, сетка турнира обновлена.",
+            parse_mode='HTML'
+        )
+        
+        # Возвращаемся к турниру
+        await state.clear()
+        
+        # Показываем обновленный турнир
+        tournaments = await storage.load_tournaments()
+        tournament_data = tournaments.get(tournament_id, {})
+        
+        if tournament_data:
+            from aiogram.types import CallbackQuery, BufferedInputFile
+            
+            # Генерируем обновленную сетку
+            bracket_image, _ = await build_and_render_tournament_image(tournament_data, tournament_id)
+            
+            location = tournament_data.get('city', 'Не указан')
+            if tournament_data.get('district'):
+                location += f" ({tournament_data['district']})"
+            
+            participants = tournament_data.get('participants', {})
+            text = f"🏆 {tournament_data.get('name', 'Турнир')}\n"
+            text += f"📍 {location} | {tournament_data.get('sport', 'Не указан')}\n"
+            text += f"👥 {len(participants)}/{tournament_data.get('participants_count', '?')} участников"
+            
+            builder = InlineKeyboardBuilder()
+            builder.button(text="📝 Внести счет", callback_data=f"admin_enter_match_score:{tournament_id}")
+            builder.button(text="🎮 Управление играми", callback_data=f"admin_tournament_games:{tournament_id}")
+            builder.button(text="🔙 К списку турниров", callback_data="edit_tournaments_back")
+            builder.adjust(1)
+            
+            await message.answer_photo(
+                photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
+                caption=text,
+                reply_markup=builder.as_markup()
+            )
+    else:
+        await message.answer(
+            "❌ <b>Ошибка при внесении счета</b>\n\n"
+            "Попробуйте еще раз или обратитесь к разработчику.",
+            parse_mode='HTML'
+        )
+    
+    await state.clear()

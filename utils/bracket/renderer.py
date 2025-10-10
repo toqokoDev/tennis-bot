@@ -605,7 +605,7 @@ class BracketImageGenerator:
             
             # Внешние отступы изображения
             margin = 20
-            title_gap = 10
+            title_gap = 50  # Увеличенный интервал от названия турнира до подписей туров
             # Вычисляем размеры для основной сетки
             main_bracket_width, main_bracket_height = self.calculate_bracket_dimensions(bracket)
             
@@ -819,9 +819,10 @@ class BracketImageGenerator:
                 round_x = current_x
                 current_x += self.round_spacing
             
-            # Заголовок раунда (цифровой номер круга, последний — Финал), серым и без жирного
+            # Заголовок раунда - для финала рисуем позже над точкой схождения линий
+            is_final = round_num == len(bracket.rounds) - 1
             round_title = self._get_round_title(round_num, len(bracket.rounds))
-            if self.font:
+            if self.font and not is_final:
                 try:
                     title_bbox = draw.textbbox((0, 0), round_title, font=self.font)
                     title_width = title_bbox[2] - title_bbox[0]
@@ -829,7 +830,7 @@ class BracketImageGenerator:
                         title_x = round_x + (self.cell_width - title_width) // 2
                     else:
                         title_x = round_x + (self.round_spacing - title_width) // 2
-                    draw.text((title_x, start_y - 5), 
+                    draw.text((title_x, start_y - 10), 
                         round_title, fill=self.round_title_color, font=self.font)
                 except Exception:
                     pass
@@ -845,6 +846,26 @@ class BracketImageGenerator:
                     self.draw_match_cell(draw, round_x, match_y, match, round_num)
             
             round_positions.append(match_positions)
+            
+            # Рисуем заголовок "Финал" посередине линии на той же высоте, что и другие туры
+            if is_final and self.font and match_positions and round_num > 0 and len(round_positions) > 0:
+                try:
+                    title_bbox = draw.textbbox((0, 0), round_title, font=self.font)
+                    title_width = title_bbox[2] - title_bbox[0]
+                    # Позиция по горизонтали - посередине линии от предыдущего раунда до точки схождения
+                    prev_round = round_positions[round_num - 1]
+                    if prev_round:
+                        # Начало линии (правый край предыдущих ячеек)
+                        line_start_x = prev_round[0][0] + self.cell_width if round_num - 1 == 0 else prev_round[0][0]
+                        # Конец линии (точка схождения)
+                        line_end_x = round_x - self.connector_offset
+                        # Центр линии
+                        title_x = (line_start_x + line_end_x - title_width) // 2
+                        # Позиция по вертикали - на той же высоте, что и другие туры
+                        draw.text((title_x, start_y - 10), 
+                            round_title, fill=self.round_title_color, font=self.font)
+                except Exception:
+                    pass
         
         return round_positions
     

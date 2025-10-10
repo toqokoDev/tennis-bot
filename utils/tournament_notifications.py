@@ -14,6 +14,7 @@ from utils.bracket_image_generator import (
 )
 from utils.round_robin_image_generator import build_round_robin_table
 from config.tournament_config import MIN_PARTICIPANTS
+from config.config import BOT_USERNAME
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,25 @@ class TournamentNotifications:
                     message += f"⚔️ Тип: {tournament_type}\n"
                     message += f"👤 Ваше имя: {participant_data.get('name', 'Неизвестно')}\n\n"
                     
+                    # Вспомогательная функция для создания ссылки на профиль
+                    def create_opponent_link(opp_id: str, opp_name: str) -> str:
+                        """Создает HTML-ссылку на профиль соперника"""
+                        opponent_data = users.get(opp_id, {})
+                        profile_url = f"https://t.me/{BOT_USERNAME}?start=profile_{opp_id}"
+                        link = f'⚔️ <a href="{profile_url}">{opp_name}</a>'
+                        
+                        username = opponent_data.get('username', '')
+                        if username:
+                            link += f"\n   📱 Для связи: @{username}"
+                        
+                        # Добавляем уровень игрока, если есть
+                        if opponent_data.get('player_level'):
+                            level = opponent_data.get('player_level', '')
+                            rating = opponent_data.get('rating_points', '')
+                            link += f"\n   🎾 NTRP {level} ({rating})"
+                        
+                        return link
+                    
                     if tournament_type == "Олимпийская система":
                         message += f"🎯 <b>Ваш соперник в первом раунде:</b>\n"
                         for match in user_matches:
@@ -205,12 +225,7 @@ class TournamentNotifications:
                                 if opponent_id and str(opponent_id) == str(user_id):
                                     continue
 
-                                opponent_data = users.get(opponent_id, {})
-                                opponent_username = opponent_data.get('username', '')
-                                opponent_username_text = f"@{opponent_username}" if opponent_username else "нет username"
-                                
-                                message += f"⚔️ {opponent_name}\n"
-                                message += f"📱 Для связи: {opponent_username_text}\n"
+                                message += create_opponent_link(opponent_id, opponent_name) + "\n"
                                 
                     elif tournament_type == "Круговая":
                         message += f"🎯 <b>Ваши соперники:</b>\n"
@@ -227,12 +242,7 @@ class TournamentNotifications:
                                 if opponent_id and str(opponent_id) == str(user_id):
                                     continue
 
-                                opponent_data = users.get(opponent_id, {})
-                                opponent_username = opponent_data.get('username', '')
-                                opponent_username_text = f"@{opponent_username}" if opponent_username else "нет username"
-                                
-                                message += f"⚔️ {opponent_name}\n"
-                                message += f"📱 Для связи: {opponent_username_text}\n"
+                                message += create_opponent_link(opponent_id, opponent_name) + "\n"
                     
                     logger.info(f"Отправка сообщения участнику {user_id}, длина сообщения: {len(message)}")
                     
@@ -286,6 +296,9 @@ class TournamentNotifications:
             player1_id = match_data.get('player1_id')
             player2_id = match_data.get('player2_id')
             
+            # Загружаем данные пользователей для получения информации о профилях
+            users = await storage.load_users()
+            
             message = f"⚔️ <b>Новый матч в турнире!</b>\n\n"
             message += f"🏆 Турнир: {tournament_name}\n"
             message += f"📋 Раунд: {match_data['round'] + 1}\n\n"
@@ -310,16 +323,39 @@ class TournamentNotifications:
                 # Уведомляем обоих игроков о матче персональными сообщениями
                 p1_name = match_data.get('player1_name', 'Игрок 1')
                 p2_name = match_data.get('player2_name', 'Игрок 2')
+                
+                # Получаем данные для создания ссылок на профили
+                p1_data = users.get(str(player1_id), {})
+                p2_data = users.get(str(player2_id), {})
+                
+                # Создаем HTML-ссылки на профили
+                def create_profile_link_html(user_id: str, name: str, user_data: dict) -> str:
+                    """Создает HTML-ссылку на профиль пользователя"""
+                    profile_url = f"https://t.me/{BOT_USERNAME}?start=profile_{user_id}"
+                    link = f'<a href="{profile_url}">{name}</a>'
+                    
+                    username = user_data.get('username', '')
+                    if username:
+                        link += f"\n📱 Для связи: @{username}"
+                    
+                    # Добавляем уровень игрока, если есть
+                    if user_data.get('player_level'):
+                        level = user_data.get('player_level', '')
+                        rating = user_data.get('rating_points', '')
+                        link += f"\n🎾 NTRP {level} ({rating})"
+                    
+                    return link
 
                 success_count = 0
                 # Для игрока 1
                 if player1_id:
                     try:
+                        opponent_link = create_profile_link_html(str(player2_id), p2_name, p2_data)
                         p1_msg = (
                             f"⚔️ <b>Новый матч в турнире!</b>\n\n"
                             f"🏆 Турнир: {tournament_name}\n"
                             f"📋 Раунд: {match_data['round'] + 1}\n\n"
-                            f"👤 Ваш соперник: {p2_name}"
+                            f"👤 <b>Ваш соперник:</b>\n{opponent_link}"
                         )
                         await self.bot.send_message(int(player1_id), p1_msg, parse_mode='HTML')
                         success_count += 1
@@ -329,11 +365,12 @@ class TournamentNotifications:
                 # Для игрока 2
                 if player2_id:
                     try:
+                        opponent_link = create_profile_link_html(str(player1_id), p1_name, p1_data)
                         p2_msg = (
                             f"⚔️ <b>Новый матч в турнире!</b>\n\n"
                             f"🏆 Турнир: {tournament_name}\n"
                             f"📋 Раунд: {match_data['round'] + 1}\n\n"
-                            f"👤 Ваш соперник: {p1_name}"
+                            f"👤 <b>Ваш соперник:</b>\n{opponent_link}"
                         )
                         await self.bot.send_message(int(player2_id), p2_msg, parse_mode='HTML')
                         success_count += 1

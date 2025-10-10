@@ -12,6 +12,10 @@ from config.tournament_config import MIN_PARTICIPANTS
 from aiogram import Bot
 from utils.tournament_notifications import TournamentNotifications
 import random
+import os
+from PIL import Image, ImageDraw, ImageFont
+import io
+from config.paths import BASE_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +25,148 @@ class TournamentManager:
     
     def __init__(self):
         self.storage = storage
+    
+    def _create_winners_collage(self, top_players: List[Dict[str, Any]]) -> bytes:
+        """Создает коллаж из фотографий топ-3 игроков (или меньше)
+        
+        top_players: список словарей с ключами 'user_id', 'name', 'photo_path', 'place'
+        """
+        try:
+            # Размеры коллажа
+            img_size = 200  # Размер каждой фотографии
+            padding = 20
+            label_height = 90  # Увеличено для места и имени
+            
+            # Количество игроков (максимум 3)
+            n = min(len(top_players), 3)
+            if n == 0:
+                # Создаем пустое изображение
+                img = Image.new('RGB', (400, 300), (255, 255, 255))
+                buf = io.BytesIO()
+                img.save(buf, format='PNG')
+                buf.seek(0)
+                return buf.getvalue()
+            
+            # Размеры финального изображения
+            width = n * img_size + (n + 1) * padding
+            height = img_size + label_height + padding
+            
+            # Создаем изображение
+            img = Image.new('RGB', (width, height), (255, 255, 255))
+            draw = ImageDraw.Draw(img)
+            
+            # Загружаем шрифты
+            try:
+                font_path = os.path.join(BASE_DIR, "fonts", "Circe-Bold.ttf")
+                title_font = ImageFont.truetype(font_path, 24)
+                place_font = ImageFont.truetype(font_path, 32)
+            except:
+                try:
+                    title_font = ImageFont.truetype("arialbd.ttf", 24)
+                    place_font = ImageFont.truetype("arialbd.ttf", 32)
+                except:
+                    title_font = ImageFont.load_default()
+                    place_font = ImageFont.load_default()
+            
+            # Отрисовываем каждого игрока
+            for idx, player in enumerate(top_players[:3]):
+                x = padding + idx * (img_size + padding)
+                y = padding
+                
+                # Загружаем фото игрока
+                photo_path = player.get('photo_path')
+                player_img = None
+                
+                if photo_path:
+                    try:
+                        abs_path = photo_path if os.path.isabs(photo_path) else os.path.join(BASE_DIR, photo_path)
+                        if os.path.exists(abs_path):
+                            player_img = Image.open(abs_path)
+                            player_img = player_img.convert('RGB')
+                            # Обрезаем до квадрата
+                            w, h = player_img.size
+                            side = min(w, h)
+                            left = (w - side) // 2
+                            top = (h - side) // 2
+                            player_img = player_img.crop((left, top, left + side, top + side))
+                            player_img = player_img.resize((img_size, img_size), Image.LANCZOS)
+                    except Exception as e:
+                        logger.warning(f"Не удалось загрузить фото игрока {player.get('user_id')}: {e}")
+                
+                # Если фото нет, создаем placeholder
+                if not player_img:
+                    player_img = Image.new('RGB', (img_size, img_size), (229, 229, 229))
+                    # Добавляем инициалы
+                    try:
+                        name = player.get('name', '??')
+                        parts = name.split()
+                        if len(parts) >= 2:
+                            initials = (parts[0][:1] + parts[1][:1]).upper()
+                        else:
+                            initials = name[:2].upper() if len(name) >= 2 else name.upper()
+                        
+                        d = ImageDraw.Draw(player_img)
+                        bbox = d.textbbox((0, 0), initials, font=place_font)
+                        tw = bbox[2] - bbox[0]
+                        th = bbox[3] - bbox[1]
+                        tx = (img_size - tw) // 2
+                        ty = (img_size - th) // 2
+                        d.text((tx, ty), initials, fill=(255, 255, 255), font=place_font)
+                    except:
+                        pass
+                
+                # Вставляем фото
+                img.paste(player_img, (x, y))
+                
+                # Рисуем рамку с цветом медали
+                medal_colors = {
+                    1: (255, 215, 0),   # Золото
+                    2: (192, 192, 192),  # Серебро
+                    3: (205, 127, 50)    # Бронза
+                }
+                color = medal_colors.get(idx + 1, (100, 100, 100))
+                draw.rectangle([x-2, y-2, x+img_size+2, y+img_size+2], outline=color, width=4)
+                
+                # Добавляем место и имя
+                place_text = f"{idx + 1} место"
+                name = player.get('name', 'Игрок')
+                
+                # Рисуем место
+                medal_y = y + img_size + 5
+                try:
+                    bbox = draw.textbbox((0, 0), place_text, font=title_font)
+                    medal_w = bbox[2] - bbox[0]
+                    medal_x = x + (img_size - medal_w) // 2
+                    draw.text((medal_x, medal_y), place_text, fill=color, font=title_font)
+                except:
+                    draw.text((x + 5, medal_y), place_text, fill=color, font=title_font)
+                
+                # Рисуем имя (обрезаем если слишком длинное)
+                name_y = medal_y + 30
+                if len(name) > 15:
+                    name = name[:13] + '...'
+                try:
+                    bbox = draw.textbbox((0, 0), name, font=title_font)
+                    name_w = bbox[2] - bbox[0]
+                    name_x = x + (img_size - name_w) // 2
+                    draw.text((name_x, name_y), name, fill=(31, 41, 55), font=title_font)
+                except:
+                    draw.text((x + 5, name_y), name, fill=(31, 41, 55), font=title_font)
+            
+            # Сохраняем в буфер
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            buf.seek(0)
+            return buf.getvalue()
+            
+        except Exception as e:
+            logger.error(f"Ошибка создания коллажа победителей: {e}")
+            # Возвращаем пустое изображение в случае ошибки
+            img = Image.new('RGB', (400, 300), (255, 255, 255))
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            buf.seek(0)
+            return buf.getvalue()
     
     async def check_tournament_readiness(self, tournament_id: str) -> bool:
         """Проверяет, готов ли турнир к старту"""
@@ -425,6 +571,58 @@ class TournamentManager:
                 logger.warning(f"Bot не передан, уведомления не будут отправлены")
                 return
             
+            # Загружаем данные пользователей для получения фото
+            users = await self.storage.load_users()
+            
+            # Готовим данные для топ-3 игроков
+            top_players_data = []
+            if t_type == 'Круговая':
+                # Для круговой системы берем первых 3 из order
+                for idx in range(min(3, len(order))):
+                    uid = order[idx]
+                    user_data = users.get(uid, {})
+                    top_players_data.append({
+                        'user_id': uid,
+                        'name': participants.get(uid, {}).get('name', 'Игрок'),
+                        'photo_path': user_data.get('photo_path'),
+                        'place': idx + 1
+                    })
+            else:
+                # Для олимпийской системы: чемпион, финалист, 3 место
+                if champion:
+                    user_data = users.get(champion, {})
+                    top_players_data.append({
+                        'user_id': champion,
+                        'name': pname(champion),
+                        'photo_path': user_data.get('photo_path'),
+                        'place': 1
+                    })
+                if runner_up:
+                    user_data = users.get(runner_up, {})
+                    top_players_data.append({
+                        'user_id': runner_up,
+                        'name': pname(runner_up),
+                        'photo_path': user_data.get('photo_path'),
+                        'place': 2
+                    })
+                if third_place_winner:
+                    user_data = users.get(third_place_winner, {})
+                    top_players_data.append({
+                        'user_id': third_place_winner,
+                        'name': pname(third_place_winner),
+                        'photo_path': user_data.get('photo_path'),
+                        'place': 3
+                    })
+            
+            # Создаем коллаж победителей
+            collage_bytes = None
+            if top_players_data:
+                try:
+                    collage_bytes = self._create_winners_collage(top_players_data)
+                    logger.info(f"Создан коллаж победителей для турнира {tournament_id}")
+                except Exception as e:
+                    logger.error(f"Ошибка создания коллажа: {e}")
+            
             summary = "\n".join([line for line in summary_lines if line])
             success_count = 0
             total_count = len(participants)
@@ -443,7 +641,13 @@ class TournamentManager:
                     f"🎉 Поздравляем всех участников!"
                 )
                 try:
-                    await bot.send_message(int(uid), msg, parse_mode='HTML')
+                    # Отправляем с коллажем, если удалось его создать
+                    if collage_bytes:
+                        from aiogram.types import BufferedInputFile
+                        photo = BufferedInputFile(collage_bytes, filename=f"winners_{tournament_id}.png")
+                        await bot.send_photo(int(uid), photo=photo, caption=msg, parse_mode='HTML')
+                    else:
+                        await bot.send_message(int(uid), msg, parse_mode='HTML')
                     success_count += 1
                     logger.info(f"✅ Уведомление о завершении турнира отправлено участнику {uid} ({user_name})")
                 except Exception as e:

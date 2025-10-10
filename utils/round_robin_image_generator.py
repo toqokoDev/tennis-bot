@@ -194,9 +194,18 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     top_row_h = 70  # Увеличено для больших аватаров
     extra_cell_w = 105  # Размер для колонок с цифрами
     padding = 20
-    # Если турнир еще не начался (нет результатов), не показываем места
+    
+    # Проверяем, завершён ли турнир (все матчи сыграны)
+    # В круговой системе должно быть n*(n-1)/2 матчей
+    total_matches_needed = n * (n - 1) // 2
     has_results = results and len(results) > 0
-    extra_cols = ["Победы", "Очки", "Места"]
+    tournament_finished = has_results and len(results) >= total_matches_needed
+    
+    # Колонку "Места" показываем только если турнир завершён
+    if tournament_finished:
+        extra_cols = ["Победы", "Очки", "Места"]
+    else:
+        extra_cols = ["Победы", "Очки"]
 
     width = padding * 2 + left_col_w + n * cell_w + len(extra_cols) * extra_cell_w
     # Уменьшаем дополнительную высоту под описание турнира
@@ -545,14 +554,15 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
         sd_text = str(sd_value) if sd_value != 0 or len(wins_groups.get(wins.get(pid, 0), [])) > 1 else "-"
         draw.text((col_x + extra_cell_w // 2 - 12, text_y), sd_text, fill=(31, 41, 55), font=cell_font)
         col_x += extra_cell_w
-        # Места — вычислим сортировку по wins, затем по сумме разниц очков
+        # Места — рисуем ячейки только если турнир завершён
         # Место рисуем после сортировки списка players по этим критериям
         # Здесь временно заполним, а ниже отрисуем корректные места поверх
-        draw.rectangle([col_x, y0, col_x + extra_cell_w, y0 + cell_h], outline=(209, 213, 219))
-        col_x += extra_cell_w
+        if tournament_finished:
+            draw.rectangle([col_x, y0, col_x + extra_cell_w, y0 + cell_h], outline=(209, 213, 219))
+            col_x += extra_cell_w
 
-    # Пересортируем для определения мест (только если есть результаты)
-    if has_results:
+    # Пересортируем для определения мест (только если турнир завершён)
+    if tournament_finished:
         # Сортировка по победам, затем по сумме разниц очков в сетах
         order = sorted(range(n), key=lambda idx: (wins.get(str(players[idx].get('id')), 0), set_diff.get(str(players[idx].get('id')), 0)), reverse=True)
         place_of: Dict[str, int] = {}
