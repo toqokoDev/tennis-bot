@@ -240,13 +240,13 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     draw.rectangle([table_x, table_y, table_x + left_col_w, table_y + top_row_h], fill=(248, 250, 252), outline=(209, 213, 219))
     players_label = "Игроки"
     try:
-        bbox = draw.textbbox((0, 0), players_label, font=header_font)
+        bbox = draw.textbbox((0, 0), players_label, font=cell_font)
         label_width = bbox[2] - bbox[0]
         label_x = table_x + (left_col_w - label_width) // 2
         label_y = table_y + (top_row_h - 24) // 2
-        draw.text((label_x, label_y), players_label, fill=(31, 41, 55), font=header_font)
+        draw.text((label_x, label_y), players_label, fill=(31, 41, 55), font=cell_font)
     except Exception:
-        draw.text((table_x + 10, table_y + (top_row_h - 24) // 2), players_label, fill=(31, 41, 55), font=header_font)
+        draw.text((table_x + 10, table_y + (top_row_h - 24) // 2), players_label, fill=(31, 41, 55), font=cell_font)
     
     # Верхняя строка: только аватар (без имени)
     for j, p in enumerate(players):
@@ -266,12 +266,12 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
         # Вертикальное центрирование заголовка
         header_y = table_y + (top_row_h - 24) // 2
         try:
-            bbox = draw.textbbox((0, 0), col_name, font=header_font)
+            bbox = draw.textbbox((0, 0), col_name, font=cell_font)
             text_width = bbox[2] - bbox[0]
             header_x = xh + (extra_cell_w - text_width) // 2
-            draw.text((header_x, header_y), col_name, fill=(31, 41, 55), font=header_font)
+            draw.text((header_x, header_y), col_name, fill=(31, 41, 55), font=cell_font)
         except Exception:
-            draw.text((xh + 10, header_y), col_name, fill=(31, 41, 55), font=header_font)
+            draw.text((xh + 10, header_y), col_name, fill=(31, 41, 55), font=cell_font)
         xh += extra_cell_w
 
     # Левая колонка с аватаром и именем
@@ -505,8 +505,8 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                     return ImageFont.load_default()
 
         small_note_font = _load_small_font(16)
-        y_pos = table_y + table_h + 10
-        line_spacing = 14  # Увеличенный межстрочный интервал для читаемости
+        y_pos = table_y + table_h + 30
+        line_spacing = 18  # Увеличенный межстрочный интервал для читаемости
         for line in note.split('\n'):
             draw.text((padding, y_pos), line, fill=(0, 0, 0), font=small_note_font)
             y_pos += line_spacing
