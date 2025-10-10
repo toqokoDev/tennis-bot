@@ -503,7 +503,7 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
 
         small_note_font = _load_small_font(16)
         y_pos = table_y + table_h + 10
-        line_spacing = 24  # Увеличенный межстрочный интервал для читаемости
+        line_spacing = 14  # Увеличенный межстрочный интервал для читаемости
         for line in note.split('\n'):
             draw.text((padding, y_pos), line, fill=(0, 0, 0), font=small_note_font)
             y_pos += line_spacing
