@@ -187,8 +187,8 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                 pass
     
     # Размеры таблицы
-    # Минимальная ширина для аватара (60 + отступы), максимум под текст + отступы (5px с каждой стороны)
-    cell_w = max(80, min(150, max_score_width + 10)) if max_score_width > 0 else 100
+    # Минимальная ширина для аватара (60 + отступы), максимум под текст + отступы (15px с каждой стороны)
+    cell_w = max(80, min(180, max_score_width + 30)) if max_score_width > 0 else 100
     cell_h = 70  # Увеличено для больших шрифтов
     left_col_w = 350  # Увеличено для полных имен
     top_row_h = 70  # Увеличено для больших аватаров
@@ -484,13 +484,13 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                 rec = res_map.get(key)
                 if rec:
                     score = rec.get('score', '')
-                    # Центрирование текста с отступом 5px
+                    # Центрирование текста с отступом 15px
                     try:
                         bbox = draw.textbbox((0, 0), score, font=cell_font)
                         score_width = bbox[2] - bbox[0]
                         score_x = x0 + (cell_w - score_width) // 2
                     except Exception:
-                        score_x = x0 + 5
+                        score_x = x0 + 15
                     draw.text((score_x, text_y), score, fill=(31, 41, 55), font=cell_font)
             else:
                 # Нижняя половина: дублируем счет, чтобы был виден у обоих игроков
@@ -500,13 +500,13 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                 rec = res_map.get(key)
                 if rec:
                     score = rec.get('score', '')
-                    # Центрирование текста с отступом 5px
+                    # Центрирование текста с отступом 15px
                     try:
                         bbox = draw.textbbox((0, 0), score, font=cell_font)
                         score_width = bbox[2] - bbox[0]
                         score_x = x0 + (cell_w - score_width) // 2
                     except Exception:
-                        score_x = x0 + 5
+                        score_x = x0 + 15
                     draw.text((score_x, text_y), score, fill=(31, 41, 55), font=cell_font)
 
     # Правые суммарные колонки: Победы, Очки, Места (столбец "Игры" убран)
