@@ -1,5 +1,6 @@
 from typing import Any, Dict
 import logging
+import os
 from aiogram import Bot, types
 from aiogram.types import FSInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -850,15 +851,53 @@ async def send_tournament_application_to_channel(
         deep_link = f"https://t.me/{BOT_USERNAME}?start=join_tournament_{tournament_id}"
         builder.row(InlineKeyboardButton(text="✅ Участвовать", url=deep_link))
 
-        await bot.send_message(
-            chat_id=channel_id,
-            text=text,
-            parse_mode="Markdown",
-            reply_markup=builder.as_markup(),
-            disable_web_page_preview=True,
-        )
+        # Проверяем, есть ли фото анкеты у участника
+        photo_path = user_data.get('photo_path')
+        if photo_path:
+            try:
+                # Формируем путь к фото
+                abs_path = photo_path if os.path.isabs(photo_path) else os.path.join(BASE_DIR, photo_path)
+                if os.path.exists(abs_path):
+                    # Отправляем с фото
+                    photo_file = FSInputFile(abs_path)
+                    await bot.send_photo(
+                        chat_id=channel_id,
+                        photo=photo_file,
+                        caption=text,
+                        parse_mode="Markdown",
+                        reply_markup=builder.as_markup(),
+                    )
+                    logger.info(f"Отправлено уведомление с фото участника {user_id} в канал")
+                else:
+                    # Фото не найдено, отправляем без фото
+                    await bot.send_message(
+                        chat_id=channel_id,
+                        text=text,
+                        parse_mode="Markdown",
+                        reply_markup=builder.as_markup(),
+                        disable_web_page_preview=True,
+                    )
+            except Exception as e:
+                logger.warning(f"Не удалось отправить фото участника: {e}")
+                # Если не удалось отправить с фото, отправляем без него
+                await bot.send_message(
+                    chat_id=channel_id,
+                    text=text,
+                    parse_mode="Markdown",
+                    reply_markup=builder.as_markup(),
+                    disable_web_page_preview=True,
+                )
+        else:
+            # Нет фото, отправляем только текст
+            await bot.send_message(
+                chat_id=channel_id,
+                text=text,
+                parse_mode="Markdown",
+                reply_markup=builder.as_markup(),
+                disable_web_page_preview=True,
+            )
     except Exception as e:
-        print(f"Ошибка отправки уведомления об участнике турнира: {e}")
+        logger.error(f"Ошибка отправки уведомления об участнике турнира: {e}")
 
 
 async def send_tournament_started_to_channel(

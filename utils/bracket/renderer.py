@@ -19,7 +19,7 @@ class BracketImageGenerator:
         # Размеры шрифтов (увеличены в 2 раза)
         self.font_size = 44
         self.name_font_size = 44
-        self.title_font_size = 48
+        self.title_font_size = 44
         self.subtitle_font_size = 44
         self.score_font_size = 44
         
@@ -662,12 +662,12 @@ class BracketImageGenerator:
             
             # Заголовок турнира (черный, без жирного)
             title = self._sanitize_title(bracket.name)
-            if self.font:
+            if self.title_font:
                 try:
-                    title_bbox = draw.textbbox((0, 0), title, font=self.font)
+                    title_bbox = draw.textbbox((0, 0), title, font=self.title_font)
                     title_width = title_bbox[2] - title_bbox[0]
                     draw.text(((total_width - title_width) // 2, margin), title, 
-                             fill=(0, 0, 0), font=self.font)
+                             fill=(0, 0, 0), font=self.title_font)
                 except Exception:
                     pass
             

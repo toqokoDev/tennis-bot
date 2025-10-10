@@ -418,6 +418,9 @@ async def admin_save_level_edit(message: types.Message, state: FSMContext):
         if rating < 0:
             await message.answer("❌ Рейтинг не может быть отрицательным. Попробуйте еще раз:")
             return
+        if rating > 2800:
+            await message.answer("❌ Максимальный рейтинг - 2800. Попробуйте еще раз:")
+            return
     except ValueError:
         await message.answer("❌ Пожалуйста, введите корректное число для рейтинга:")
         return

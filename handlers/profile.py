@@ -559,6 +559,9 @@ async def save_level_edit(message: types.Message, state: FSMContext):
             if rating < 0:
                 await message.answer("❌ Рейтинг не может быть отрицательным. Попробуйте еще раз:")
                 return
+            if rating > 2800:
+                await message.answer("❌ Максимальный рейтинг - 2800. Попробуйте еще раз:")
+                return
             
             # Автоматически рассчитываем уровень на основе очков
             calculated_level = calculate_level_from_points(rating, sport)
