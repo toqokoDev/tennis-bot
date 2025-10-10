@@ -72,29 +72,29 @@ class TournamentManager:
             
             # Пытаемся загрузить Circe (поддерживает кириллицу)
             try:
-                font_path = os.path.join(BASE_DIR, "fonts", "Circe-Bold.ttf")
+                font_path = os.path.join(BASE_DIR, "fonts", "Circe.ttf")
                 if os.path.exists(font_path):
-                    title_font = ImageFont.truetype(font_path, 20)  # Для 2-го и 3-го места
-                    name_font = ImageFont.truetype(font_path, 18)   # Для имен
-                    place_font = ImageFont.truetype(font_path, 26)  # Для 1-го места
+                    title_font = ImageFont.truetype(font_path, 16)  # Для всех мест
+                    name_font = ImageFont.truetype(font_path, 15)   # Для имен
+                    place_font = ImageFont.truetype(font_path, 16)  # Для всех мест
             except Exception as e:
                 logger.debug(f"Не удалось загрузить Circe: {e}")
             
             # Пробуем DejaVuSans (хорошая поддержка Unicode)
             if not title_font:
                 try:
-                    title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 20)
-                    name_font = ImageFont.truetype("DejaVuSans.ttf", 18)
-                    place_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 26)
+                    title_font = ImageFont.truetype("DejaVuSans.ttf", 16)
+                    name_font = ImageFont.truetype("DejaVuSans.ttf", 15)
+                    place_font = ImageFont.truetype("DejaVuSans.ttf", 16)
                 except Exception as e:
                     logger.debug(f"Не удалось загрузить DejaVuSans: {e}")
             
             # Фолбэк на Arial
             if not title_font:
                 try:
-                    title_font = ImageFont.truetype("arial.ttf", 20)
-                    name_font = ImageFont.truetype("arial.ttf", 18)
-                    place_font = ImageFont.truetype("arialbd.ttf", 26)
+                    title_font = ImageFont.truetype("arial.ttf", 16)
+                    name_font = ImageFont.truetype("arial.ttf", 15)
+                    place_font = ImageFont.truetype("arial.ttf", 16)
                 except Exception as e:
                     logger.debug(f"Не удалось загрузить Arial: {e}")
             
@@ -115,7 +115,7 @@ class TournamentManager:
                     # Первое место - большое вверху в центре
                     size = first_place_size
                     x = (width - first_place_size) // 2
-                    y = padding
+                    y = padding + 20  # Сдвигаем первое место ниже
                     render_order.append((0, player, size, x, y))
                 elif place == 2:
                     # Второе место - меньше, внизу слева
@@ -220,12 +220,12 @@ class TournamentManager:
                     3: (205, 127, 50)    # Бронза
                 }
                 color = medal_colors.get(place, (100, 100, 100))
-                border_width = 6 if place == 1 else 4
+                border_width = 3  # Одинаковая ширина рамки для всех
                 draw.rectangle([x-2, y-2, x+size+2, y+size+2], outline=color, width=border_width)
                 
-                # Выбираем шрифт в зависимости от места
-                current_title_font = place_font if place == 1 else title_font
-                current_name_font = title_font if place == 1 else name_font
+                # Используем одинаковый шрифт для всех
+                current_title_font = title_font
+                current_name_font = name_font
                 
                 # Добавляем место и имя
                 place_text = f"{place} место"
