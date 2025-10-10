@@ -29,13 +29,20 @@ class TournamentManager:
     def _create_winners_collage(self, top_players: List[Dict[str, Any]]) -> bytes:
         """Создает коллаж из фотографий топ-3 игроков (или меньше)
         
+        Дизайн: 
+        - 1-е место: большое фото (280x280) вверху в центре
+        - 2-е место: меньшее фото (180x180) внизу слева
+        - 3-е место: меньшее фото (180x180) внизу справа
+        
         top_players: список словарей с ключами 'user_id', 'name', 'photo_path', 'place'
         """
         try:
-            # Размеры коллажа
-            img_size = 200  # Размер каждой фотографии
+            # Размеры
+            first_place_size = 280  # Размер фото первого места
+            other_size = 180  # Размер фото 2-го и 3-го места
             padding = 20
-            label_height = 90  # Увеличено для места и имени
+            label_height = 70  # Высота для подписей
+            vertical_spacing = 20  # Расстояние между уровнями
             
             # Количество игроков (максимум 3)
             n = min(len(top_players), 3)
@@ -48,8 +55,11 @@ class TournamentManager:
                 return buf.getvalue()
             
             # Размеры финального изображения
-            width = n * img_size + (n + 1) * padding
-            height = img_size + label_height + padding
+            # Компоновка:
+            #        [1-е место]
+            #   [2-е место] [3-е место]
+            width = max(first_place_size, 2 * other_size + padding) + 2 * padding
+            height = padding + first_place_size + label_height + vertical_spacing + other_size + label_height + padding
             
             # Создаем изображение
             img = Image.new('RGB', (width, height), (255, 255, 255))
@@ -57,42 +67,75 @@ class TournamentManager:
             
             # Загружаем шрифты с поддержкой кириллицы
             title_font = None
+            name_font = None
             place_font = None
             
             # Пытаемся загрузить Circe (поддерживает кириллицу)
             try:
                 font_path = os.path.join(BASE_DIR, "fonts", "Circe-Bold.ttf")
                 if os.path.exists(font_path):
-                    title_font = ImageFont.truetype(font_path, 24)
-                    place_font = ImageFont.truetype(font_path, 32)
+                    title_font = ImageFont.truetype(font_path, 20)  # Для 2-го и 3-го места
+                    name_font = ImageFont.truetype(font_path, 18)   # Для имен
+                    place_font = ImageFont.truetype(font_path, 26)  # Для 1-го места
             except Exception as e:
                 logger.debug(f"Не удалось загрузить Circe: {e}")
             
             # Пробуем DejaVuSans (хорошая поддержка Unicode)
             if not title_font:
                 try:
-                    title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 24)
-                    place_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 32)
+                    title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 20)
+                    name_font = ImageFont.truetype("DejaVuSans.ttf", 18)
+                    place_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 26)
                 except Exception as e:
                     logger.debug(f"Не удалось загрузить DejaVuSans: {e}")
             
             # Фолбэк на Arial
             if not title_font:
                 try:
-                    title_font = ImageFont.truetype("arial.ttf", 24)
-                    place_font = ImageFont.truetype("arialbd.ttf", 32)
+                    title_font = ImageFont.truetype("arial.ttf", 20)
+                    name_font = ImageFont.truetype("arial.ttf", 18)
+                    place_font = ImageFont.truetype("arialbd.ttf", 26)
                 except Exception as e:
                     logger.debug(f"Не удалось загрузить Arial: {e}")
             
-            # Последний фолбэк - но без кириллицы
+            # Последний фолбэк
             if not title_font:
                 title_font = ImageFont.load_default()
+                name_font = ImageFont.load_default()
                 place_font = ImageFont.load_default()
             
-            # Отрисовываем каждого игрока
+            # Порядок отрисовки: [1-е место вверху в центре] [2-е слева внизу] [3-е справа внизу]
+            render_order = []
+            
+            # Определяем позиции и размеры для каждого места
             for idx, player in enumerate(top_players[:3]):
-                x = padding + idx * (img_size + padding)
-                y = padding
+                place = player.get('place', idx + 1)
+                
+                if place == 1:
+                    # Первое место - большое вверху в центре
+                    size = first_place_size
+                    x = (width - first_place_size) // 2
+                    y = padding
+                    render_order.append((0, player, size, x, y))
+                elif place == 2:
+                    # Второе место - меньше, внизу слева
+                    size = other_size
+                    x = (width // 2 - other_size - padding // 2)
+                    y = padding + first_place_size + label_height + vertical_spacing
+                    render_order.append((1, player, size, x, y))
+                elif place == 3:
+                    # Третье место - меньше, внизу справа
+                    size = other_size
+                    x = (width // 2 + padding // 2)
+                    y = padding + first_place_size + label_height + vertical_spacing
+                    render_order.append((2, player, size, x, y))
+            
+            # Сортируем по order_idx для правильного порядка отрисовки
+            render_order.sort(key=lambda item: item[0])
+            
+            # Отрисовываем каждого игрока
+            for order_idx, player, size, x, y in render_order:
+                place = player.get('place', order_idx + 1)
                 
                 # Загружаем фото игрока
                 photo_path = player.get('photo_path')
@@ -110,48 +153,45 @@ class TournamentManager:
                             left = (w - side) // 2
                             top = (h - side) // 2
                             player_img = player_img.crop((left, top, left + side, top + side))
-                            player_img = player_img.resize((img_size, img_size), Image.LANCZOS)
+                            player_img = player_img.resize((size, size), Image.LANCZOS)
                     except Exception as e:
                         logger.warning(f"Не удалось загрузить фото игрока {player.get('user_id')}: {e}")
                 
                 # Если фото нет, создаем placeholder с серым фоном и инициалами
                 if not player_img:
-                    # Серый фон с градиентом для красоты
-                    player_img = Image.new('RGB', (img_size, img_size), (180, 180, 180))
+                    # Серый фон
+                    player_img = Image.new('RGB', (size, size), (180, 180, 180))
                     
                     # Добавляем инициалы крупным шрифтом
                     try:
-                        name = player.get('name', '??')
-                        parts = name.split()
+                        name_text = player.get('name', '??')
+                        parts = name_text.split()
                         if len(parts) >= 2:
                             initials = (parts[0][:1] + parts[1][:1]).upper()
                         else:
-                            initials = name[:2].upper() if len(name) >= 2 else name.upper()
+                            initials = name_text[:2].upper() if len(name_text) >= 2 else name_text.upper()
                         
-                        # Создаем более крупный шрифт для инициалов (используем тот же что загружен)
+                        # Размер шрифта для инициалов зависит от размера фото
+                        initials_size = int(size * 0.35)  # 35% от размера изображения
                         initials_font = None
                         try:
                             font_path = os.path.join(BASE_DIR, "fonts", "Circe-Bold.ttf")
                             if os.path.exists(font_path):
-                                initials_font = ImageFont.truetype(font_path, 80)
+                                initials_font = ImageFont.truetype(font_path, initials_size)
                         except:
                             pass
                         
                         if not initials_font:
                             try:
-                                initials_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 80)
+                                initials_font = ImageFont.truetype("DejaVuSans-Bold.ttf", initials_size)
                             except:
                                 pass
                         
                         if not initials_font:
                             try:
-                                initials_font = ImageFont.truetype("arialbd.ttf", 80)
+                                initials_font = ImageFont.truetype("arialbd.ttf", initials_size)
                             except:
-                                # Используем стандартный шрифт с увеличенным размером
-                                try:
-                                    initials_font = ImageFont.truetype("arial.ttf", 80)
-                                except:
-                                    initials_font = place_font
+                                initials_font = place_font
                         
                         d = ImageDraw.Draw(player_img)
                         
@@ -159,8 +199,8 @@ class TournamentManager:
                         bbox = d.textbbox((0, 0), initials, font=initials_font)
                         tw = bbox[2] - bbox[0]
                         th = bbox[3] - bbox[1]
-                        tx = (img_size - tw) // 2
-                        ty = (img_size - th) // 2
+                        tx = (size - tw) // 2
+                        ty = (size - th) // 2
                         
                         # Рисуем белые инициалы с небольшой тенью для глубины
                         # Тень
@@ -179,40 +219,46 @@ class TournamentManager:
                     2: (192, 192, 192),  # Серебро
                     3: (205, 127, 50)    # Бронза
                 }
-                color = medal_colors.get(idx + 1, (100, 100, 100))
-                draw.rectangle([x-2, y-2, x+img_size+2, y+img_size+2], outline=color, width=4)
+                color = medal_colors.get(place, (100, 100, 100))
+                border_width = 6 if place == 1 else 4
+                draw.rectangle([x-2, y-2, x+size+2, y+size+2], outline=color, width=border_width)
+                
+                # Выбираем шрифт в зависимости от места
+                current_title_font = place_font if place == 1 else title_font
+                current_name_font = title_font if place == 1 else name_font
                 
                 # Добавляем место и имя
-                place_text = f"{idx + 1} место"
+                place_text = f"{place} место"
                 name = player.get('name', 'Игрок')
                 
                 # Рисуем место
-                medal_y = y + img_size + 5
+                medal_y = y + size + 5
                 try:
-                    bbox = draw.textbbox((0, 0), place_text, font=title_font)
+                    bbox = draw.textbbox((0, 0), place_text, font=current_title_font)
                     medal_w = bbox[2] - bbox[0]
-                    medal_x = x + (img_size - medal_w) // 2
-                    draw.text((medal_x, medal_y), place_text, fill=color, font=title_font)
+                    medal_x = x + (size - medal_w) // 2
+                    draw.text((medal_x, medal_y), place_text, fill=color, font=current_title_font)
                 except Exception as e:
                     logger.debug(f"Ошибка отрисовки места: {e}")
                     try:
-                        draw.text((x + 5, medal_y), place_text, fill=color, font=title_font)
+                        draw.text((x + 5, medal_y), place_text, fill=color, font=current_title_font)
                     except:
                         pass
                 
                 # Рисуем имя (обрезаем если слишком длинное)
-                name_y = medal_y + 30
-                if len(name) > 15:
-                    name = name[:13] + '...'
+                name_y = medal_y + 28
+                max_name_len = 18 if place == 1 else 12
+                if len(name) > max_name_len:
+                    name = name[:max_name_len-2] + '...'
                 try:
-                    bbox = draw.textbbox((0, 0), name, font=title_font)
+                    bbox = draw.textbbox((0, 0), name, font=current_name_font)
                     name_w = bbox[2] - bbox[0]
-                    name_x = x + (img_size - name_w) // 2
-                    draw.text((name_x, name_y), name, fill=(31, 41, 55), font=title_font)
+                    name_x = x + (size - name_w) // 2
+                    draw.text((name_x, name_y), name, fill=(31, 41, 55), font=current_name_font)
                 except Exception as e:
                     logger.debug(f"Ошибка отрисовки имени: {e}")
                     try:
-                        draw.text((x + 5, name_y), name, fill=(31, 41, 55), font=title_font)
+                        draw.text((x + 5, name_y), name, fill=(31, 41, 55), font=current_name_font)
                     except:
                         pass
             
@@ -1203,3 +1249,80 @@ class TournamentManager:
 
 # Глобальный экземпляр менеджера турниров
 tournament_manager = TournamentManager()
+
+
+if __name__ == "__main__":
+    """Тестирование создания коллажа победителей"""
+    import asyncio
+    
+    # Тестовые данные игроков
+    test_players = [
+        {
+            'user_id': '1',
+            'name': 'Иван Петров',
+            'photo_path': None,  # Тест без фото - должен показать инициалы
+            'place': 1
+        },
+        {
+            'user_id': '2',
+            'name': 'Анна Сидорова',
+            'photo_path': None,
+            'place': 2
+        },
+        {
+            'user_id': '3',
+            'name': 'Сергей Иванов',
+            'photo_path': None,
+            'place': 3
+        }
+    ]
+    
+    print("Создаю тестовый коллаж победителей...")
+    manager = TournamentManager()
+    
+    try:
+        collage_bytes = manager._create_winners_collage(test_players)
+        
+        # Сохраняем в файл для проверки
+        output_file = os.path.join(BASE_DIR, "test_winners_collage.png")
+        with open(output_file, 'wb') as f:
+            f.write(collage_bytes)
+        
+        print(f"✅ Коллаж успешно создан!")
+        print(f"📁 Сохранен в: {output_file}")
+        print(f"📊 Размер: {len(collage_bytes)} байт")
+        
+        # Тест с фото (если есть)
+        print("\nТестирование с реальными фото из базы...")
+        
+        async def test_with_real_photos():
+            from services.storage import storage
+            users = await storage.load_users()
+            
+            # Берем первых 3 пользователей с фото
+            test_players_with_photos = []
+            for user_id, user_data in list(users.items())[:3]:
+                if user_data.get('photo_path'):
+                    test_players_with_photos.append({
+                        'user_id': user_id,
+                        'name': f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip(),
+                        'photo_path': user_data.get('photo_path'),
+                        'place': len(test_players_with_photos) + 1
+                    })
+            
+            if len(test_players_with_photos) >= 1:
+                collage_bytes_with_photos = manager._create_winners_collage(test_players_with_photos)
+                output_file_photos = os.path.join(BASE_DIR, "test_winners_collage_with_photos.png")
+                with open(output_file_photos, 'wb') as f:
+                    f.write(collage_bytes_with_photos)
+                print(f"✅ Коллаж с фото создан!")
+                print(f"📁 Сохранен в: {output_file_photos}")
+            else:
+                print("⚠️ Не найдено пользователей с фото для теста")
+        
+        asyncio.run(test_with_real_photos())
+        
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
+        import traceback
+        traceback.print_exc()
