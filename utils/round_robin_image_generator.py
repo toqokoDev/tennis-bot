@@ -33,6 +33,7 @@ def _load_fonts():
     subtitle_font = _try_font(circe_regular, 18)
     header_font = _try_font(circe_bold, 18)
     cell_font = _try_font(circe_regular, 24)
+    
 
     # Фолбэк Arial
     if not title_font:
