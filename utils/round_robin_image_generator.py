@@ -192,7 +192,7 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     cell_h = 70  # Увеличено для больших шрифтов
     left_col_w = 350  # Увеличено для полных имен
     top_row_h = 70  # Увеличено для больших аватаров
-    extra_cell_w = 95  # Размер для колонок с цифрами
+    extra_cell_w = 105  # Размер для колонок с цифрами
     padding = 20
     # Если турнир еще не начался (нет результатов), не показываем места
     has_results = results and len(results) > 0
