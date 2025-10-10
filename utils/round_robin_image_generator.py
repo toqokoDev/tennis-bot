@@ -416,12 +416,11 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
             'b_sets': b_sets,
         }
 
-    # Подсчет статистики 3/1/0 и тай-брейк по разнице сетов между равными по очкам
+    # Подсчет статистики: победы и сумма разниц очков в сетах между игроками с равным числом побед
     ids = [str(p.get('id')) for p in players]
     games_played = {pid: 0 for pid in ids}
     wins = {pid: 0 for pid in ids}
-    points = {pid: 0 for pid in ids}
-    tie_sd = {pid: 0 for pid in ids}
+    set_diff = {pid: 0 for pid in ids}  # Сумма разниц очков в сетах для тай-брейка
 
     for i in range(n):
         for j in range(i + 1, n):
@@ -438,34 +437,38 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                 a_sets, b_sets = rec['b_sets'], rec['a_sets']
             if a_sets > b_sets:
                 wins[pa] += 1
-                points[pa] += 3
             elif b_sets > a_sets:
                 wins[pb] += 1
-                points[pb] += 3
-            else:
-                points[pa] += 1
-                points[pb] += 1
 
+    # Группируем игроков по количеству побед
     from collections import defaultdict
-    pts_groups = defaultdict(list)
+    wins_groups = defaultdict(list)
     for pid in ids:
-        pts_groups[points[pid]].append(pid)
-    for pts, group in pts_groups.items():
+        wins_groups[wins[pid]].append(pid)
+    
+    # Для игроков с равным числом побед вычисляем разницу очков в сетах только между ними
+    for win_count, group in wins_groups.items():
         if len(group) <= 1:
+            # Если игрок один в группе, разница очков не важна
             continue
         for pid in group:
-            sd = 0
+            points_diff = 0
             for opp in group:
                 if opp == pid:
                     continue
                 rec = res_map.get(tuple(sorted([pid, opp])))
                 if not rec:
                     continue
-                if rec['a'] == pid:
-                    sd += rec['a_sets'] - rec['b_sets']
-                else:
-                    sd += rec['b_sets'] - rec['a_sets']
-            tie_sd[pid] = sd
+                # Считаем сумму разниц очков в каждом сете
+                sets = rec.get('sets', [])
+                for set_score in sets:
+                    if rec['a'] == pid:
+                        # pid это игрок 'a', считаем его_очки - очки_соперника
+                        points_diff += set_score[0] - set_score[1]
+                    else:
+                        # pid это игрок 'b', считаем его_очки - очки_соперника
+                        points_diff += set_score[1] - set_score[0]
+            set_diff[pid] = points_diff
 
     for i in range(n):
         for j in range(n):
@@ -536,11 +539,13 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
         draw.rectangle([col_x, y0, col_x + extra_cell_w, y0 + cell_h], outline=(209, 213, 219))
         draw.text((col_x + extra_cell_w // 2 - 12, text_y), str(wins.get(pid, 0)), fill=(31, 41, 55), font=cell_font)
         col_x += extra_cell_w
-        # Очки
+        # Очки (сумма разниц очков в сетах между игроками с равным числом побед)
         draw.rectangle([col_x, y0, col_x + extra_cell_w, y0 + cell_h], outline=(209, 213, 219))
-        draw.text((col_x + extra_cell_w // 2 - 12, text_y), str(points.get(pid, 0)), fill=(31, 41, 55), font=cell_font)
+        sd_value = set_diff.get(pid, 0)
+        sd_text = str(sd_value) if sd_value != 0 or len(wins_groups.get(wins.get(pid, 0), [])) > 1 else "-"
+        draw.text((col_x + extra_cell_w // 2 - 12, text_y), sd_text, fill=(31, 41, 55), font=cell_font)
         col_x += extra_cell_w
-        # Места — вычислим сортировку по points, затем tie_sd
+        # Места — вычислим сортировку по wins, затем по сумме разниц очков
         # Место рисуем после сортировки списка players по этим критериям
         # Здесь временно заполним, а ниже отрисуем корректные места поверх
         draw.rectangle([col_x, y0, col_x + extra_cell_w, y0 + cell_h], outline=(209, 213, 219))
@@ -548,7 +553,8 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
 
     # Пересортируем для определения мест (только если есть результаты)
     if has_results:
-        order = sorted(range(n), key=lambda idx: (points.get(str(players[idx].get('id')), 0), tie_sd.get(str(players[idx].get('id')), 0)), reverse=True)
+        # Сортировка по победам, затем по сумме разниц очков в сетах
+        order = sorted(range(n), key=lambda idx: (wins.get(str(players[idx].get('id')), 0), set_diff.get(str(players[idx].get('id')), 0)), reverse=True)
         place_of: Dict[str, int] = {}
         for rank, idx in enumerate(order, start=1):
             place_of[str(players[idx].get('id'))] = rank
@@ -561,18 +567,20 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
             draw.text((col_x + extra_cell_w // 2 - 12, text_y), str(place_of.get(pid, i + 1)), fill=(31, 41, 55), font=cell_font)
 
     # Примечание по тай-брейку (уменьшенный шрифт для описания)
-    note = """* В столбце "Очки" показана общая разница в сетах между игроками с равным количеством побед.
+    note = """* В столбце "Очки" показана сумма разниц очков в сетах между игроками с равным количеством побед.
 Она используется для определения победителя между ними.
 
 К примеру: У игроков А, Б и В равное кол-во побед (напр., по 1 у каждого), у игрока Г — 3.
 Игрок Г получает 1-е место, для остальных требуется определить на основе очков в сетах.
 
-Тогда для игрока А суммируются его очки в сетах в играх с Б и с В, и из них вычитаются
-очки в сетах игроков Б и В в их играх с А. Эта разница и выводится в столбце.
+Тогда для игрока А в каждом сете с игроками Б и В считается разница его_очки - очки_соперника.
+Например, счет с Б: 2:6, 6:3, 2:6 даёт: (2-6)+(6-3)+(2-6) = -4+3-4 = -5.
+Если счет с В: 6:4, 6:2, то добавляется: (6-4)+(6-2) = 2+4 = +6.
+Итого для А: -5 + 6 = +1. Эта сумма и выводится в столбце.
 Аналогично для игроков Б и В. У кого больше очков — выше место.
 Очки в играх с другими игроками в этом подсчёте не учитываются.
 
-В случае, когда число побед у игрока не совпадает с другими, дополнительный учёт очков в сетах не требуется."""
+В случае, когда число побед у игрока не совпадает с другими, дополнительный учёт очков не требуется."""
     try:
         # Подгрузим уменьшенный шрифт для описания
         def _load_small_font(sz: int = 12) -> ImageFont.FreeTypeFont:
