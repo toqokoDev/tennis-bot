@@ -196,17 +196,28 @@ class TournamentManager:
             t = tournaments.get(tournament_id, {})
             if not t:
                 return
+            
+            # Если уведомления уже были отправлены, не отправляем повторно
+            if t.get('completion_notified'):
+                return
+            
             participants = t.get('participants', {}) or {}
             matches = t.get('matches', []) or []
             if not participants:
                 return
+            
             # Проверяем завершение: все матчи завершены или BYE
             pending = [m for m in matches if m.get('status') != 'completed' and not m.get('is_bye', False)]
             if pending:
+                logger.info(f"Турнир {tournament_id} еще не завершен. Осталось матчей: {len(pending)}")
                 return
+            
+            logger.info(f"Все матчи турнира {tournament_id} завершены. Начинаем завершение турнира и отправку уведомлений.")
+            
             # Обновим статус турнира
             t['status'] = 'finished'
             t['finished_at'] = datetime.now().isoformat()
+            t['completion_notified'] = True  # Отмечаем, что уведомления отправлены
 
             # Готовим вычисление мест
             places: Dict[str, str] = {}
@@ -280,43 +291,101 @@ class TournamentManager:
                     f"🥉 3 место: {name_of(order[2])}" if len(order) > 2 else "",
                 ]
             else:
-                # Олимпийская система: чемпион/финалист и диапазоны для остальных по раунду вылета
+                # Олимпийская система: чемпион/финалист и точные места из утешительных матчей
                 if not matches:
                     return
-                max_round = max(int(m.get('round', 0)) for m in matches)
+                
+                # Функция для получения имени
+                def pname(uid: str | None) -> str:
+                    if not uid:
+                        return "—"
+                    return participants.get(uid, {}).get('name', uid)
+                
+                # Находим основной финал (не утешительный)
+                main_matches = [m for m in matches if not m.get('is_consolation', False)]
+                max_main_round = max(int(m.get('round', 0)) for m in main_matches) if main_matches else 0
                 final_match = None
-                for m in matches:
-                    if int(m.get('round', 0)) == max_round:
+                for m in main_matches:
+                    if int(m.get('round', 0)) == max_main_round and not m.get('is_consolation', False):
                         final_match = m
                         break
-                champion = str(final_match.get('winner_id')) if final_match else None
+                
+                champion = str(final_match.get('winner_id')) if final_match and final_match.get('winner_id') else None
                 runner_up = None
                 if final_match and champion:
                     a = str(final_match.get('player1_id'))
                     b = str(final_match.get('player2_id'))
                     runner_up = a if b == champion else b
-                # Функции имён
-                def pname(uid: str | None) -> str:
-                    if not uid:
-                        return "—"
-                    return participants.get(uid, {}).get('name', uid)
-                # Расставим места
+                
+                # Расставим основные места
                 if champion:
                     places[champion] = "1 место"
                 if runner_up:
                     places[runner_up] = "2 место"
-                # Для остальных по раунду вылета
-                # Вычислим размер сетки как число участников первого раунда
-                first_round_matches = [m for m in matches if int(m.get('round', 0)) == 0]
+                
+                # Обрабатываем утешительные матчи для точного определения мест
+                third_place_winner = None
+                fourth_place = None
+                
+                # Матч за 3-4 место
+                third_place_match = None
+                for m in matches:
+                    if m.get('is_consolation') and m.get('consolation_place') == '3-4':
+                        third_place_match = m
+                        break
+                if third_place_match and third_place_match.get('status') == 'completed':
+                    winner_3rd = str(third_place_match.get('winner_id'))
+                    p1 = str(third_place_match.get('player1_id'))
+                    p2 = str(third_place_match.get('player2_id'))
+                    loser_3rd = p2 if winner_3rd == p1 else p1
+                    places[winner_3rd] = "3 место"
+                    places[loser_3rd] = "4 место"
+                    third_place_winner = winner_3rd
+                    fourth_place = loser_3rd
+                    logger.info(f"Определены места 3-4: {winner_3rd} (3 место), {loser_3rd} (4 место)")
+                
+                # Матч за 5-6 место
+                fifth_place_match = None
+                for m in matches:
+                    if m.get('is_consolation') and m.get('consolation_place') == '5-6':
+                        fifth_place_match = m
+                        break
+                if fifth_place_match and fifth_place_match.get('status') == 'completed':
+                    winner_5th = str(fifth_place_match.get('winner_id'))
+                    p1 = str(fifth_place_match.get('player1_id'))
+                    p2 = str(fifth_place_match.get('player2_id'))
+                    loser_5th = p2 if winner_5th == p1 else p1
+                    places[winner_5th] = "5 место"
+                    places[loser_5th] = "6 место"
+                    logger.info(f"Определены места 5-6: {winner_5th} (5 место), {loser_5th} (6 место)")
+                
+                # Матч за 7-8 место
+                seventh_place_match = None
+                for m in matches:
+                    if m.get('is_consolation') and m.get('consolation_place') == '7-8':
+                        seventh_place_match = m
+                        break
+                if seventh_place_match and seventh_place_match.get('status') == 'completed':
+                    winner_7th = str(seventh_place_match.get('winner_id'))
+                    p1 = str(seventh_place_match.get('player1_id'))
+                    p2 = str(seventh_place_match.get('player2_id'))
+                    loser_7th = p2 if winner_7th == p1 else p1
+                    places[winner_7th] = "7 место"
+                    places[loser_7th] = "8 место"
+                    logger.info(f"Определены места 7-8: {winner_7th} (7 место), {loser_7th} (8 место)")
+                
+                # Для остальных участников (которым не определили точное место) — используем диапазон по раунду вылета
+                first_round_matches = [m for m in main_matches if int(m.get('round', 0)) == 0]
                 bracket_size = max(2, len(first_round_matches) * 2)
-                # Индекс раунда, где игрок проиграл
+                
                 for uid in participants.keys():
                     suid = str(uid)
                     if suid in places:
                         continue
-                    # Найти матч, где игрок проиграл
+                    
+                    # Найти матч, где игрок проиграл (ищем последний проигрыш в основной сетке)
                     lost_round = None
-                    for m in matches:
+                    for m in main_matches:
                         if m.get('status') != 'completed':
                             continue
                         p1 = str(m.get('player1_id')) if m.get('player1_id') is not None else None
@@ -326,19 +395,26 @@ class TournamentManager:
                         winner = str(m.get('winner_id')) if m.get('winner_id') is not None else None
                         if winner and winner != suid:
                             lost_round = int(m.get('round', 0))
+                    
                     if lost_round is None:
-                        # Никогда не проиграл (мог пройти по BYE и вылететь не зафиксировано) — ставим последний известный диапазон
                         lost_round = 0
+                    
                     # Диапазон мест для проигравших в этом раунде
                     upper = bracket_size // (2 ** max(0, lost_round))
                     lower = upper // 2 + 1
                     if lower > upper:
                         lower = upper
                     places[suid] = f"{lower}-{upper} место"
+                
+                # Формируем резюме с учетом утешительных матчей
                 summary_lines = [
                     f"🥇 Чемпион: {pname(champion)}",
                     f"🥈 Финалист: {pname(runner_up)}",
                 ]
+                if third_place_winner:
+                    summary_lines.append(f"🥉 3 место: {pname(third_place_winner)}")
+                if fourth_place:
+                    summary_lines.append(f"4️⃣ 4 место: {pname(fourth_place)}")
 
             # Сохраним изменения в турнире
             tournaments[tournament_id] = t
@@ -346,20 +422,34 @@ class TournamentManager:
 
             # Рассылка сообщений участникам
             if not bot:
+                logger.warning(f"Bot не передан, уведомления не будут отправлены")
                 return
+            
             summary = "\n".join([line for line in summary_lines if line])
+            success_count = 0
+            total_count = len(participants)
+            
             for uid in participants.keys():
+                user_place = places.get(str(uid), '—')
+                user_name = participants.get(uid, {}).get('name', 'Участник')
+                
                 msg = (
-                    f"🏁 Турнир завершён!\n\n"
-                    f"🏆 {t.get('name', 'Турнир')}\n"
+                    f"🏁 <b>Турнир завершён!</b>\n\n"
+                    f"🏆 <b>{t.get('name', 'Турнир')}</b>\n"
                     f"📍 {t.get('city', '')} {('(' + t.get('district','') + ')') if t.get('district') else ''}\n\n"
+                    f"<b>Итоги турнира:</b>\n"
                     f"{summary}\n\n"
-                    f"📣 Ваш результат: {places.get(str(uid), '—')}"
+                    f"📣 <b>Ваш результат: {user_place}</b>\n\n"
+                    f"🎉 Поздравляем всех участников!"
                 )
                 try:
-                    await bot.send_message(int(uid), msg)
+                    await bot.send_message(int(uid), msg, parse_mode='HTML')
+                    success_count += 1
+                    logger.info(f"✅ Уведомление о завершении турнира отправлено участнику {uid} ({user_name})")
                 except Exception as e:
-                    logger.error(f"Не удалось отправить сообщение пользователю {uid}: {e}")
+                    logger.error(f"❌ Не удалось отправить сообщение пользователю {uid}: {e}")
+            
+            logger.info(f"Уведомления о завершении турнира {tournament_id} отправлены {success_count} из {total_count} участников")
         except Exception as e:
             logger.error(f"Ошибка уведомлений о завершении турнира {tournament_id}: {e}")
     
@@ -499,12 +589,18 @@ class TournamentManager:
             return False
 
     async def _rebuild_next_round(self, tournament_id: str) -> None:
-        """Автозакрывает BYE-матчи и создаёт матчи следующего раунда из победителей."""
+        """Автозакрывает BYE-матчи и создаёт матчи следующего раунда из победителей и проигравших (утешительные матчи)."""
         try:
             tournaments = await self.storage.load_tournaments()
             t = tournaments.get(tournament_id, {})
             if not t:
                 return
+            
+            tournament_type = t.get('type', 'Олимпийская система')
+            # Для круговой системы не нужны дополнительные матчи
+            if tournament_type != 'Олимпийская система':
+                return
+            
             participants = t.get('participants', {}) or {}
             matches = t.get('matches', []) or []
 
@@ -534,29 +630,51 @@ class TournamentManager:
                 await self.storage.save_tournaments(tournaments)
 
             # 2) Создаём матчи следующего раунда на основе победителей текущего
-            # Группируем матчи по раундам
-            rounds: Dict[int, List[dict]] = {}
+            # Группируем матчи по раундам и типам (основные vs утешительные)
+            main_rounds: Dict[int, List[dict]] = {}  # Основная сетка (победители)
+            consolation_rounds: Dict[int, List[dict]] = {}  # Утешительные матчи
+            
             for m in matches:
                 r = int(m.get('round', 0))
-                rounds.setdefault(r, []).append(m)
-            if not rounds:
+                is_consolation = m.get('is_consolation', False)
+                if is_consolation:
+                    consolation_rounds.setdefault(r, []).append(m)
+                else:
+                    main_rounds.setdefault(r, []).append(m)
+            
+            if not main_rounds:
                 return
 
-            max_round = max(rounds.keys())
-            for r in range(0, max_round + 1):
-                cur = sorted(rounds.get(r, []), key=lambda x: int(x.get('match_number', 0)))
+            max_main_round = max(main_rounds.keys())
+            
+            # 2a) Создаём матчи основной сетки (победители)
+            for r in range(0, max_main_round + 1):
+                cur = sorted(main_rounds.get(r, []), key=lambda x: int(x.get('match_number', 0)))
                 # Собираем победителей текущего раунда
                 winners: List[str] = []
+                losers: List[str] = []  # Проигравшие для утешительных матчей
+                
                 for m in cur:
-                    if m.get('status') == 'completed' and m.get('winner_id'):
-                        winners.append(m['winner_id'])
+                    if m.get('status') == 'completed':
+                        winner = m.get('winner_id')
+                        p1 = m.get('player1_id')
+                        p2 = m.get('player2_id')
+                        if winner:
+                            winners.append(winner)
+                            # Определяем проигравшего
+                            loser = p2 if str(winner) == str(p1) else p1
+                            if loser and not m.get('is_bye', False):
+                                losers.append(loser)
                     else:
                         winners.append(None)
+                
                 # Если недостаточно победителей — не создаём следующий раунд
                 if len(winners) < 2:
                     continue
+                    
                 next_r = r + 1
-                next_list = rounds.get(next_r, [])
+                next_list = main_rounds.get(next_r, [])
+                
                 # Строим пары победителей 0-1, 2-3, ...
                 for i in range(0, len(winners), 2):
                     w1 = winners[i]
@@ -585,10 +703,11 @@ class TournamentManager:
                             'score': None,
                             'status': 'pending',
                             'is_bye': False,
+                            'is_consolation': False,
                             'created_at': datetime.now().isoformat()
                         }
                         matches.append(new_match)
-                        rounds.setdefault(next_r, []).append(new_match)
+                        main_rounds.setdefault(next_r, []).append(new_match)
                         changed = True
                     else:
                         # Дозаполняем игроков, если нужно
@@ -600,11 +719,134 @@ class TournamentManager:
                             existing['player2_id'] = w2
                             existing['player2_name'] = player_name(w2)
                             changed = True
+                
+                # 2b) Создаём утешительные матчи для проигравших
+                # Матч за 3-4 место: если это полуфинал (2 матча) и оба завершены
+                if len(cur) == 2 and len(losers) == 2 and all(m.get('status') == 'completed' for m in cur):
+                    # Проверяем, не создан ли уже матч за 3-4 место
+                    consolation_id = f"{tournament_id}_consolation_3rd_place"
+                    if not any(m.get('id') == consolation_id for m in matches):
+                        consolation_match = {
+                            'id': consolation_id,
+                            'tournament_id': tournament_id,
+                            'round': next_r,  # Тот же раунд, что и финал
+                            'match_number': 1000,  # Большой номер, чтобы не пересекаться
+                            'player1_id': losers[0],
+                            'player2_id': losers[1],
+                            'player1_name': player_name(losers[0]),
+                            'player2_name': player_name(losers[1]),
+                            'winner_id': None,
+                            'score': None,
+                            'status': 'pending',
+                            'is_bye': False,
+                            'is_consolation': True,
+                            'consolation_place': '3-4',
+                            'created_at': datetime.now().isoformat()
+                        }
+                        matches.append(consolation_match)
+                        changed = True
+                        logger.info(f"Создан матч за 3-4 место: {losers[0]} vs {losers[1]}")
+                
+                # Матчи за 5-8 место: если это четвертьфинал (4 матча) и все завершены
+                elif len(cur) == 4 and len(losers) == 4 and all(m.get('status') == 'completed' for m in cur):
+                    # Создаём 2 полуфинала за 5-8 место
+                    for i in range(0, 4, 2):
+                        consolation_id = f"{tournament_id}_consolation_5-8_semi_{i//2}"
+                        if not any(m.get('id') == consolation_id for m in matches):
+                            consolation_match = {
+                                'id': consolation_id,
+                                'tournament_id': tournament_id,
+                                'round': r,  # Тот же раунд
+                                'match_number': 2000 + i // 2,
+                                'player1_id': losers[i],
+                                'player2_id': losers[i + 1],
+                                'player1_name': player_name(losers[i]),
+                                'player2_name': player_name(losers[i + 1]),
+                                'winner_id': None,
+                                'score': None,
+                                'status': 'pending',
+                                'is_bye': False,
+                                'is_consolation': True,
+                                'consolation_place': '5-8',
+                                'created_at': datetime.now().isoformat()
+                            }
+                            matches.append(consolation_match)
+                            consolation_rounds.setdefault(r, []).append(consolation_match)
+                            changed = True
+                            logger.info(f"Создан полуфинал за 5-8 место: {losers[i]} vs {losers[i+1]}")
+            
+            # 2c) Создаём финалы утешительных матчей (например, финал за 5-6 место из победителей полуфиналов 5-8)
+            for r in sorted(consolation_rounds.keys()):
+                cons_matches = [m for m in consolation_rounds[r] if m.get('consolation_place') == '5-8']
+                if len(cons_matches) == 2 and all(m.get('status') == 'completed' for m in cons_matches):
+                    # Собираем победителей и проигравших
+                    cons_winners = []
+                    cons_losers = []
+                    for m in cons_matches:
+                        winner = m.get('winner_id')
+                        p1 = m.get('player1_id')
+                        p2 = m.get('player2_id')
+                        if winner:
+                            cons_winners.append(winner)
+                            loser = p2 if str(winner) == str(p1) else p1
+                            if loser:
+                                cons_losers.append(loser)
+                    
+                    # Финал за 5-6 место
+                    if len(cons_winners) == 2:
+                        final_5_6_id = f"{tournament_id}_consolation_5-6_final"
+                        if not any(m.get('id') == final_5_6_id for m in matches):
+                            final_match = {
+                                'id': final_5_6_id,
+                                'tournament_id': tournament_id,
+                                'round': r + 1,
+                                'match_number': 3000,
+                                'player1_id': cons_winners[0],
+                                'player2_id': cons_winners[1],
+                                'player1_name': player_name(cons_winners[0]),
+                                'player2_name': player_name(cons_winners[1]),
+                                'winner_id': None,
+                                'score': None,
+                                'status': 'pending',
+                                'is_bye': False,
+                                'is_consolation': True,
+                                'consolation_place': '5-6',
+                                'created_at': datetime.now().isoformat()
+                            }
+                            matches.append(final_match)
+                            changed = True
+                            logger.info(f"Создан финал за 5-6 место: {cons_winners[0]} vs {cons_winners[1]}")
+                    
+                    # Матч за 7-8 место
+                    if len(cons_losers) == 2:
+                        match_7_8_id = f"{tournament_id}_consolation_7-8_final"
+                        if not any(m.get('id') == match_7_8_id for m in matches):
+                            match_7_8 = {
+                                'id': match_7_8_id,
+                                'tournament_id': tournament_id,
+                                'round': r + 1,
+                                'match_number': 3001,
+                                'player1_id': cons_losers[0],
+                                'player2_id': cons_losers[1],
+                                'player1_name': player_name(cons_losers[0]),
+                                'player2_name': player_name(cons_losers[1]),
+                                'winner_id': None,
+                                'score': None,
+                                'status': 'pending',
+                                'is_bye': False,
+                                'is_consolation': True,
+                                'consolation_place': '7-8',
+                                'created_at': datetime.now().isoformat()
+                            }
+                            matches.append(match_7_8)
+                            changed = True
+                            logger.info(f"Создан матч за 7-8 место: {cons_losers[0]} vs {cons_losers[1]}")
 
             if changed:
                 t['matches'] = matches
                 tournaments[tournament_id] = t
                 await self.storage.save_tournaments(tournaments)
+                logger.info(f"Обновлена сетка турнира {tournament_id}. Всего матчей: {len(matches)}")
         except Exception as e:
             logger.error(f"Ошибка пересборки следующего раунда турнира {tournament_id}: {e}")
     
