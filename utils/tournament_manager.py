@@ -93,10 +93,12 @@ class TournamentManager:
                     except Exception as e:
                         logger.warning(f"Не удалось загрузить фото игрока {player.get('user_id')}: {e}")
                 
-                # Если фото нет, создаем placeholder
+                # Если фото нет, создаем placeholder с серым фоном и инициалами
                 if not player_img:
-                    player_img = Image.new('RGB', (img_size, img_size), (229, 229, 229))
-                    # Добавляем инициалы
+                    # Серый фон с градиентом для красоты
+                    player_img = Image.new('RGB', (img_size, img_size), (180, 180, 180))
+                    
+                    # Добавляем инициалы крупным шрифтом
                     try:
                         name = player.get('name', '??')
                         parts = name.split()
@@ -105,15 +107,32 @@ class TournamentManager:
                         else:
                             initials = name[:2].upper() if len(name) >= 2 else name.upper()
                         
+                        # Создаем более крупный шрифт для инициалов
+                        try:
+                            font_path = os.path.join(BASE_DIR, "fonts", "Circe-Bold.ttf")
+                            initials_font = ImageFont.truetype(font_path, 80)
+                        except:
+                            try:
+                                initials_font = ImageFont.truetype("arialbd.ttf", 80)
+                            except:
+                                initials_font = place_font
+                        
                         d = ImageDraw.Draw(player_img)
-                        bbox = d.textbbox((0, 0), initials, font=place_font)
+                        
+                        # Вычисляем позицию для центрирования текста
+                        bbox = d.textbbox((0, 0), initials, font=initials_font)
                         tw = bbox[2] - bbox[0]
                         th = bbox[3] - bbox[1]
                         tx = (img_size - tw) // 2
                         ty = (img_size - th) // 2
-                        d.text((tx, ty), initials, fill=(255, 255, 255), font=place_font)
-                    except:
-                        pass
+                        
+                        # Рисуем белые инициалы с небольшой тенью для глубины
+                        # Тень
+                        d.text((tx + 2, ty + 2), initials, fill=(100, 100, 100), font=initials_font)
+                        # Основной текст
+                        d.text((tx, ty), initials, fill=(255, 255, 255), font=initials_font)
+                    except Exception as e:
+                        logger.warning(f"Не удалось добавить инициалы: {e}")
                 
                 # Вставляем фото
                 img.paste(player_img, (x, y))

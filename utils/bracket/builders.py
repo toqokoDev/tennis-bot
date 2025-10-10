@@ -214,13 +214,18 @@ def _build_olympic_rounds_from_tournament(
             rounds: List[List[Match]] = [list(r) for r in players_bracket.rounds]
             max_round = len(rounds) - 1
         else:
-            # Группируем матчи по раундам (ИСКЛЮЧАЯ placement-матчи)
+            # Группируем матчи по раундам (ИСКЛЮЧАЯ placement-матчи и утешительные матчи)
             from collections import defaultdict
             round_to_matches: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+            consolation_matches: List[Dict[str, Any]] = []
             max_round = 0
             for m in matches_raw:
                 # Пропускаем placement-матчи — они обрабатываются отдельно
                 if m.get('placement'):
+                    continue
+                # Пропускаем утешительные матчи (за 3-4, 5-6, 7-8 места) из основной сетки
+                if m.get('is_consolation'):
+                    consolation_matches.append(m)
                     continue
                 rnd = int(m.get('round', 0))
                 round_to_matches[rnd].append(m)
@@ -366,9 +371,81 @@ def _build_olympic_rounds_from_tournament(
         # Соберем плоский список матчей
         flat_matches = [m for rnd in rounds for m in rnd]
 
-        # Построим дополнительные мини-турниры за места из placement-матчей
+        # Построим дополнительные мини-турниры за места из placement-матчей и consolation-матчей
         additional_tournaments: List[TournamentBracket] = []
         try:
+            # Обрабатываем consolation-матчи (is_consolation)
+            if consolation_matches:
+                print(f"[BRACKET][OLY] Обнаружено {len(consolation_matches)} утешительных матчей")
+                # Группируем по consolation_place (3-4, 5-6, 5-8, 7-8)
+                grouped_consolation: Dict[str, List[Dict[str, Any]]] = {}
+                for cm in consolation_matches:
+                    place = cm.get('consolation_place', 'unknown')
+                    grouped_consolation.setdefault(place, []).append(cm)
+                
+                # Порядок отображения утешительных матчей
+                consolation_order = {'5-8': 0, '7-8': 1, '5-6': 2, '3-4': 3}
+                sorted_consolation_keys = sorted(grouped_consolation.keys(), key=lambda k: consolation_order.get(k, 999))
+                
+                for cons_key in sorted_consolation_keys:
+                    cons_matches_list = grouped_consolation[cons_key]
+                    # Сортируем по match_number
+                    cons_matches_list = sorted(cons_matches_list, key=lambda x: int(x.get('match_number', 0)))
+                    
+                    # Строим Match объекты
+                    mini_matches: List[Match] = []
+                    for raw in cons_matches_list:
+                        try:
+                            p1 = id_to_player.get(str(raw.get('player1_id'))) if raw.get('player1_id') else None
+                            p2 = id_to_player.get(str(raw.get('player2_id'))) if raw.get('player2_id') else None
+                            score = raw.get('score')
+                            win = id_to_player.get(str(raw.get('winner_id'))) if raw.get('winner_id') else None
+                            mnum = int(raw.get('match_number', 0)) if raw.get('match_number') is not None else 0
+                            mini_matches.append(Match(player1=p1, player2=p2, winner=win, score=score, match_number=mnum, is_placement=True))
+                        except Exception as e:
+                            print(f"[BRACKET][OLY] Ошибка создания consolation матча: {e}")
+                            continue
+                    
+                    if mini_matches:
+                        # Название мини-турнира
+                        if cons_key == '3-4':
+                            mini_name = 'Игра за 3-е место'
+                        elif cons_key == '5-6':
+                            mini_name = 'Игра за 5-е место'
+                        elif cons_key == '7-8':
+                            mini_name = 'Игра за 7-е место'
+                        elif cons_key == '5-8':
+                            mini_name = 'За 5-8 места'
+                        else:
+                            mini_name = f'За {cons_key} места'
+                        
+                        # Определяем раунды (если матчей 1 - один раунд, если 2+ - полуфинал+финал)
+                        if len(mini_matches) == 1:
+                            mini_rounds = [[mini_matches[0]]]
+                        else:
+                            # Группируем по раунду, если есть поле round в исходных данных
+                            mini_round_map: Dict[int, List[Match]] = {}
+                            for idx, mm in enumerate(mini_matches):
+                                # Находим исходный raw матч для получения round
+                                orig_raw = cons_matches_list[idx] if idx < len(cons_matches_list) else {}
+                                rnd = int(orig_raw.get('round', 0))
+                                mini_round_map.setdefault(rnd, []).append(mm)
+                            
+                            mini_rounds = []
+                            for r in sorted(mini_round_map.keys()):
+                                mini_rounds.append(mini_round_map[r])
+                        
+                        additional_tournaments.append(
+                            TournamentBracket(
+                                players=list(id_to_player.values()),
+                                matches=mini_matches,
+                                rounds=mini_rounds,
+                                name=mini_name,
+                                tournament_type='Олимпийская система'
+                            )
+                        )
+                        print(f"[BRACKET][OLY] Добавлен утешительный турнир: {mini_name}, матчей: {len(mini_matches)}")
+            
             placement_raw = [mr for mr in (tournament_data.get('matches') or []) if mr.get('placement')]
             if placement_raw:
                 # Группируем: "5-8" и "5th" объединяем в один ключ "5-6"; остальное отдельно
