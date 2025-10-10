@@ -409,6 +409,7 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
         b_sets = sum(1 for x, y in sets if y > x)
         res_map[tuple(sorted([a, b]))] = {
             'score': r.get('score') or ', '.join([f"{x}:{y}" for x, y in sets]),
+            'sets': sets,  # Сохраняем список сетов для инверсии
             'a': a,
             'b': b,
             'a_sets': a_sets,
@@ -483,7 +484,15 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                 key = tuple(sorted([str(p1.get('id')), str(p2.get('id'))]))
                 rec = res_map.get(key)
                 if rec:
-                    score = rec.get('score', '')
+                    # Счет относительно игрока строки (p1 = players[i])
+                    p1_id = str(p1.get('id'))
+                    sets = rec.get('sets', [])
+                    if rec['a'] == p1_id:
+                        # p1 это игрок 'a' в результате, счет как есть
+                        score = ', '.join([f"{x}:{y}" for x, y in sets]) if sets else rec.get('score', '')
+                    else:
+                        # p1 это игрок 'b' в результате, инвертируем счет
+                        score = ', '.join([f"{y}:{x}" for x, y in sets]) if sets else rec.get('score', '')
                     # Центрирование текста с отступом 15px
                     try:
                         bbox = draw.textbbox((0, 0), score, font=cell_font)
@@ -493,13 +502,21 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                         score_x = x0 + 15
                     draw.text((score_x, text_y), score, fill=(31, 41, 55), font=cell_font)
             else:
-                # Нижняя половина: дублируем счет, чтобы был виден у обоих игроков
-                p1 = players[j]
-                p2 = players[i]
+                # Нижняя половина: счет относительно игрока строки
+                p1 = players[i]  # игрок строки
+                p2 = players[j]  # игрок колонки
                 key = tuple(sorted([str(p1.get('id')), str(p2.get('id'))]))
                 rec = res_map.get(key)
                 if rec:
-                    score = rec.get('score', '')
+                    # Счет относительно игрока строки (p1 = players[i])
+                    p1_id = str(p1.get('id'))
+                    sets = rec.get('sets', [])
+                    if rec['a'] == p1_id:
+                        # p1 это игрок 'a' в результате, счет как есть
+                        score = ', '.join([f"{x}:{y}" for x, y in sets]) if sets else rec.get('score', '')
+                    else:
+                        # p1 это игрок 'b' в результате, инвертируем счет
+                        score = ', '.join([f"{y}:{x}" for x, y in sets]) if sets else rec.get('score', '')
                     # Центрирование текста с отступом 15px
                     try:
                         bbox = draw.textbbox((0, 0), score, font=cell_font)
