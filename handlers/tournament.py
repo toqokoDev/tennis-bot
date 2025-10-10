@@ -2498,7 +2498,7 @@ async def show_tournaments_list(callback: CallbackQuery, tournaments: dict, spor
         builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
     
     # Кнопка оплаты участия, если есть взнос и пользователь зарегистрирован, но не оплатил
-    fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or 0)
+    fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or TOURNAMENT_ENTRY_FEE)
     paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
     if fee > 0 and is_registered and not paid:
         builder.button(text=f"💳 Оплатить участие ({fee}₽)", callback_data=f"tournament_pay:{tournament_id}")
@@ -2627,7 +2627,7 @@ async def view_tournament_prev(callback: CallbackQuery, state: FSMContext):
         builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
     
     # Кнопка оплаты участия
-    fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or 0)
+    fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or TOURNAMENT_ENTRY_FEE)
     paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
     if fee > 0 and is_registered and not paid:
         builder.button(text=f"💳 Оплатить участие ({fee}₽)", callback_data=f"tournament_pay:{tournament_id}")
@@ -2753,7 +2753,7 @@ async def view_tournament_next(callback: CallbackQuery, state: FSMContext):
         builder.button(text="✅ Участвовать", callback_data=f"apply_tournament:{tournament_id}")
     
     # Кнопка оплаты участия
-    fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or 0)
+    fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or TOURNAMENT_ENTRY_FEE)
     paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
     if fee > 0 and is_registered and not paid:
         builder.button(text=f"💳 Оплатить участие ({fee}₽)", callback_data=f"tournament_pay:{tournament_id}")
@@ -2845,7 +2845,7 @@ async def apply_tournament_handler(callback: CallbackQuery):
     bracket_image, bracket_text = await build_and_render_tournament_image(tournament_data, tournament_id)
     
     # Проверяем статус оплаты
-    entry_fee = int(tournament_data.get('entry_fee', 0) or 100)
+    entry_fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or TOURNAMENT_ENTRY_FEE)
     is_paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
     
     # Кнопки
@@ -2968,7 +2968,7 @@ async def apply_proposed_tournament(callback: CallbackQuery, state: FSMContext):
     bracket_image, bracket_text = await build_and_render_tournament_image(tournament_data, tournament_id)
     
     # Проверяем статус оплаты
-    entry_fee = int(tournament_data.get('entry_fee', 0) or 100)
+    entry_fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or TOURNAMENT_ENTRY_FEE)
     is_paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
 
     builder = InlineKeyboardBuilder()
@@ -3234,7 +3234,7 @@ async def my_tournaments_list(callback: CallbackQuery):
     participant_data = tournament_data['participants'][str(user_id)]
     
     # Проверяем статус оплаты
-    entry_fee = int(tournament_data.get('entry_fee', 0) or 100)
+    entry_fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or TOURNAMENT_ENTRY_FEE)
     is_paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
     
     # Компактный текст для текущего турнира
@@ -3614,7 +3614,7 @@ async def admin_view_tournament_participants(callback: CallbackQuery, state: FSM
     text = f"👥 Участники: {len(participants)}/{tournament_data.get('participants_count', '?')}\n"
     
     # Статус оплаты (если есть взнос)
-    fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or 0)
+    fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or TOURNAMENT_ENTRY_FEE)
     if fee > 0:
         paid_count = sum(1 for uid in participants.keys() 
                         if tournament_data.get('payments', {}).get(uid, {}).get('status') == 'succeeded')
@@ -5689,7 +5689,7 @@ async def show_tournament_brief_info(message: Message, tournament_id: str, user_
         # Если пользователь - участник, показываем "Мои турниры" и кнопку оплаты (если нужна)
         if is_participant:
             # Проверяем статус оплаты
-            entry_fee = int(tournament_data.get('entry_fee', 0) or 100)
+            entry_fee = int(tournament_data.get('entry_fee', TOURNAMENT_ENTRY_FEE) or TOURNAMENT_ENTRY_FEE)
             is_paid = tournament_data.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
             
             # Добавляем информацию об оплате в текст
