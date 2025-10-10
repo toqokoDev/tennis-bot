@@ -55,18 +55,39 @@ class TournamentManager:
             img = Image.new('RGB', (width, height), (255, 255, 255))
             draw = ImageDraw.Draw(img)
             
-            # Загружаем шрифты
+            # Загружаем шрифты с поддержкой кириллицы
+            title_font = None
+            place_font = None
+            
+            # Пытаемся загрузить Circe (поддерживает кириллицу)
             try:
                 font_path = os.path.join(BASE_DIR, "fonts", "Circe-Bold.ttf")
-                title_font = ImageFont.truetype(font_path, 24)
-                place_font = ImageFont.truetype(font_path, 32)
-            except:
+                if os.path.exists(font_path):
+                    title_font = ImageFont.truetype(font_path, 24)
+                    place_font = ImageFont.truetype(font_path, 32)
+            except Exception as e:
+                logger.debug(f"Не удалось загрузить Circe: {e}")
+            
+            # Пробуем DejaVuSans (хорошая поддержка Unicode)
+            if not title_font:
                 try:
-                    title_font = ImageFont.truetype("arialbd.ttf", 24)
+                    title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 24)
+                    place_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 32)
+                except Exception as e:
+                    logger.debug(f"Не удалось загрузить DejaVuSans: {e}")
+            
+            # Фолбэк на Arial
+            if not title_font:
+                try:
+                    title_font = ImageFont.truetype("arial.ttf", 24)
                     place_font = ImageFont.truetype("arialbd.ttf", 32)
-                except:
-                    title_font = ImageFont.load_default()
-                    place_font = ImageFont.load_default()
+                except Exception as e:
+                    logger.debug(f"Не удалось загрузить Arial: {e}")
+            
+            # Последний фолбэк - но без кириллицы
+            if not title_font:
+                title_font = ImageFont.load_default()
+                place_font = ImageFont.load_default()
             
             # Отрисовываем каждого игрока
             for idx, player in enumerate(top_players[:3]):
@@ -107,15 +128,30 @@ class TournamentManager:
                         else:
                             initials = name[:2].upper() if len(name) >= 2 else name.upper()
                         
-                        # Создаем более крупный шрифт для инициалов
+                        # Создаем более крупный шрифт для инициалов (используем тот же что загружен)
+                        initials_font = None
                         try:
                             font_path = os.path.join(BASE_DIR, "fonts", "Circe-Bold.ttf")
-                            initials_font = ImageFont.truetype(font_path, 80)
+                            if os.path.exists(font_path):
+                                initials_font = ImageFont.truetype(font_path, 80)
                         except:
+                            pass
+                        
+                        if not initials_font:
+                            try:
+                                initials_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 80)
+                            except:
+                                pass
+                        
+                        if not initials_font:
                             try:
                                 initials_font = ImageFont.truetype("arialbd.ttf", 80)
                             except:
-                                initials_font = place_font
+                                # Используем стандартный шрифт с увеличенным размером
+                                try:
+                                    initials_font = ImageFont.truetype("arial.ttf", 80)
+                                except:
+                                    initials_font = place_font
                         
                         d = ImageDraw.Draw(player_img)
                         
@@ -157,8 +193,12 @@ class TournamentManager:
                     medal_w = bbox[2] - bbox[0]
                     medal_x = x + (img_size - medal_w) // 2
                     draw.text((medal_x, medal_y), place_text, fill=color, font=title_font)
-                except:
-                    draw.text((x + 5, medal_y), place_text, fill=color, font=title_font)
+                except Exception as e:
+                    logger.debug(f"Ошибка отрисовки места: {e}")
+                    try:
+                        draw.text((x + 5, medal_y), place_text, fill=color, font=title_font)
+                    except:
+                        pass
                 
                 # Рисуем имя (обрезаем если слишком длинное)
                 name_y = medal_y + 30
@@ -169,8 +209,12 @@ class TournamentManager:
                     name_w = bbox[2] - bbox[0]
                     name_x = x + (img_size - name_w) // 2
                     draw.text((name_x, name_y), name, fill=(31, 41, 55), font=title_font)
-                except:
-                    draw.text((x + 5, name_y), name, fill=(31, 41, 55), font=title_font)
+                except Exception as e:
+                    logger.debug(f"Ошибка отрисовки имени: {e}")
+                    try:
+                        draw.text((x + 5, name_y), name, fill=(31, 41, 55), font=title_font)
+                    except:
+                        pass
             
             # Сохраняем в буфер
             buf = io.BytesIO()
@@ -640,9 +684,17 @@ class TournamentManager:
                     collage_bytes = self._create_winners_collage(top_players_data)
                     logger.info(f"Создан коллаж победителей для турнира {tournament_id}")
                 except Exception as e:
-                    logger.error(f"Ошибка создания коллажа: {e}")
+                    logger.error(f"Ошибка создания коллажа: {e}", exc_info=True)
             
             summary = "\n".join([line for line in summary_lines if line])
+            
+            # Отправляем уведомление в канал
+            try:
+                from services.channels import send_tournament_finished_to_channel
+                await send_tournament_finished_to_channel(bot, tournament_id, t, collage_bytes, summary)
+                logger.info(f"Уведомление о завершении турнира {tournament_id} отправлено в канал")
+            except Exception as e:
+                logger.error(f"Ошибка отправки в канал о завершении турнира {tournament_id}: {e}")
             success_count = 0
             total_count = len(participants)
             

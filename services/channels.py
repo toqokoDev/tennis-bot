@@ -1,4 +1,5 @@
 from typing import Any, Dict
+import logging
 from aiogram import Bot, types
 from aiogram.types import FSInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -7,6 +8,8 @@ from config.paths import BASE_DIR
 from config.profile import channels_id, tour_channel_id
 from config.config import BOT_USERNAME
 from utils.utils import create_user_profile_link, escape_markdown
+
+logger = logging.getLogger(__name__)
 
 def format_rating(rating: float) -> str:
     """Форматирует рейтинг, убирая лишние нули после запятой"""
@@ -921,3 +924,71 @@ async def send_tournament_started_to_channel(
             )
     except Exception as e:
         print(f"Ошибка отправки уведомления о начале турнира в канал: {e}")
+
+
+async def send_tournament_finished_to_channel(
+    bot: Bot,
+    tournament_id: str,
+    tournament_data: Dict[str, Any],
+    winners_collage_bytes: bytes = None,
+    summary_text: str = ""
+):
+    """Отправляет уведомление в канал о завершении турнира с фото победителей."""
+    try:
+        sport = tournament_data.get('sport', '🎾Большой теннис')
+        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+
+        # Локация
+        city = tournament_data.get('city', '—')
+        district = tournament_data.get('district', '')
+        country = tournament_data.get('country', '')
+        if district:
+            city = f"{city} - {district}"
+
+        # Текст сообщения
+        name = escape_markdown(tournament_data.get('name', 'Турнир'))
+        type_text = escape_markdown(tournament_data.get('type', '—'))
+        level = escape_markdown(tournament_data.get('level', 'Не указан'))
+        participants_count = len(tournament_data.get('participants', {}))
+        
+        text = (
+            f"🏁 *Турнир завершён!*\n\n"
+            f"🏆 *{name}*\n\n"
+            f"🌍 *Место:* {escape_markdown(city)}, {escape_markdown(country)}\n"
+            f"🧩 *Уровень:* {level}\n"
+            f"👥 *Участников:* {participants_count}\n\n"
+        )
+        
+        if summary_text:
+            # Summary уже содержит эмодзи, не экранируем его
+            text += f"*Итоги:*\n{summary_text}\n\n"
+        
+        text += f"🎉 Поздравляем победителей!"
+
+        builder = InlineKeyboardBuilder()
+        deep_link = f"https://t.me/{BOT_USERNAME}?start=view_tournament_{tournament_id}"
+        builder.row(InlineKeyboardButton(text="🏆 Смотреть турнир", url=deep_link))
+
+        # Отправляем с фото коллажа победителей, если оно есть
+        if winners_collage_bytes:
+            from aiogram.types import BufferedInputFile
+            photo = BufferedInputFile(winners_collage_bytes, filename=f"winners_{tournament_id}.png")
+            await bot.send_photo(
+                chat_id=channel_id,
+                photo=photo,
+                caption=text,
+                parse_mode="Markdown",
+                reply_markup=builder.as_markup(),
+            )
+        else:
+            # Если фото нет, отправляем только текст
+            await bot.send_message(
+                chat_id=channel_id,
+                text=text,
+                parse_mode="Markdown",
+                reply_markup=builder.as_markup(),
+                disable_web_page_preview=True,
+            )
+        logger.info(f"✅ Уведомление о завершении турнира {tournament_id} отправлено в канал")
+    except Exception as e:
+        logger.error(f"Ошибка отправки уведомления о завершении турнира в канал: {e}")
