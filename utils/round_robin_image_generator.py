@@ -122,8 +122,73 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     title_font, subtitle_font, header_font, cell_font = _load_fonts()
 
     n = len(players)
+    
+    # Сначала парсим результаты для определения ширины ячеек
+    def _parse_ids_early(r: Dict[str, Any]) -> Optional[tuple]:
+        p1 = r.get('player1_id')
+        p2 = r.get('player2_id')
+        if p1 is not None and p2 is not None:
+            return str(p1), str(p2)
+        gp = r.get('players')
+        if isinstance(gp, dict):
+            t1 = gp.get('team1') or []
+            t2 = gp.get('team2') or []
+            def norm(x):
+                if isinstance(x, dict):
+                    return str(x.get('id'))
+                return str(x)
+            if t1 and t2:
+                return norm(t1[0]), norm(t2[0])
+        elif isinstance(gp, list) and len(gp) >= 2:
+            a, b = gp[0], gp[1]
+            def norm2(x):
+                if isinstance(x, dict):
+                    return str(x.get('id'))
+                return str(x)
+            return norm2(a), norm2(b)
+        return None
+
+    def _parse_sets_early(r: Dict[str, Any]) -> List[tuple]:
+        sets = []
+        if r.get('sets'):
+            for s in r['sets']:
+                try:
+                    a, b = s.split(':')
+                    sets.append((int(a), int(b)))
+                except Exception:
+                    pass
+        else:
+            score = r.get('score')
+            if score:
+                parts = [x.strip() for x in str(score).split(',') if ':' in x]
+                for s in parts:
+                    try:
+                        a, b = s.split(':')
+                        sets.append((int(a), int(b)))
+                    except Exception:
+                        pass
+        return sets
+
+    # Собираем все счета для определения максимальной ширины
+    max_score_width = 0
+    draw_temp = ImageDraw.Draw(Image.new('RGB', (1, 1), (255, 255, 255)))
+    for r in results or []:
+        ids = _parse_ids_early(r)
+        if not ids:
+            continue
+        sets = _parse_sets_early(r)
+        score_text = r.get('score') or ', '.join([f"{x}:{y}" for x, y in sets])
+        if score_text:
+            try:
+                bbox = draw_temp.textbbox((0, 0), score_text, font=cell_font)
+                score_width = bbox[2] - bbox[0]
+                max_score_width = max(max_score_width, score_width)
+            except Exception:
+                pass
+    
     # Размеры таблицы
-    cell_w = 100  # Уменьшено для ячеек счета
+    # Минимальная ширина для аватара (60 + отступы), максимум под текст + отступы
+    cell_w = max(80, min(150, max_score_width + 16)) if max_score_width > 0 else 100
     cell_h = 70  # Увеличено для больших шрифтов
     left_col_w = 350  # Увеличено для полных имен
     top_row_h = 70  # Увеличено для больших аватаров
@@ -505,7 +570,7 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
                     return ImageFont.load_default()
 
         small_note_font = _load_small_font(16)
-        y_pos = table_y + table_h + 30
+        y_pos = table_y + table_h + 25
         line_spacing = 18  # Увеличенный межстрочный интервал для читаемости
         for line in note.split('\n'):
             draw.text((padding, y_pos), line, fill=(0, 0, 0), font=small_note_font)
