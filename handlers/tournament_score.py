@@ -10,7 +10,7 @@ from datetime import datetime
 from models.states import AddScoreState
 from services.storage import storage
 from utils.tournament_manager import tournament_manager
-from utils.utils import create_user_profile_link
+from utils.utils import create_user_profile_link, escape_markdown
 from handlers.enter_invoice import (
     create_set_score_keyboard, 
     save_message_id,
@@ -231,7 +231,8 @@ async def handle_tournament_opponent_selection(callback: types.CallbackQuery, st
     keyboard = create_set_score_keyboard(1)
     
     username = selected_opponent.get('username', '')
-    username_text = f"@{username}" if username else "не указан"
+    username_text_raw = f"@{username}" if username else "не указан"
+    username_text = escape_markdown(username_text_raw)
     
     await callback.message.edit_text( 
         f"🏆 Турнирная игра\n\n"

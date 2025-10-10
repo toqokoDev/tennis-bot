@@ -201,6 +201,10 @@ class TournamentNotifications:
                                     opponent_name = match.get('player1_name', 'Неизвестно')
                                     opponent_id = str(match.get('player1_id', ''))
                                 
+                                # Пропускаем сам-с-собой (на всякий случай)
+                                if opponent_id and str(opponent_id) == str(user_id):
+                                    continue
+
                                 opponent_data = users.get(opponent_id, {})
                                 opponent_username = opponent_data.get('username', '')
                                 opponent_username_text = f"@{opponent_username}" if opponent_username else "нет username"
@@ -219,6 +223,10 @@ class TournamentNotifications:
                                     opponent_name = match.get('player1_name', 'Неизвестно')
                                     opponent_id = str(match.get('player1_id', ''))
                                 
+                                # Пропускаем сам-с-собой
+                                if opponent_id and str(opponent_id) == str(user_id):
+                                    continue
+
                                 opponent_data = users.get(opponent_id, {})
                                 opponent_username = opponent_data.get('username', '')
                                 opponent_username_text = f"@{opponent_username}" if opponent_username else "нет username"
@@ -299,26 +307,39 @@ class TournamentNotifications:
                     logger.error(f"Ошибка отправки уведомления о BYE пользователю {player_id}: {e}")
                     return False
             else:
-                # Уведомляем обоих игроков о матче
-                player1_name = match_data.get('player1_name', 'Игрок 1')
-                player2_name = match_data.get('player2_name', 'Игрок 2')
-                
-                message += f"👤 Ваш соперник: {player2_name if player1_id else player1_name}\n\n"
-                message += f"📊 Для внесения результата используйте команду /add_score"
-                
+                # Уведомляем обоих игроков о матче персональными сообщениями
+                p1_name = match_data.get('player1_name', 'Игрок 1')
+                p2_name = match_data.get('player2_name', 'Игрок 2')
+
                 success_count = 0
-                for player_id in [player1_id, player2_id]:
-                    if player_id:
-                        try:
-                            await self.bot.send_message(
-                                chat_id=int(player_id),
-                                text=message,
-                                parse_mode='HTML'
-                            )
-                            success_count += 1
-                        except Exception as e:
-                            logger.error(f"Ошибка отправки уведомления о матче пользователю {player_id}: {e}")
-                
+                # Для игрока 1
+                if player1_id:
+                    try:
+                        p1_msg = (
+                            f"⚔️ <b>Новый матч в турнире!</b>\n\n"
+                            f"🏆 Турнир: {tournament_name}\n"
+                            f"📋 Раунд: {match_data['round'] + 1}\n\n"
+                            f"👤 Ваш соперник: {p2_name}"
+                        )
+                        await self.bot.send_message(int(player1_id), p1_msg, parse_mode='HTML')
+                        success_count += 1
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки уведомления о матче пользователю {player1_id}: {e}")
+
+                # Для игрока 2
+                if player2_id:
+                    try:
+                        p2_msg = (
+                            f"⚔️ <b>Новый матч в турнире!</b>\n\n"
+                            f"🏆 Турнир: {tournament_name}\n"
+                            f"📋 Раунд: {match_data['round'] + 1}\n\n"
+                            f"👤 Ваш соперник: {p1_name}"
+                        )
+                        await self.bot.send_message(int(player2_id), p2_msg, parse_mode='HTML')
+                        success_count += 1
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки уведомления о матче пользователю {player2_id}: {e}")
+
                 return success_count > 0
                 
         except Exception as e:

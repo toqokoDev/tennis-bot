@@ -1275,19 +1275,11 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
             
             # Обновляем результат матча в турнире и подготавливаем следующий раунд
             if match_id:
-                from utils.tournament_manager import tournament_manager
-                await tournament_manager.update_match_result(match_id, winner_id, data.get('score'))
+                await tournament_manager.update_match_result(match_id, winner_id, data.get('score'), bot=callback.bot)
                 # После обновления результата можно уведомить участников о новых матчах
                 try:
                     from utils.tournament_notifications import TournamentNotifications
-                    from main import bot
-                    notifications = TournamentNotifications(bot)
-                    # Уведомим обоих игроков об обновлении (и потенциально новых назначениях)
-                    # Здесь можно расширить логику для отправки новых соперников, если сформированы пары
-                    # Оставляем базовое уведомление о том, что результат принят
-                    await callback.bot.send_message(current_user_id, "✅ Результат принят в турнире.")
-                    if opponent_id:
-                        await callback.bot.send_message(opponent_id, "ℹ️ Результат матча зафиксирован соперником.")
+                    notifications = TournamentNotifications(callback.bot)
                 except Exception:
                     pass
         

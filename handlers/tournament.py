@@ -2486,8 +2486,8 @@ async def show_tournaments_list(callback: CallbackQuery, tournaments: dict, spor
             InlineKeyboardButton(text="➡️", callback_data=f"view_tournament_next:0")
         )
     
-    # Кнопка посева для админа
-    if await is_admin(user_id):
+    # Кнопка посева для админа — только если турнир ещё не запущен
+    if await is_admin(user_id) and tournament_data.get('status') != 'started':
         builder.button(text="🎲 Посев", callback_data=f"tournament_seeding_menu:{tournament_id}")
     
     # Кнопка "Участвовать" только если не зарегистрирован, турнир не запущен и не достигнут лимит участников
@@ -4091,8 +4091,9 @@ async def _show_tournament_edit(callback: CallbackQuery, state: FSMContext, tour
     builder.button(text="⚙️ Ещё", callback_data="edit_tournament_more")
     builder.button(text="👥 Участники", callback_data=f"manage_participants:{tournament_id}")
     
-    # Кнопка посева (жеребьевки) - всегда видна
-    builder.button(text="🎲 Посев", callback_data=f"tournament_seeding_menu:{tournament_id}")
+    # Кнопка посева (жеребьевки) — показываем только до старта турнира
+    if tournament_data.get('status') != 'started':
+        builder.button(text="🎲 Посев", callback_data=f"tournament_seeding_menu:{tournament_id}")
     
     # Кнопка управления играми
     builder.button(text="🎮 Управление играми", callback_data=f"admin_tournament_games:{tournament_id}")

@@ -9,6 +9,9 @@ from datetime import datetime
 from utils.tournament_brackets import create_tournament_bracket, Player, Match
 from services.storage import storage
 from config.tournament_config import MIN_PARTICIPANTS
+from aiogram import Bot
+from utils.tournament_notifications import TournamentNotifications
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +80,6 @@ class TournamentManager:
           Недостающие слоты заполняем BYE (игрок отсутствует, is_bye=True).
         - Для круговой системы — каждый с каждым (порядок случайный).
         """
-        import random
-
         matches: List[Dict[str, Any]] = []
         participant_ids = list(participants.keys())
 
@@ -163,7 +164,7 @@ class TournamentManager:
 
         return matches
 
-    async def _notify_pending_matches(self, tournament_id: str) -> None:
+    async def _notify_pending_matches(self, tournament_id: str, bot: Bot) -> None:
         """Отправляет уведомления о назначенных матчах, если оба игрока известны и уведомление ещё не отправлено."""
         try:
             tournaments = await self.storage.load_tournaments()
@@ -171,11 +172,6 @@ class TournamentManager:
             matches = t.get('matches', []) or []
             if not matches:
                 return
-            from utils.tournament_notifications import TournamentNotifications
-            try:
-                from main import bot
-            except Exception:
-                bot = None
             if not bot:
                 return
             notifier = TournamentNotifications(bot)
@@ -193,7 +189,7 @@ class TournamentManager:
         except Exception as e:
             logger.error(f"Ошибка уведомления о назначенных матчах {tournament_id}: {e}")
 
-    async def _notify_completion_with_places(self, tournament_id: str) -> None:
+    async def _notify_completion_with_places(self, tournament_id: str, bot: Bot) -> None:
         """Если турнир завершён, отправляет участникам сообщения об итоговых местах."""
         try:
             tournaments = await self.storage.load_tournaments()
@@ -349,10 +345,6 @@ class TournamentManager:
             await self.storage.save_tournaments(tournaments)
 
             # Рассылка сообщений участникам
-            try:
-                from main import bot
-            except Exception:
-                bot = None
             if not bot:
                 return
             summary = "\n".join([line for line in summary_lines if line])
@@ -451,7 +443,8 @@ class TournamentManager:
                             'match_id': match['id'],
                             'match_number': match['match_number']
                         }
-                        available_opponents.append(opponent_data)
+                        if opponent_data['user_id'] and str(opponent_data['user_id']) != str(user_id):
+                            available_opponents.append(opponent_data)
                         print(f"DEBUG: Added opponent1: {opponent_data}")
                     elif match['player2_id'] == user_id:
                         opponent_data = {
@@ -460,13 +453,14 @@ class TournamentManager:
                             'match_id': match['id'],
                             'match_number': match['match_number']
                         }
-                        available_opponents.append(opponent_data)
+                        if opponent_data['user_id'] and str(opponent_data['user_id']) != str(user_id):
+                            available_opponents.append(opponent_data)
                         print(f"DEBUG: Added opponent2: {opponent_data}")
         
         print(f"DEBUG: available_opponents={available_opponents}")
         return available_opponents
     
-    async def update_match_result(self, match_id: str, winner_id: str, score: str) -> bool:
+    async def update_match_result(self, match_id: str, winner_id: str, score: str, bot: Bot | None = None) -> bool:
         """Обновляет результат матча"""
         try:
             tournaments = await self.storage.load_tournaments()
@@ -491,9 +485,10 @@ class TournamentManager:
                         await self._rebuild_next_round(tournament_id)
                         await self.advance_tournament_round(tournament_id)
                         # Уведомим участников о назначенных матчах
-                        await self._notify_pending_matches(tournament_id)
-                        # Если турнир завершён — уведомим об итогах и местах
-                        await self._notify_completion_with_places(tournament_id)
+                        if bot:
+                            await self._notify_pending_matches(tournament_id, bot)
+                            # Если турнир завершён — уведомим об итогах и местах
+                            await self._notify_completion_with_places(tournament_id, bot)
                         return True
             
             logger.error(f"Матч {match_id} не найден")
