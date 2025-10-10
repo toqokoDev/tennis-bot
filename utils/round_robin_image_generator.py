@@ -127,9 +127,11 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
     cell_h = 70  # Увеличено для больших шрифтов
     left_col_w = 350  # Увеличено для полных имен
     top_row_h = 70  # Увеличено для больших аватаров
-    extra_cell_w = 80  # Размер для колонок с цифрами
+    extra_cell_w = 95  # Размер для колонок с цифрами
     padding = 20
-    extra_cols = ["Победы", "Очки", "Места"]  # Убран столбец "Игры"
+    # Если турнир еще не начался (нет результатов), не показываем места
+    has_results = results and len(results) > 0
+    extra_cols = ["Победы", "Очки", "Места"]
 
     width = padding * 2 + left_col_w + n * cell_w + len(extra_cols) * extra_cell_w
     # Уменьшаем дополнительную высоту под описание турнира
@@ -453,18 +455,19 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
         draw.rectangle([col_x, y0, col_x + extra_cell_w, y0 + cell_h], outline=(209, 213, 219))
         col_x += extra_cell_w
 
-    # Пересортируем для определения мест
-    order = sorted(range(n), key=lambda idx: (points.get(str(players[idx].get('id')), 0), tie_sd.get(str(players[idx].get('id')), 0)), reverse=True)
-    place_of: Dict[str, int] = {}
-    for rank, idx in enumerate(order, start=1):
-        place_of[str(players[idx].get('id'))] = rank
-    # Нарисуем места
-    for i, p in enumerate(players):
-        pid = str(p.get('id'))
-        col_x = table_x + left_col_w + n * cell_w + 2 * extra_cell_w  # 2 колонки до "Места": Победы, Очки
-        y0 = table_y + top_row_h + i * cell_h
-        text_y = y0 + (cell_h - 24) // 2  # Вертикальное центрирование для увеличенного шрифта
-        draw.text((col_x + extra_cell_w // 2 - 12, text_y), str(place_of.get(pid, i + 1)), fill=(31, 41, 55), font=cell_font)
+    # Пересортируем для определения мест (только если есть результаты)
+    if has_results:
+        order = sorted(range(n), key=lambda idx: (points.get(str(players[idx].get('id')), 0), tie_sd.get(str(players[idx].get('id')), 0)), reverse=True)
+        place_of: Dict[str, int] = {}
+        for rank, idx in enumerate(order, start=1):
+            place_of[str(players[idx].get('id'))] = rank
+        # Нарисуем места
+        for i, p in enumerate(players):
+            pid = str(p.get('id'))
+            col_x = table_x + left_col_w + n * cell_w + 2 * extra_cell_w  # 2 колонки до "Места": Победы, Очки
+            y0 = table_y + top_row_h + i * cell_h
+            text_y = y0 + (cell_h - 24) // 2  # Вертикальное центрирование для увеличенного шрифта
+            draw.text((col_x + extra_cell_w // 2 - 12, text_y), str(place_of.get(pid, i + 1)), fill=(31, 41, 55), font=cell_font)
 
     # Примечание по тай-брейку (уменьшенный шрифт для описания)
     note = """* В столбце "Очки" показана общая разница в сетах между игроками с равным количеством побед.
