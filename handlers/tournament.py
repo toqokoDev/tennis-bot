@@ -3100,7 +3100,7 @@ async def tournament_pay_confirm(callback: CallbackQuery, state: FSMContext):
             await storage.save_tournaments(tournaments)
             
             # Показываем турнир с обновленной информацией
-            entry_fee = int(tournament.get('entry_fee', 0) or 0)
+            entry_fee = int(tournament.get('entry_fee', TOURNAMENT_ENTRY_FEE) or TOURNAMENT_ENTRY_FEE)
             bracket_image, bracket_text = await build_and_render_tournament_image(tournament, tournament_id)
             
             builder = InlineKeyboardBuilder()
