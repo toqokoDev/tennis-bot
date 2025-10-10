@@ -5262,44 +5262,6 @@ async def input_participant_id(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Введите число")
 
-# Обработчик удаления участника
-@router.callback_query(F.data.startswith("remove_participant"))
-async def remove_participant(callback: CallbackQuery, state: FSMContext):
-    """Обработчик удаления участника из турнира"""
-    parts = callback.data.split(":", 1)
-    if len(parts) == 2 and parts[1]:
-        tournament_id = parts[1]
-        await state.update_data(editing_tournament_id=tournament_id)
-    else:
-        data = await state.get_data()
-        tournament_id = data.get('editing_tournament_id')
-        if not tournament_id:
-            await callback.answer("❌ Турнир не выбран")
-            return
-    
-    tournaments = await storage.load_tournaments()
-    tournament_data = tournaments[tournament_id]
-    participants = tournament_data.get('participants', {})
-    
-    if not participants:
-        await callback.answer("❌ В турнире нет участников для удаления")
-        return
-    
-    builder = InlineKeyboardBuilder()
-    for user_id, participant_data in participants.items():
-        name = participant_data.get('name', 'Неизвестно')
-        builder.button(text=f"➖ {name} (ID: {user_id})", callback_data=f"remove_participant:{user_id}")
-    
-    builder.button(text="🔙 Назад", callback_data=f"manage_participants:{tournament_id}")
-    builder.adjust(1)
-    
-    await safe_edit_message(callback,
-        "➖ Удаление участника из турнира\n\n"
-        "Выберите участника для удаления:",
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
-
 @router.callback_query(F.data.startswith("add_tournament_participant:"))
 async def add_tournament_participant(callback: CallbackQuery, state: FSMContext):
     """Старт добавления участника из экрана управления участниками"""
@@ -5313,14 +5275,53 @@ async def add_tournament_participant(callback: CallbackQuery, state: FSMContext)
     )
     await callback.answer()
 
-# Обработчик подтверждения удаления участника
+# Обработчик меню удаления участника
 @router.callback_query(F.data.startswith("remove_participant:"))
+async def remove_participant_menu(callback: CallbackQuery, state: FSMContext):
+    """Показывает меню удаления участника из турнира"""
+    tournament_id = callback.data.split(":", 1)[1]
+    await state.update_data(editing_tournament_id=tournament_id)
+    
+    tournaments = await storage.load_tournaments()
+    
+    if tournament_id not in tournaments:
+        await callback.answer("❌ Турнир не найден")
+        return
+    
+    tournament_data = tournaments[tournament_id]
+    participants = tournament_data.get('participants', {})
+    
+    if not participants:
+        await callback.answer("❌ В турнире нет участников для удаления")
+        return
+    
+    builder = InlineKeyboardBuilder()
+    for user_id, participant_data in participants.items():
+        name = participant_data.get('name', 'Неизвестно')
+        builder.button(text=f"➖ {name}", callback_data=f"confirm_remove_participant:{user_id}")
+    
+    builder.button(text="🔙 Назад", callback_data=f"manage_participants:{tournament_id}")
+    builder.adjust(1)
+    
+    await safe_edit_message(callback,
+        "➖ Удаление участника из турнира\n\n"
+        "Выберите участника для удаления:",
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+# Обработчик подтверждения удаления участника
+@router.callback_query(F.data.startswith("confirm_remove_participant:"))
 async def confirm_remove_participant(callback: CallbackQuery, state: FSMContext):
     """Обработчик подтверждения удаления участника"""
     user_id = callback.data.split(":", 1)[1]
     
     data = await state.get_data()
     tournament_id = data.get('editing_tournament_id')
+    
+    if not tournament_id:
+        await callback.answer("❌ Турнир не выбран")
+        return
     
     tournaments = await storage.load_tournaments()
     tournament_data = tournaments[tournament_id]
