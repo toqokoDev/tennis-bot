@@ -245,11 +245,8 @@ class TournamentManager:
                     except:
                         pass
                 
-                # Рисуем имя (обрезаем если слишком длинное)
+                # Рисуем имя (без обрезки)
                 name_y = medal_y + 28
-                max_name_len = 18 if place == 1 else 12
-                if len(name) > max_name_len:
-                    name = name[:max_name_len-2] + '...'
                 try:
                     bbox = draw.textbbox((0, 0), name, font=current_name_font)
                     name_w = bbox[2] - bbox[0]
