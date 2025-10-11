@@ -5091,6 +5091,7 @@ async def select_participant_from_search(callback: CallbackQuery, state: FSMCont
     await storage.save_tournaments(tournaments)
     
     # Уведомление в канал об участнике (как будто он сам зарегистрировался)
+    print(is_admin_mode)
     if is_admin_mode:
         try:
             await send_tournament_application_to_channel(callback.message.bot, tournament_id, tournament_data, str(user_id), user_data)
@@ -5197,7 +5198,6 @@ async def input_participant_id(message: Message, state: FSMContext):
         tournaments = await storage.load_tournaments()
         tournament_data = tournaments[tournament_id]
         
-        print(is_admin_mode)
         if is_admin_mode:
             await state.update_data(admin_editing_tournament_id=tournament_id)
         else:
