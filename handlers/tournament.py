@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 
 from services.storage import storage
-from services.channels import send_tournament_created_to_channel, send_tournament_application_to_channel, send_tournament_started_to_channel
+from services.channels import send_game_notification_to_channel, send_tournament_created_to_channel, send_tournament_application_to_channel, send_tournament_started_to_channel
 from models.states import CreateTournamentStates, EditTournamentStates, ViewTournamentsStates, AdminEditGameStates
 from utils.admin import is_admin
 from config.profile import sport_type, cities_data, create_sport_keyboard
@@ -5090,25 +5090,18 @@ async def select_participant_from_search(callback: CallbackQuery, state: FSMCont
     tournaments[tournament_id] = tournament_data
     await storage.save_tournaments(tournaments)
     
-    # Уведомление в канал об участнике (как будто он сам зарегистрировался)
-    print(is_admin_mode)
-    if is_admin_mode:
-        try:
-            await send_tournament_application_to_channel(callback.message.bot, tournament_id, tournament_data, str(user_id), user_data)
-            logger.info(f"Уведомление о добавлении участника {user_id} в турнир {tournament_id} отправлено в канал")
-        except Exception as e:
-            logger.error(f"Ошибка отправки уведомления в канал при добавлении участника: {e}")
+    try:
+        await send_tournament_application_to_channel(callback.message.bot, tournament_id, tournament_data, str(user_id), user_data)
+        logger.info(f"Уведомление о добавлении участника {user_id} в турнир {tournament_id} отправлено в канал")
+    except Exception as e:
+        logger.error(f"Ошибка отправки уведомления в канал при добавлении участника: {e}")
     
     # Формируем сообщение об успехе
     builder = InlineKeyboardBuilder()
-    if is_admin_mode:
-        builder.button(text="➕ Добавить еще", callback_data=f"admin_add_participant:{tournament_id}")
-        builder.button(text="👥 К участникам", callback_data=f"admin_view_participants:{tournament_id}")
-        builder.button(text="🔙 К списку турниров", callback_data="admin_back_to_tournament_list")
-    else:
-        builder.button(text="➕ Добавить еще", callback_data=f"add_tournament_participant:{tournament_id}")
-        builder.button(text="👥 Управление участниками", callback_data=f"manage_participants:{tournament_id}")
-        builder.button(text="🔙 К турниру", callback_data=f"edit_tournament:{tournament_id}")
+
+    builder.button(text="➕ Добавить еще", callback_data=f"admin_add_participant:{tournament_id}")
+    builder.button(text="👥 К участникам", callback_data=f"admin_view_participants:{tournament_id}")
+    builder.button(text="🔙 К списку турниров", callback_data="admin_back_to_tournament_list")
     
     builder.adjust(1)
     
@@ -6067,6 +6060,37 @@ async def admin_process_tournament_score_input(message: Message, state: FSMConte
                 games.append(game_data)
                 await storage.save_games(games)
                 logger.info(f"Создана запись игры {game_id} в games.json для матча {match_id}")
+                
+                # Публикуем результат в телеграм-канал
+                try:
+                    # Определяем кто победил (team1 или team2)
+                    winner_side = 'team1' if str(winner_id) == p1_id else 'team2'
+                    
+                    # Формируем данные для канала
+                    channel_data = {
+                        'game_type': 'tournament',
+                        'score': score,
+                        'sets': [s.strip() for s in score.split(',')],
+                        'winner_side': winner_side,
+                        'tournament_id': tournament_id,
+                        'opponent1': {'telegram_id': p2_id},
+                        'current_user_id': p1_id
+                    }
+                    
+                    # Загружаем пользователей для отправки в канал
+                    users = await storage.load_users()
+                    
+                    # Отправляем уведомление в канал
+                    await send_game_notification_to_channel(
+                        message.bot, 
+                        channel_data, 
+                        users, 
+                        p1_id
+                    )
+                    logger.info(f"Результат турнирной игры {game_id} опубликован в канал (admin input)")
+                except Exception as channel_error:
+                    logger.error(f"Ошибка при публикации в канал: {channel_error}")
+                
         except Exception as e:
             logger.error(f"Ошибка создания записи в games.json: {e}")
         
