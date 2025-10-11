@@ -2806,8 +2806,7 @@ async def apply_tournament_handler(callback: CallbackQuery):
 
     # Уведомление в канал об участнике
     try:
-        bot: Bot = callback.message.bot
-        await send_tournament_application_to_channel(bot, tournament_id, tournament_data, str(user_id), user_data)
+        await send_tournament_application_to_channel(callback.message.bot, tournament_id, tournament_data, str(user_id), user_data)
     except Exception:
         pass
     
@@ -2925,8 +2924,7 @@ async def apply_proposed_tournament(callback: CallbackQuery, state: FSMContext):
 
     # Уведомление в канал об участнике
     try:
-        bot: Bot = callback.message.bot
-        await send_tournament_application_to_channel(bot, tournament_id, tournament_data, str(user_id), user_data)
+        await send_tournament_application_to_channel(callback.message.bot, tournament_id, tournament_data, str(user_id), user_data)
     except Exception:
         pass
 
@@ -5095,11 +5093,7 @@ async def select_participant_from_search(callback: CallbackQuery, state: FSMCont
     # Уведомление в канал об участнике (как будто он сам зарегистрировался)
     if is_admin_mode:
         try:
-            from aiogram import Bot
-            from config.config import TOKEN
-            bot = Bot(token=TOKEN)
-            await send_tournament_application_to_channel(bot, tournament_id, tournament_data, str(user_id), user_data)
-            await bot.session.close()
+            await send_tournament_application_to_channel(callback.message.bot, tournament_id, tournament_data, str(user_id), user_data)
             logger.info(f"Уведомление о добавлении участника {user_id} в турнир {tournament_id} отправлено в канал")
         except Exception as e:
             logger.error(f"Ошибка отправки уведомления в канал при добавлении участника: {e}")
