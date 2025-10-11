@@ -5197,6 +5197,7 @@ async def input_participant_id(message: Message, state: FSMContext):
         tournaments = await storage.load_tournaments()
         tournament_data = tournaments[tournament_id]
         
+        print(is_admin_mode)
         if is_admin_mode:
             await state.update_data(admin_editing_tournament_id=tournament_id)
         else:
