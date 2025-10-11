@@ -11,6 +11,7 @@ from services.storage import storage
 from utils.admin import get_confirmation_keyboard, is_admin
 from handlers.profile import calculate_level_from_points
 from models.states import AdminEditGameStates
+from services.channels import send_game_notification_to_channel
 
 admin_router = Router()
 logger = logging.getLogger(__name__)
@@ -1727,6 +1728,53 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
         
         logger.info(f"Счет игры {game_id} изменен на {new_score}, победитель: {winner_id} ({winner_name})")
         
+        # Публикуем в телеграм-канал, если это турнирная игра
+        if tournament_id:
+            try:
+                # Подготавливаем данные для публикации в канал
+                # Определяем ID игроков
+                player1_id = team1_players[0] if team1_players else None
+                player2_id = team2_players[0] if team2_players else None
+                
+                if player1_id and player2_id:
+                    # Определяем кто победил
+                    winner_side = 'team1' if team1_wins > team2_wins else 'team2'
+                    
+                    # Формируем данные для канала в формате как в enter_invoice.py
+                    channel_data = {
+                        'game_type': 'tournament',
+                        'score': new_score,
+                        'sets': sets,
+                        'winner_side': winner_side,
+                        'tournament_id': tournament_id,
+                        'opponent1': {'telegram_id': player2_id},
+                        'current_user_id': player1_id
+                    }
+                    
+                    # Добавляем медиа если есть
+                    media_filename = game.get('media_filename')
+                    if media_filename:
+                        from config.paths import GAMES_PHOTOS_DIR
+                        media_path = os.path.join(GAMES_PHOTOS_DIR, media_filename)
+                        if os.path.exists(media_path):
+                            # Определяем тип медиа по расширению
+                            if media_filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+                                from aiogram.types import FSInputFile
+                                # Отправляем фото как file_id через бот
+                                # Но так как у нас только путь к файлу, пропускаем это
+                                pass
+                    
+                    # Отправляем уведомление в канал
+                    await send_game_notification_to_channel(
+                        message.bot, 
+                        channel_data, 
+                        users, 
+                        player1_id
+                    )
+                    logger.info(f"Результат турнирной игры {game_id} опубликован в канал")
+            except Exception as e:
+                logger.error(f"Ошибка при публикации в канал: {e}")
+        
         builder = InlineKeyboardBuilder()
         builder.button(text="📋 Просмотр игры", callback_data=f"admin_view_game:{game_id}")
         builder.button(text="🔙 К списку игр", callback_data="admin_back_to_games")
@@ -1742,7 +1790,7 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
         
         # Добавляем информацию о турнире, если игра турнирная
         if tournament_id:
-            success_text += f"\n\n🏆 <i>Данные турнира также обновлены</i>"
+            success_text += f"\n\n🏆 <i>Данные турнира также обновлены и опубликованы в канал</i>"
         
         await message.answer(
             success_text,
@@ -2072,6 +2120,38 @@ async def admin_set_winner_handler(callback: CallbackQuery):
                     from utils.tournament_manager import tournament_manager
                     await tournament_manager._rebuild_next_round(tournament_id)
                     await tournament_manager.advance_tournament_round(tournament_id)
+                    
+                    # Публикуем обновленный результат в телеграм-канал
+                    try:
+                        # Определяем ID игроков
+                        player1_id = team1_players[0] if team1_players else None
+                        player2_id = team2_players[0] if team2_players else None
+                        
+                        if player1_id and player2_id:
+                            # Определяем кто победил
+                            winner_side = 'team1' if winner_id == player1_id else 'team2'
+                            
+                            # Формируем данные для канала
+                            channel_data = {
+                                'game_type': 'tournament',
+                                'score': game.get('score', 'Не указан'),
+                                'sets': game.get('sets', []),
+                                'winner_side': winner_side,
+                                'tournament_id': tournament_id,
+                                'opponent1': {'telegram_id': player2_id},
+                                'current_user_id': player1_id
+                            }
+                            
+                            # Отправляем уведомление в канал
+                            await send_game_notification_to_channel(
+                                callback.bot, 
+                                channel_data, 
+                                users, 
+                                player1_id
+                            )
+                            logger.info(f"Обновленный результат турнирной игры {game_id} опубликован в канал")
+                    except Exception as e:
+                        logger.error(f"Ошибка при публикации в канал: {e}")
         
         logger.info(f"Победитель игры {game_id} изменен на {winner_id} ({winner_name})")
         
@@ -2088,7 +2168,7 @@ async def admin_set_winner_handler(callback: CallbackQuery):
         
         # Добавляем информацию о турнире, если игра турнирная
         if tournament_id:
-            success_text += f"\n\n🏆 <i>Данные турнира также обновлены</i>"
+            success_text += f"\n\n🏆 <i>Данные турнира также обновлены и опубликованы в канал</i>"
         
         try:
             await callback.message.edit_text(

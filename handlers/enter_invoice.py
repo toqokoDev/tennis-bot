@@ -81,8 +81,41 @@ def create_game_type_keyboard() -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
+# Создание inline клавиатуры для выбора счета супертайбрейка
+def create_supertiebreak_keyboard(set_number: int = 3) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    
+    # Левая колонка: победа первого игрока (10:0 до 10:8, потом 11:9 до 20:18)
+    left_scores = ["10:0", "10:1", "10:2", "10:3", "10:4", "10:5", "10:6", "10:7", "10:8"]
+    right_scores = ["0:10", "1:10", "2:10", "3:10", "4:10", "5:10", "6:10", "7:10", "8:10"]
+    
+    # Добавляем кнопки в две колонки
+    for left_score, right_score in zip(left_scores, right_scores):
+        builder.row(
+            InlineKeyboardButton(text=left_score, callback_data=f"set_score:{set_number}_{left_score}"),
+            InlineKeyboardButton(text=right_score, callback_data=f"set_score:{set_number}_{right_score}")
+        )
+    
+    # Добавляем счета с разницей в 2 (11:9, 12:10, и т.д.)
+    extra_scores = [
+        ("11:9", "9:11"), ("12:10", "10:12"), ("13:11", "11:13"), 
+        ("14:12", "12:14"), ("15:13", "13:15"), ("16:14", "14:16"),
+        ("17:15", "15:17"), ("18:16", "16:18"), ("19:17", "17:19"), ("20:18", "18:20")
+    ]
+    
+    for left_score, right_score in extra_scores:
+        builder.row(
+            InlineKeyboardButton(text=left_score, callback_data=f"set_score:{set_number}_{left_score}"),
+            InlineKeyboardButton(text=right_score, callback_data=f"set_score:{set_number}_{right_score}")
+        )
+    
+    builder.row(InlineKeyboardButton(text="🔙 К обычному счету", callback_data=f"back_to_normal_set:{set_number}"))
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
+    
+    return builder.as_markup()
+
 # Создание inline клавиатуры для выбора счета сета
-def create_set_score_keyboard(set_number: int = 1) -> InlineKeyboardMarkup:
+def create_set_score_keyboard(set_number: int = 1, is_tournament: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     
     # Левая колонка: победа первого игрока
@@ -96,6 +129,12 @@ def create_set_score_keyboard(set_number: int = 1) -> InlineKeyboardMarkup:
         builder.row(
             InlineKeyboardButton(text=left_score, callback_data=f"set_score:{set_number}_{left_score}"),
             InlineKeyboardButton(text=right_score, callback_data=f"set_score:{set_number}_{right_score}")
+        )
+    
+    # Для турнирных игр на 3-ем сете добавляем супертайбрейк
+    if is_tournament and set_number == 3:
+        builder.row(
+            InlineKeyboardButton(text="⚡ Супертай", callback_data=f"supertiebreak:{set_number}")
         )
     
     # Кнопки навигации
@@ -596,6 +635,15 @@ async def handle_set_score_selection(callback: types.CallbackQuery, state: FSMCo
     data = await state.get_data()
     sets = data.get('sets', [])
     
+    # Проверяем, был ли выбран супертайбрейк
+    supertiebreak_set = data.get('supertiebreak_set')
+    
+    # Если это супертайбрейк, просто используем счет как есть
+    if supertiebreak_set == set_number:
+        # Счет супертайбрейка остается как есть (например, "10:8" или "20:18")
+        # Очищаем данные о супертайбрейке
+        await state.update_data(supertiebreak_set=None)
+    
     # Обновляем или добавляем счет сета
     if len(sets) >= set_number:
         sets[set_number - 1] = score
@@ -634,9 +682,11 @@ async def handle_add_another_set(callback: types.CallbackQuery, state: FSMContex
         data = await state.get_data()
         sets = data.get('sets', [])
         next_set_number = len(sets) + 1
+        game_type = data.get('game_type')
+        is_tournament = (game_type == 'tournament')
         
         await state.set_state(AddScoreState.selecting_set_score)
-        keyboard = create_set_score_keyboard(next_set_number)
+        keyboard = create_set_score_keyboard(next_set_number, is_tournament=is_tournament)
         
         await callback.message.edit_text(
             f"Выберите счет {next_set_number}-го сета:",
@@ -652,8 +702,51 @@ async def handle_navigate_sets(callback: types.CallbackQuery, state: FSMContext)
     action, set_number_str = callback.data.split(":")
     set_number = int(set_number_str)
     
+    data = await state.get_data()
+    game_type = data.get('game_type')
+    is_tournament = (game_type == 'tournament')
+    
     await state.set_state(AddScoreState.selecting_set_score)
-    keyboard = create_set_score_keyboard(set_number)
+    keyboard = create_set_score_keyboard(set_number, is_tournament=is_tournament)
+    
+    await callback.message.edit_text(
+        f"Выберите счет {set_number}-го сета:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("supertiebreak:"))
+async def handle_supertiebreak_selection(callback: types.CallbackQuery, state: FSMContext):
+    """Обработчик выбора супертайбрейка для 3-его сета в турнирной игре"""
+    set_number = int(callback.data.split(":")[1])
+    
+    # Сохраняем выбор супертайбрейка
+    await state.update_data(supertiebreak_set=set_number)
+    
+    # Показываем клавиатуру выбора счета супертайбрейка
+    keyboard = create_supertiebreak_keyboard(set_number)
+    
+    await callback.message.edit_text(
+        f"🏆 Супертайбрейк - 3-й сет\n\n"
+        f"Выберите счет супертайбрейка:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("back_to_normal_set:"))
+async def handle_back_to_normal_set(callback: types.CallbackQuery, state: FSMContext):
+    """Возврат к обычному выбору счета сета"""
+    set_number = int(callback.data.split(":")[1])
+    
+    # Очищаем данные о супертайбрейке
+    data = await state.get_data()
+    if 'supertiebreak_set' in data:
+        await state.update_data(supertiebreak_set=None)
+    
+    game_type = data.get('game_type')
+    is_tournament = (game_type == 'tournament')
+    
+    keyboard = create_set_score_keyboard(set_number, is_tournament=is_tournament)
     
     await callback.message.edit_text(
         f"Выберите счет {set_number}-го сета:",
@@ -868,15 +961,78 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         tournament_data = tournaments.get(tournament_id, {})
         tournament_name = tournament_data.get('name', 'Неизвестный турнир')
 
+        # Старые рейтинги
+        curr_old = old_ratings[current_id]
+        opp_old = old_ratings[op_id]
+
         # Определяем победителя
         if winner_side == "team1":  # team1 = текущий пользователь
             winner_user = current_user
             loser_user = opponent
+            winner_old = curr_old
+            loser_old = opp_old
         else:  # победил соперник
             winner_user = opponent
             loser_user = current_user
+            winner_old = opp_old
+            loser_old = curr_old
 
-        # Текст результата для турнирной игры (без рейтинга)
+        # Пересчёт рейтингов (как в одиночной игре)
+        new_winner_points, new_loser_points = await calculate_new_ratings(
+            winner_old, loser_old, game_diff
+        )
+
+        # Обновляем users по факту победителя/проигравшего
+        if winner_side == "team1":
+            # Текущий пользователь — победитель
+            users[current_id]['rating_points'] = new_winner_points
+            users[current_id]['player_level'] = calculate_level_from_points(
+                int(new_winner_points), 
+                users[current_id].get('sport', '🎾Большой теннис')
+            )
+            if op_id in users:
+                users[op_id]['rating_points'] = new_loser_points
+                users[op_id]['player_level'] = calculate_level_from_points(
+                    int(new_loser_points), 
+                    users[op_id].get('sport', '🎾Большой теннис')
+                )
+
+            # Дельты для game_data
+            rating_changes_for_game[current_id] = float(new_winner_points - curr_old)
+            rating_changes_for_game[op_id] = float(new_loser_points - opp_old)
+
+            # Для state (если используется дальше)
+            await state.update_data(
+                rating_change=rating_changes_for_game[current_id],
+                opponent_rating_change=rating_changes_for_game[op_id],
+                rating_changes=rating_changes_for_game,
+                old_ratings=old_ratings
+            )
+        else:
+            # Соперник — победитель
+            users[current_id]['rating_points'] = new_loser_points
+            users[current_id]['player_level'] = calculate_level_from_points(
+                int(new_loser_points), 
+                users[current_id].get('sport', '🎾Большой теннис')
+            )
+            if op_id in users:
+                users[op_id]['rating_points'] = new_winner_points
+                users[op_id]['player_level'] = calculate_level_from_points(
+                    int(new_winner_points), 
+                    users[op_id].get('sport', '🎾Большой теннис')
+                )
+
+            rating_changes_for_game[current_id] = float(new_loser_points - curr_old)
+            rating_changes_for_game[op_id] = float(new_winner_points - opp_old)
+
+            await state.update_data(
+                rating_change=rating_changes_for_game[current_id],
+                opponent_rating_change=rating_changes_for_game[op_id],
+                rating_changes=rating_changes_for_game,
+                old_ratings=old_ratings
+            )
+
+        # Текст результата для турнирной игры (с рейтингом)
         winner_name_link = await create_user_profile_link(winner_user, pid(winner_user) or "", additional=False)
         loser_name_link = await create_user_profile_link(loser_user, pid(loser_user) or "", additional=False)
 
@@ -887,11 +1043,14 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             f"🆚\n"
             f"👤 {loser_name_link}\n\n"
             f"📊 Счёт: {score}\n\n"
-            f"✅ Победитель: {winner_user.get('first_name', '')} {winner_user.get('last_name', '')}"
+            f"📈 Изменение рейтинга:\n"
+            f"• {winner_user.get('first_name', '')}: {format_rating(winner_old)} → "
+            f"{format_rating(winner_old + (new_winner_points - winner_old))} "
+            f"({'+' if (new_winner_points - winner_old) > 0 else ''}{format_rating(new_winner_points - winner_old)})\n"
+            f"• {loser_user.get('first_name', '')}: {format_rating(loser_old)} → "
+            f"{format_rating(loser_old + (new_loser_points - loser_old))} "
+            f"({'+' if (new_loser_points - loser_old) > 0 else ''}{format_rating(new_loser_points - loser_old)})"
         )
-
-        # Для турнирной игры не изменяем рейтинги
-        rating_changes_for_game = {}
 
     # ---- ОДИНОЧНАЯ ИГРА ----
     elif game_type == 'single':
@@ -1353,7 +1512,8 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
                             f"🏆 Турнирная игра завершена!\n"
                             f"🏆 Турнир: {tournament_name}\n\n"
                             f"📢 Вам засчитано поражение в игре против {opponent_link}\n"
-                            f"Счет: {data.get('score')}"
+                            f"Счет: {data.get('score')}\n"
+                            f"Ваш новый рейтинг: {format_rating(users[opponent_id]['rating_points'])}"
                         )
                     else:
                         # Соперник победил
@@ -1361,7 +1521,8 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
                             f"🏆 Турнирная игра завершена!\n"
                             f"🏆 Турнир: {tournament_name}\n\n"
                             f"🎉 Поздравляем с победой в игре против {opponent_link}!\n"
-                            f"Счет: {data.get('score')}"
+                            f"Счет: {data.get('score')}\n"
+                            f"Ваш новый рейтинг: {format_rating(users[opponent_id]['rating_points'])}"
                         )
                     
                     await callback.bot.send_message(
@@ -1496,8 +1657,12 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         await state.clear()
         
     elif action == "edit_score":
+        data = await state.get_data()
+        game_type = data.get('game_type')
+        is_tournament = (game_type == 'tournament')
+        
         await state.set_state(AddScoreState.selecting_set_score)
-        keyboard = create_set_score_keyboard(1)
+        keyboard = create_set_score_keyboard(1, is_tournament=is_tournament)
         
         # Удаляем текущее сообщение и отправляем новое
         try:
@@ -1521,6 +1686,23 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         if game_type == 'tournament':
             current_user_id = str(callback.message.chat.id)
             opponent_id = data.get('opponent1', {}).get('telegram_id')
+            
+            # Откатываем рейтинги
+            old_ratings = data.get('old_ratings', {})
+            if current_user_id in old_ratings:
+                old_rating = old_ratings[current_user_id]
+                users[current_user_id]['rating_points'] = old_rating
+                users[current_user_id]['player_level'] = calculate_level_from_points(
+                    int(old_rating), 
+                    users[current_user_id].get('sport', '🎾Большой теннис')
+                )
+            if opponent_id in users and opponent_id in old_ratings:
+                opponent_old_rating = old_ratings[opponent_id]
+                users[opponent_id]['rating_points'] = opponent_old_rating
+                users[opponent_id]['player_level'] = calculate_level_from_points(
+                    int(opponent_old_rating), 
+                    users[opponent_id].get('sport', '🎾Большой теннис')
+                )
             
             # Откатываем статистику игр
             users[current_user_id]['games_played'] = max(0, users[current_user_id].get('games_played', 0) - 1)
@@ -1814,7 +1996,9 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         data = await state.get_data()
         sets = data.get('sets', [])
         current_set = len(sets)
-        keyboard = create_set_score_keyboard(current_set)
+        game_type = data.get('game_type')
+        is_tournament = (game_type == 'tournament')
+        keyboard = create_set_score_keyboard(current_set, is_tournament=is_tournament)
         await callback.message.edit_text(f"Выберите счет {current_set}-го сета:", reply_markup=keyboard)
     
     elif current_state == AddScoreState.adding_media.state:
@@ -1822,7 +2006,9 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         data = await state.get_data()
         sets = data.get('sets', [])
         current_set = len(sets)
-        keyboard = create_set_score_keyboard(current_set)
+        game_type = data.get('game_type')
+        is_tournament = (game_type == 'tournament')
+        keyboard = create_set_score_keyboard(current_set, is_tournament=is_tournament)
         await callback.message.edit_text(f"Выберите счет {current_set}-го сета:", reply_markup=keyboard)
     
     await callback.answer()
@@ -1978,6 +2164,7 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
     
     # Определяем результат для пользователя
     user_in_team1 = target_user_id in game['players']['team1']
+    
     team1_wins = sum(1 for set_score in game['sets'] 
                    if int(set_score.split(':')[0]) > int(set_score.split(':')[1]))
     team2_wins = sum(1 for set_score in game['sets'] 

@@ -228,7 +228,7 @@ async def handle_tournament_opponent_selection(callback: types.CallbackQuery, st
     )
     await state.set_state(AddScoreState.selecting_set_score)
     
-    keyboard = create_set_score_keyboard(1)
+    keyboard = create_set_score_keyboard(1, is_tournament=True)
     
     username = selected_opponent.get('username', '')
     username_text_raw = f"@{username}" if username else "не указан"
