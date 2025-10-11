@@ -246,7 +246,7 @@ class TournamentManager:
                         pass
                 
                 # Рисуем имя (без обрезки)
-                name_y = medal_y + 28
+                name_y = medal_y + 18
                 try:
                     bbox = draw.textbbox((0, 0), name, font=current_name_font)
                     name_w = bbox[2] - bbox[0]
