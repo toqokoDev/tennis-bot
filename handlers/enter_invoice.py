@@ -115,7 +115,7 @@ def create_supertiebreak_keyboard(set_number: int = 3) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 # Создание inline клавиатуры для выбора счета сета
-def create_set_score_keyboard(set_number: int = 1, is_tournament: bool = False) -> InlineKeyboardMarkup:
+def create_set_score_keyboard(set_number: int = 1) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     
     # Левая колонка: победа первого игрока
@@ -131,8 +131,8 @@ def create_set_score_keyboard(set_number: int = 1, is_tournament: bool = False) 
             InlineKeyboardButton(text=right_score, callback_data=f"set_score:{set_number}_{right_score}")
         )
     
-    # Для турнирных игр на 3-ем сете добавляем супертайбрейк
-    if is_tournament and set_number == 3:
+    # На 3-ем сете добавляем супертайбрейк для всех типов игр
+    if set_number == 3:
         builder.row(
             InlineKeyboardButton(text="⚡ Супертай", callback_data=f"supertiebreak:{set_number}")
         )
@@ -682,11 +682,9 @@ async def handle_add_another_set(callback: types.CallbackQuery, state: FSMContex
         data = await state.get_data()
         sets = data.get('sets', [])
         next_set_number = len(sets) + 1
-        game_type = data.get('game_type')
-        is_tournament = (game_type == 'tournament')
         
         await state.set_state(AddScoreState.selecting_set_score)
-        keyboard = create_set_score_keyboard(next_set_number, is_tournament=is_tournament)
+        keyboard = create_set_score_keyboard(next_set_number)
         
         await callback.message.edit_text(
             f"Выберите счет {next_set_number}-го сета:",
@@ -702,12 +700,8 @@ async def handle_navigate_sets(callback: types.CallbackQuery, state: FSMContext)
     action, set_number_str = callback.data.split(":")
     set_number = int(set_number_str)
     
-    data = await state.get_data()
-    game_type = data.get('game_type')
-    is_tournament = (game_type == 'tournament')
-    
     await state.set_state(AddScoreState.selecting_set_score)
-    keyboard = create_set_score_keyboard(set_number, is_tournament=is_tournament)
+    keyboard = create_set_score_keyboard(set_number)
     
     await callback.message.edit_text(
         f"Выберите счет {set_number}-го сета:",
@@ -743,10 +737,7 @@ async def handle_back_to_normal_set(callback: types.CallbackQuery, state: FSMCon
     if 'supertiebreak_set' in data:
         await state.update_data(supertiebreak_set=None)
     
-    game_type = data.get('game_type')
-    is_tournament = (game_type == 'tournament')
-    
-    keyboard = create_set_score_keyboard(set_number, is_tournament=is_tournament)
+    keyboard = create_set_score_keyboard(set_number)
     
     await callback.message.edit_text(
         f"Выберите счет {set_number}-го сета:",
@@ -1657,12 +1648,8 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         await state.clear()
         
     elif action == "edit_score":
-        data = await state.get_data()
-        game_type = data.get('game_type')
-        is_tournament = (game_type == 'tournament')
-        
         await state.set_state(AddScoreState.selecting_set_score)
-        keyboard = create_set_score_keyboard(1, is_tournament=is_tournament)
+        keyboard = create_set_score_keyboard(1)
         
         # Удаляем текущее сообщение и отправляем новое
         try:
@@ -1996,9 +1983,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         data = await state.get_data()
         sets = data.get('sets', [])
         current_set = len(sets)
-        game_type = data.get('game_type')
-        is_tournament = (game_type == 'tournament')
-        keyboard = create_set_score_keyboard(current_set, is_tournament=is_tournament)
+        keyboard = create_set_score_keyboard(current_set)
         await callback.message.edit_text(f"Выберите счет {current_set}-го сета:", reply_markup=keyboard)
     
     elif current_state == AddScoreState.adding_media.state:
@@ -2006,9 +1991,7 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         data = await state.get_data()
         sets = data.get('sets', [])
         current_set = len(sets)
-        game_type = data.get('game_type')
-        is_tournament = (game_type == 'tournament')
-        keyboard = create_set_score_keyboard(current_set, is_tournament=is_tournament)
+        keyboard = create_set_score_keyboard(current_set)
         await callback.message.edit_text(f"Выберите счет {current_set}-го сета:", reply_markup=keyboard)
     
     await callback.answer()

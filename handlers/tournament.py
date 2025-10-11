@@ -264,16 +264,14 @@ def create_advanced_tournament_bracket(tournament_data, bracket_text, users_data
         n = len(players)
         results = {}
         wins = {}
-        league_points = {}
-        tie_points = {}
+        set_diff = {}  # Разница очков в сетах для тай-брейка (как в round_robin_image_generator)
         
         # Инициализируем результаты
         for i in range(n):
             player_id = players[i]['id']
             results[player_id] = {}
             wins[player_id] = 0
-            league_points[player_id] = 0
-            tie_points[player_id] = 0
+            set_diff[player_id] = 0
         
         # Обрабатываем завершенные игры
         if completed_games:
@@ -306,9 +304,11 @@ def create_advanced_tournament_bracket(tournament_data, bracket_text, users_data
                     sets = [s.strip() for s in str(score).split(',') if ':' in s]
                     player1_sets = 0
                     player2_sets = 0
+                    sets_data = []  # Сохраняем детализацию по сетам для подсчета очков
                     for set_score in sets:
                         try:
                             p1_games, p2_games = map(int, set_score.split(':'))
+                            sets_data.append((p1_games, p2_games))
                         except Exception:
                             continue
                         if p1_games > p2_games:
@@ -322,27 +322,21 @@ def create_advanced_tournament_bracket(tournament_data, bracket_text, users_data
                     results[player1_id][player2_id] = {
                         'score': score,
                         'sets_won': player1_sets,
-                        'sets_lost': player2_sets
+                        'sets_lost': player2_sets,
+                        'sets_data': sets_data  # Храним детализацию для подсчета очков в сетах
                     }
                     results[player2_id][player1_id] = {
                         'score': score,
                         'sets_won': player2_sets,
-                        'sets_lost': player1_sets
+                        'sets_lost': player1_sets,
+                        'sets_data': [(b, a) for a, b in sets_data]  # Инвертируем для второго игрока
                     }
 
-                    # Подсчитываем победы и очки (3/1/0)
+                    # Подсчитываем победы (просто по сетам, без системы 3/1/0)
                     if player1_sets > player2_sets:
                         wins[player1_id] += 1
-                        league_points[player1_id] += 3
-                        league_points[player2_id] += 0
                     elif player2_sets > player1_sets:
                         wins[player2_id] += 1
-                        league_points[player2_id] += 3
-                        league_points[player1_id] += 0
-                    else:
-                        # Ничья
-                        league_points[player1_id] += 1
-                        league_points[player2_id] += 1
                 except Exception:
                     pass
         
@@ -352,33 +346,35 @@ def create_advanced_tournament_bracket(tournament_data, bracket_text, users_data
             pid = p['id']
             games_played[pid] = len(results.get(pid, {}))
 
-        # Подсчет тай-брейка: разница сетов только среди игроков с равным количеством очков
-        # 1) Группируем игроков по очкам (3/1/0)
-        pts_to_players = {}
-        for p in players:
-            pid = p['id']
-            pts_to_players.setdefault(league_points[pid], []).append(pid)
+        # Подсчет тай-брейка: разница очков в сетах только среди игроков с равным количеством побед
+        # (как в round_robin_image_generator.py)
+        # 1) Группируем игроков по количеству побед
+        from collections import defaultdict
+        wins_groups = defaultdict(list)
+        for pid in [p['id'] for p in players]:
+            wins_groups[wins[pid]].append(pid)
 
-        # 2) Для каждой группы с размером > 1 считаем суммарную разницу сетов в личных встречах
-        tied_ids = set()
-        for pts, ids_in_group in pts_to_players.items():
-            if len(ids_in_group) <= 1:
+        # 2) Для каждой группы с размером > 1 считаем разницу очков в сетах только между игроками этой группы
+        for win_count, group in wins_groups.items():
+            if len(group) <= 1:
                 continue
-            tied_ids.update(ids_in_group)
-            for pid in ids_in_group:
-                group_sd = 0
-                for opp_id in ids_in_group:
-                    if opp_id == pid:
+            for pid in group:
+                points_diff = 0
+                for opp in group:
+                    if opp == pid:
                         continue
-                    if pid in results and opp_id in results[pid]:
-                        match_res = results[pid][opp_id]
-                        group_sd += int(match_res.get('sets_won', 0)) - int(match_res.get('sets_lost', 0))
-                tie_points[pid] = group_sd
+                    if pid in results and opp in results[pid]:
+                        match_res = results[pid][opp]
+                        # Считаем сумму разниц очков в каждом сете
+                        sets_data = match_res.get('sets_data', [])
+                        for set_score in sets_data:
+                            points_diff += set_score[0] - set_score[1]
+                set_diff[pid] = points_diff
 
-        # 3) Сортируем игроков: по очкам (3/1/0), затем по тай-брейку (разница сетов в группе)
+        # 3) Сортируем игроков: по победам, затем по тай-брейку (разница очков в сетах)
         sorted_players = sorted(
             players,
-            key=lambda p: (league_points[p['id']], tie_points.get(p['id'], 0)),
+            key=lambda p: (wins[p['id']], set_diff.get(p['id'], 0)),
             reverse=True
         )
 
@@ -386,10 +382,9 @@ def create_advanced_tournament_bracket(tournament_data, bracket_text, users_data
             'players': sorted_players,
             'results': results,
             'wins': wins,
-            'league_points': league_points,
-            'tie_points': tie_points,
+            'set_diff': set_diff,  # Изменено с league_points и tie_points на set_diff
             'games_played': games_played,
-            'tied_ids': tied_ids
+            'wins_groups': wins_groups  # Изменено с tied_ids на wins_groups
         }
     
     # Рисуем заголовок турнира
@@ -447,9 +442,8 @@ def draw_round_robin_table(draw, table_data, x_start, y_start):
     players = table_data['players']
     results = table_data['results']
     wins = table_data['wins']
-    league_points = table_data.get('league_points', {})
-    tie_points = table_data.get('tie_points', {})
-    tied_ids = table_data.get('tied_ids', set())
+    set_diff = table_data.get('set_diff', {})
+    wins_groups = table_data.get('wins_groups', {})
     
     if not players:
         return
@@ -560,10 +554,14 @@ def draw_round_robin_table(draw, table_data, x_start, y_start):
                  fill=winner_color, font=table_font, anchor="mm")
         
         x_pos += cell_width
-        # Очки (3/1/0)
+        # Очки (разница очков в сетах для тай-брейка)
         draw.rectangle([x_pos, y_pos, x_pos + cell_width, y_pos + cell_height], 
                       fill=bg_color, outline=table_border_color)
-        draw.text((x_pos + cell_width//2, y_pos + cell_height//2), str(league_points.get(player['id'], 0)), 
+        # Показываем разницу очков только для игроков с равным числом побед
+        sd_value = set_diff.get(player['id'], 0)
+        wins_count = wins.get(player['id'], 0)
+        sd_text = str(sd_value) if sd_value != 0 or len(wins_groups.get(wins_count, [])) > 1 else "-"
+        draw.text((x_pos + cell_width//2, y_pos + cell_height//2), sd_text, 
                  fill=text_color, font=table_font, anchor="mm")
 
         x_pos += cell_width
@@ -580,7 +578,7 @@ def draw_round_robin_table(draw, table_data, x_start, y_start):
         note_font = table_font
 
     footnote = (
-        "* При равенстве очков места определяются по разнице сетов в матчах между этими игроками."
+        "* При равенстве побед места определяются по разнице очков в сетах между игроками с равным числом побед."
     )
     footnote_y = y_start + header_height + len(players) * cell_height + 10
     draw.text((x_start, footnote_y), footnote, fill=text_color, font=note_font)
@@ -5093,6 +5091,18 @@ async def select_participant_from_search(callback: CallbackQuery, state: FSMCont
     tournament_data['participants'] = participants
     tournaments[tournament_id] = tournament_data
     await storage.save_tournaments(tournaments)
+    
+    # Уведомление в канал об участнике (как будто он сам зарегистрировался)
+    if is_admin_mode:
+        try:
+            from aiogram import Bot
+            from config.config import TOKEN
+            bot = Bot(token=TOKEN)
+            await send_tournament_application_to_channel(bot, tournament_id, tournament_data, str(user_id), user_data)
+            await bot.session.close()
+            logger.info(f"Уведомление о добавлении участника {user_id} в турнир {tournament_id} отправлено в канал")
+        except Exception as e:
+            logger.error(f"Ошибка отправки уведомления в канал при добавлении участника: {e}")
     
     # Формируем сообщение об успехе
     builder = InlineKeyboardBuilder()

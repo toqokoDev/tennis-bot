@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 import os
 import logging
 
+from utils.tournament_manager import tournament_manager
 from services.storage import storage
 from utils.admin import get_confirmation_keyboard, is_admin
 from handlers.profile import calculate_level_from_points
@@ -1722,7 +1723,6 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
                     logger.info(f"Турнир {tournament_id} обновлен")
                     
                     # Пересобираем сетку и продвигаем раунды
-                    from utils.tournament_manager import tournament_manager
                     await tournament_manager._rebuild_next_round(tournament_id)
                     await tournament_manager.advance_tournament_round(tournament_id)
         
@@ -1765,12 +1765,14 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
                                 pass
                     
                     # Отправляем уведомление в канал
+                    
                     await send_game_notification_to_channel(
                         message.bot, 
                         channel_data, 
                         users, 
                         player1_id
                     )
+
                     logger.info(f"Результат турнирной игры {game_id} опубликован в канал")
             except Exception as e:
                 logger.error(f"Ошибка при публикации в канал: {e}")
@@ -2117,7 +2119,7 @@ async def admin_set_winner_handler(callback: CallbackQuery):
                     logger.info(f"Турнир {tournament_id} обновлен")
                     
                     # Пересобираем сетку и продвигаем раунды
-                    from utils.tournament_manager import tournament_manager
+                    
                     await tournament_manager._rebuild_next_round(tournament_id)
                     await tournament_manager.advance_tournament_round(tournament_id)
                     
@@ -2142,9 +2144,9 @@ async def admin_set_winner_handler(callback: CallbackQuery):
                                 'current_user_id': player1_id
                             }
                             
-                            # Отправляем уведомление в канал
+                            # Отправляем уведомление в канал  
                             await send_game_notification_to_channel(
-                                callback.bot, 
+                                callback.message.bot, 
                                 channel_data, 
                                 users, 
                                 player1_id
