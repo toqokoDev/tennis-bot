@@ -26,7 +26,8 @@ from utils.bracket_image_generator import (
 )
 from utils.round_robin_image_generator import build_round_robin_table
 from utils.tournament_manager import tournament_manager
-from utils.utils import calculate_age, level_to_points
+from utils.utils import calculate_age, level_to_points, calculate_new_ratings
+from handlers.profile import calculate_level_from_points
 from utils.tournament_notifications import TournamentNotifications
 import io
 from config.config import SHOP_ID, SECRET_KEY
@@ -6019,6 +6020,12 @@ async def admin_process_tournament_score_input(message: Message, state: FSMConte
     
     success = await tournament_manager.update_match_result(match_id, winner_id, score, message.bot)
     
+    # Инициализируем переменные для использования позже
+    rating_changes = {}
+    winner_id_str = str(winner_id)
+    loser_id = None
+    users = None
+    
     if success:
         # Создаем запись в games.json
         try:
@@ -6038,6 +6045,52 @@ async def admin_process_tournament_score_input(message: Message, state: FSMConte
                 p1_id = str(match.get('player1_id'))
                 p2_id = str(match.get('player2_id'))
                 
+                # Загружаем пользователей для расчета рейтинга
+                users = await storage.load_users()
+                
+                # Определяем победителя и проигравшего
+                winner_id_str = str(winner_id)
+                loser_id = p2_id if winner_id_str == p1_id else p1_id
+                
+                # Рассчитываем разницу геймов для изменения рейтинга
+                total_game_diff = 0
+                for set_score in [s.strip() for s in score.split(',')]:
+                    games1, games2 = map(int, set_score.split(':'))
+                    total_game_diff += abs(games1 - games2)
+                
+                # Получаем текущие рейтинги игроков
+                winner_rating = float(users.get(winner_id_str, {}).get('rating_points', 500))
+                loser_rating = float(users.get(loser_id, {}).get('rating_points', 500))
+                
+                # Рассчитываем новые рейтинги
+                new_winner_rating, new_loser_rating = await calculate_new_ratings(
+                    winner_rating, loser_rating, total_game_diff
+                )
+                
+                # Обновляем рейтинги пользователей
+                if winner_id_str in users:
+                    users[winner_id_str]['rating_points'] = new_winner_rating
+                    users[winner_id_str]['player_level'] = calculate_level_from_points(
+                        int(new_winner_rating),
+                        users[winner_id_str].get('sport', '🎾Большой теннис')
+                    )
+                
+                if loser_id in users:
+                    users[loser_id]['rating_points'] = new_loser_rating
+                    users[loser_id]['player_level'] = calculate_level_from_points(
+                        int(new_loser_rating),
+                        users[loser_id].get('sport', '🎾Большой теннис')
+                    )
+                
+                # Сохраняем обновленные рейтинги
+                await storage.save_users(users)
+                
+                # Формируем изменения рейтинга для записи в game_data
+                rating_changes = {
+                    p1_id: float(new_winner_rating - winner_rating) if winner_id_str == p1_id else float(new_loser_rating - loser_rating),
+                    p2_id: float(new_loser_rating - loser_rating) if winner_id_str == p1_id else float(new_winner_rating - winner_rating)
+                }
+                
                 game_data = {
                     'id': game_id,
                     'date': datetime.now().isoformat(),
@@ -6049,10 +6102,10 @@ async def admin_process_tournament_score_input(message: Message, state: FSMConte
                         'team1': [p1_id],
                         'team2': [p2_id]
                     },
-                    'rating_changes': {},  # Рейтинг для турнирных игр не меняется
+                    'rating_changes': rating_changes,
                     'tournament_id': tournament_id,
                     'status': 'completed',
-                    'winner_id': str(winner_id)
+                    'winner_id': winner_id_str
                 }
                 
                 # Сохраняем в games.json
@@ -6063,8 +6116,8 @@ async def admin_process_tournament_score_input(message: Message, state: FSMConte
                 
                 # Публикуем результат в телеграм-канал
                 try:
-                    # Определяем кто победил (team1 или team2)
-                    winner_side = 'team1' if str(winner_id) == p1_id else 'team2'
+                    # Определяем winner_side на основе того, кто победил
+                    winner_side = 'team1' if winner_id_str == p1_id else 'team2'
                     
                     # Формируем данные для канала
                     channel_data = {
@@ -6076,9 +6129,6 @@ async def admin_process_tournament_score_input(message: Message, state: FSMConte
                         'opponent1': {'telegram_id': p2_id},
                         'current_user_id': p1_id
                     }
-                    
-                    # Загружаем пользователей для отправки в канал
-                    users = await storage.load_users()
                     
                     # Отправляем уведомление в канал
                     await send_game_notification_to_channel(
@@ -6094,9 +6144,24 @@ async def admin_process_tournament_score_input(message: Message, state: FSMConte
         except Exception as e:
             logger.error(f"Ошибка создания записи в games.json: {e}")
         
+        # Формируем сообщение с изменениями рейтинга
+        rating_msg = ""
+        if rating_changes and users and loser_id:
+            winner_change = rating_changes.get(winner_id_str, 0)
+            loser_change = rating_changes.get(loser_id, 0)
+            winner_name = users.get(winner_id_str, {}).get('first_name', 'Игрок')
+            loser_name = users.get(loser_id, {}).get('first_name', 'Игрок')
+            
+            rating_msg = (
+                f"\n📈 <b>Изменение рейтинга:</b>\n"
+                f"• {winner_name}: {'+' if winner_change >= 0 else ''}{winner_change:.1f}\n"
+                f"• {loser_name}: {'+' if loser_change >= 0 else ''}{loser_change:.1f}"
+            )
+        
         await message.answer(
             f"✅ <b>Счет успешно внесен!</b>\n\n"
-            f"📊 Счет: <b>{score}</b>\n\n"
+            f"📊 Счет: <b>{score}</b>"
+            f"{rating_msg}\n\n"
             f"Матч завершен, сетка турнира обновлена.",
             parse_mode='HTML'
         )
