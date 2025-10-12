@@ -18,9 +18,24 @@ class WebAPIClient:
     def __init__(self):
         self.base_url = API_BASE_URL
         self.token = API_SECRET_TOKEN
+        # URLs для разных доменов
+        self.domain_urls = {
+            'com': 'https://tennis-play.com/profile/api.php',
+            'by': 'https://tennis-play.by/profile/api.php'
+        }
     
-    async def get_user_data(self, user_id: str) -> Optional[Dict]:
+    async def get_user_data(self, user_id: str, domain: str = 'com') -> Optional[Dict]:
+        """
+        Получает данные пользователя с сайта
+        
+        Args:
+            user_id: ID пользователя на сайте
+            domain: Домен сайта ('com' или 'by')
+        """
         try:
+            # Выбираем URL в зависимости от домена
+            api_url = self.domain_urls.get(domain, self.base_url)
+            
             async with aiohttp.ClientSession() as session:
                 params = {
                     'action': 'get_user',
@@ -29,7 +44,7 @@ class WebAPIClient:
                 }
                 
                 async with session.get(
-                    self.base_url,
+                    api_url,
                     params=params
                 ) as response:
                     if response.status == 200:
@@ -51,6 +66,32 @@ class WebAPIClient:
         except Exception as e:
             logger.error(f"Ошибка получения данных пользователя {user_id}: {e}")
             return None
+    
+    async def download_photo(self, photo_url: str, save_path: str) -> bool:
+        """
+        Скачивает фото с сайта и сохраняет в указанный путь
+        
+        Args:
+            photo_url: URL фото на сайте
+            save_path: Путь для сохранения файла
+            
+        Returns:
+            True если успешно, False иначе
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(photo_url) as response:
+                    if response.status == 200:
+                        with open(save_path, 'wb') as f:
+                            f.write(await response.read())
+                        logger.info(f"Фото успешно скачано: {save_path}")
+                        return True
+                    else:
+                        logger.error(f"Ошибка скачивания фото: статус {response.status}")
+                        return False
+        except Exception as e:
+            logger.error(f"Ошибка скачивания фото {photo_url}: {e}")
+            return False
     
     def convert_web_user_to_params(self, web_user: Dict) -> Dict:
         # Разбиваем имя на имя и фамилию
@@ -89,11 +130,6 @@ class WebAPIClient:
         city_name = web_user.get('city_name', '')
         district_name = web_user.get('district_name', '')
         
-        # Получаем ID для обратной совместимости
-        country_id = str(web_user.get('country_id', ''))
-        city_id = str(web_user.get('city_id', ''))
-        district_id = str(web_user.get('district_id', ''))
-        
         # Формируем параметры
         params = {
             'phone': web_user.get('phone', '').replace('+', ''),
@@ -120,8 +156,6 @@ class WebAPIClient:
         # Добавляем район если есть
         if district_name:
             params['district'] = district_name
-        elif district_id and district_id != '0':
-            params['district'] = district_id
         
         # Убираем пустые значения
         params = {k: v for k, v in params.items() if v}

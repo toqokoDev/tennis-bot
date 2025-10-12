@@ -191,14 +191,18 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
             await message.answer(greet, parse_mode="HTML", reply_markup=keyboard)
             return
         
-        web_user_id = start_param.replace('web_', '', 1)
+        # Парсим start_param: формат web_domain_userid
+        # Например: web_com_123 или web_by_456
+        parts = start_param.replace('web_', '', 1).split('_', 1)
+        domain = parts[0] if len(parts) > 1 else 'com'
+        web_user_id = parts[1] if len(parts) > 1 else parts[0]
         
         await message.answer(
             "⏳ Получаю ваши данные с сайта...",
             reply_markup=ReplyKeyboardRemove()
         )
         
-        web_user_data = await web_api_client.get_user_data(web_user_id)
+        web_user_data = await web_api_client.get_user_data(web_user_id, domain)
         
         if not web_user_data:
             await message.answer(
@@ -225,6 +229,25 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
 
         if params.get("country", "") == "Белоруссия":
             params["country"] = "Беларусь"
+        
+        # Скачиваем фото профиля если есть
+        photo_path = None
+        photo_url_large = web_user_data.get('photo_url_large', '')
+        
+        if photo_url_large and photo_url_large.strip():
+            try:
+                # Формируем имя файла и путь
+                ts = int(datetime.now().timestamp())
+                filename = f"{user_id}_{ts}.jpg"
+                dest_path = PHOTOS_DIR / filename
+                
+                # Скачиваем фото
+                if await web_api_client.download_photo(photo_url_large, str(dest_path)):
+                    # Сохраняем относительный путь
+                    photo_path = dest_path.relative_to(BASE_DIR).as_posix()
+            except Exception as e:
+                # Если ошибка скачивания - просто логируем и продолжаем без фото
+                pass
 
         profile = {
             "telegram_id": int(user_id),
@@ -235,14 +258,14 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
             "birth_date": params.get("bdate", ""),
             "country": next((c for c in countries if params.get("country", "") != "" and params.get("country", "").lower() in c.lower()), countries[0]),
             "city": params["city"],
-            "district": params.get("district", ""),
+            "district": params.get("district", "").replace('Москва - ', ''),
             "role": params.get("role", "Игрок"),
             "sport": next((s for s in sport_type if params.get("sport", "") != "" and params.get("sport", "").lower() in s.lower()), sport_type[0]),
             "gender": params.get("gender", "Мужской"),
             "player_level": params.get("level", ""),
             "rating_points": table_tennis_levels[params.get("level", "")].get("points", 0),
             "price": params.get("price", None),
-            "photo_path": None,
+            "photo_path": photo_path,
             "games_played": 0,
             "games_wins": 0,
             "default_payment": params.get("payment", "Пополам"),
@@ -252,7 +275,7 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
             "games": [],
             "created_at": datetime.now().isoformat(timespec="seconds")
         }
-
+        
         await storage.save_user(user_id, profile)
         
         await send_registration_notification(message, profile)
