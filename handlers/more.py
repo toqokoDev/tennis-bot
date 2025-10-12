@@ -226,7 +226,6 @@ async def process_search_country_input(message: Message, state: FSMContext):
 async def process_search_city(callback: types.CallbackQuery, state: FSMContext):
     city = callback.data.split("_", maxsplit=2)[2]
     await state.update_data(search_city=city)
-    
     await perform_search(callback.message, state)
 
     await callback.answer()
@@ -260,7 +259,7 @@ async def process_search_other_city(callback: types.CallbackQuery, state: FSMCon
         f"🏙 Топ городов в {country} с {search_type_text}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
-    await state.set_state(SearchStates.SEARCH_RESULTS)
+    await state.set_state(SearchStates.SEARCH_CITY)
     await callback.answer()
 
 @router.callback_query(F.data == "back_to_countries")
