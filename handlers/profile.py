@@ -204,10 +204,11 @@ async def delete_profile_handler(callback: types.CallbackQuery):
         try:
             await callback.message.delete()
         except:
-            await callback.message.edit_text(
-                "⚠️ Вы уверены, что хотите удалить свой профиль? Это действие нельзя отменить!",
-                reply_markup=confirm_keyboard
-            )
+            pass
+        await callback.message.answer(
+            "⚠️ Вы уверены, что хотите удалить свой профиль? Это действие нельзя отменить!",
+            reply_markup=confirm_keyboard
+        )
     
     await callback.answer()
 
