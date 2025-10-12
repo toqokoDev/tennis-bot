@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from imaplib import Int2AP
 import re
 
 from aiogram import F, Router, types
@@ -264,7 +263,7 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
             "sport": next((s for s in sport_type if params.get("sport", "") != "" and params.get("sport", "").lower() in s.lower()), sport_type[0]),
             "gender": params.get("gender", "Мужской"),
             "player_level": params.get("level", ""),
-            "rating_points": table_tennis_levels[params.get("level", "")].get("points", 0) if params.get("sport", "") != "Настольный теннис" else Int2AP(params.get("level", "")),
+            "rating_points": table_tennis_levels[params.get("level", "")].get("points", 0) if params.get("sport", "") != "Настольный теннис" else int(params.get("level", "")),
             "price": params.get("price", None),
             "photo_path": photo_path,
             "games_played": 0,
