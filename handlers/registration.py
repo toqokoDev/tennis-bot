@@ -29,6 +29,7 @@ from utils.media import download_photo_to_path
 from utils.bot import show_current_data, show_profile
 from utils.validate import validate_date, validate_date_range, validate_future_date, validate_price
 from services.storage import storage
+from services.web_api import web_api_client
 from services.channels import send_tournament_application_to_channel
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -161,6 +162,78 @@ async def show_registration_success(message: types.Message, profile: dict):
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
 
+async def handle_auto_registration(message: types.Message, state: FSMContext, start_param: str):
+    user_id = str(message.chat.id)
+    
+    # Проверяем, не зарегистрирован ли уже пользователь
+    if await storage.is_user_registered(user_id):
+        await message.answer(
+            "✅ Вы уже зарегистрированы!\n"
+            "Используйте /profile для просмотра профиля.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+    
+    web_user_id = start_param.replace('web_', '', 1)
+    
+    await message.answer(
+        "⏳ Получаю ваши данные с сайта...",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    
+    web_user_data = await web_api_client.get_user_data(web_user_id)
+    
+    if not web_user_data:
+        await message.answer(
+            "❌ Не удалось получить данные с сайта.\n\n"
+            f"ID пользователя: {web_user_id}\n\n"
+            "Возможные причины:\n"
+            "• Пользователь не найден на сайте\n"
+            "• Ошибка подключения к API\n"
+            "• Неверные настройки API\n\n"
+            "Пожалуйста, используйте обычную регистрацию: /start",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+    
+    params = web_api_client.convert_web_user_to_params(web_user_data)
+
+    if params.get("country", "") == "Белоруссия":
+        params["country"] = "Беларусь"
+
+    profile = {
+        "telegram_id": user_id,
+        "username": message.chat.username,
+        "first_name": params.get("fname", ""),
+        "last_name": params.get("lname", ""),
+        "phone": params.get("phone", ""),
+        "birth_date": params.get("bdate", ""),
+        "country": next((c for c in countries if params.get("country", "") != "" and params.get("country", "").lower() in c.lower()), countries[0]),
+        "city": params["city"],
+        "district": params.get("district", ""),
+        "role": params.get("role", "Игрок"),
+        "sport": next((s for s in sport_type if params.get("sport", "") != "" and params.get("sport", "").lower() in s.lower()), sport_type[0]),
+        "gender": params.get("gender", "Мужской"),
+        "player_level": params.get("level", ""),
+        "rating_points": table_tennis_levels[params.get("level", "")].get("points", 0),
+        "price": params.get("price", None),
+        "photo_path": None,
+        "games_played": 0,
+        "games_wins": 0,
+        "default_payment": params.get("payment", "Пополам"),
+        "show_in_search": True,
+        "profile_comment": params.get("comment", ""),
+        "referrals_invited": 0,
+        "games": [],
+        "created_at": datetime.now().isoformat(timespec="seconds")
+    }
+
+    await storage.save_user(user_id, profile)
+    
+    await send_registration_notification(message, profile)
+    
+    await show_registration_success(message, profile)
+
 # ---------- Команды и логика ----------
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
@@ -182,6 +255,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
         command_parts = message.text.split()
         if len(command_parts) >= 2:
             start_param = command_parts[1]
+            
+            # Обработка автоматической регистрации через Web API
+            if start_param.startswith('web_'):
+                await handle_auto_registration(message, state, start_param)
+                return
             
             if start_param.startswith('ref_'):
                 referral_id = start_param.replace('ref_', '')
