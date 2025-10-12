@@ -22,6 +22,7 @@ class WebAPIClient:
         self.domain_urls = {
             'com': 'https://tennis-play.com/profile/api.php',
             'by': 'https://tennis-play.by/profile/api.php',
+            'kz': 'https://tennis-play.kz/profile/api.php',
             'padeltennis': 'https://padeltennis-play.com/profile/api.php',
             'tabletennis': 'https://tabletennis-play.com/profile/api.php'
         }
@@ -134,7 +135,7 @@ class WebAPIClient:
         # Обработка game_level: если это целое число, добавляем ".0"
         raw_level = web_user.get('game_level', '')
         level_str = str(raw_level)
-        
+
         if sport != 'Настольный теннис':
             try:
                 if level_str and float(level_str).is_integer():
