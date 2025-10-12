@@ -24,7 +24,8 @@ class WebAPIClient:
             'by': 'https://tennis-play.by/profile/api.php',
             'kz': 'https://tennis-play.kz/profile/api.php',
             'padeltennis': 'https://padeltennis-play.com/profile/api.php',
-            'tabletennis': 'https://tabletennis-play.com/profile/api.php'
+            'tabletennis': 'https://tabletennis-play.com/profile/api.php',
+            'tournaments': 'https://tennis-tournaments.com/profile/api.php'
         }
     
     async def get_user_data(self, user_id: str, domain: str = 'com') -> Optional[Dict]:
