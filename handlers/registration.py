@@ -262,8 +262,7 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
     except Exception as e:
         # Если произошла любая ошибка, переключаем на обычную регистрацию
         await message.answer(
-            "❌ Произошла ошибка при автоматической регистрации.\n\n"
-            "Пожалуйста, пройдите обычную регистрацию.\n"
+            "Пожалуйста, пройдите регистрацию.\n\n"
             "<b>Для начала отправьте ваш номер телефона:</b>",
             parse_mode="HTML",
             reply_markup=ReplyKeyboardMarkup(
