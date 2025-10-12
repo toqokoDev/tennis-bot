@@ -316,9 +316,11 @@ class BracketImageGenerator:
         
         name_parts = player.name.split()
         if len(name_parts) >= 2:
+            # Если есть имя и фамилия - используем инициалы
             return f"{name_parts[0][0]}{name_parts[1][0]}".upper()
         elif len(name_parts) == 1:
-            return name_parts[0][0].upper()
+            # Если только одно слово - используем его полностью
+            return name_parts[0].upper()
         else:
             return ""
 

@@ -167,9 +167,11 @@ class TournamentManager:
                         name_text = player.get('name', '??')
                         parts = name_text.split()
                         if len(parts) >= 2:
+                            # Если есть имя и фамилия - используем инициалы
                             initials = (parts[0][:1] + parts[1][:1]).upper()
                         else:
-                            initials = name_text[:2].upper() if len(name_text) >= 2 else name_text.upper()
+                            # Если только одно слово - используем его полностью
+                            initials = name_text.upper()
                         
                         # Размер шрифта для инициалов зависит от размера фото
                         initials_size = int(size * 0.35)  # 35% от размера изображения

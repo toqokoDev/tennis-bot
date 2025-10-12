@@ -903,7 +903,13 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
     builder = InlineKeyboardBuilder()
     
     for user_id, profile in current_results:
-        name = f"{profile.get('first_name', '')[0]}. {profile.get('last_name', '')}".strip()
+        # Если есть фамилия - сокращаем имя, если нет - используем полное имя
+        first_name = profile.get('first_name', '')
+        last_name = profile.get('last_name', '')
+        if last_name:
+            name = f"{first_name[0]}. {last_name}".strip()
+        else:
+            name = first_name.strip()
         age = await calculate_age(profile.get('birth_date', '05.05.2000'))
         gender_profile = profile.get('gender', '')
         user_district = profile.get('district', '')

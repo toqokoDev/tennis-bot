@@ -234,7 +234,13 @@ def create_advanced_tournament_bracket(tournament_data, bracket_text, users_data
         # Получаем инициалы
         first_name = user_data.get('first_name', '')
         last_name = user_data.get('last_name', '')
-        initials = (first_name[:1] + last_name[:1]).upper() if first_name and last_name else '??'
+        # Если есть и имя и фамилия - используем инициалы, если только имя - используем его полностью
+        if first_name and last_name:
+            initials = (first_name[:1] + last_name[:1]).upper()
+        elif first_name:
+            initials = first_name.upper()
+        else:
+            initials = '??'
         
         try:
             avatar_draw.text((15, 15), initials, fill=(100, 100, 100), font=small_font, anchor="mm")
@@ -491,7 +497,11 @@ def draw_round_robin_table(draw, table_data, x_start, y_start):
             # Рисуем аватар
             draw.rectangle([x_pos + 5, y_start + 5, x_pos + 25, y_start + 25], fill=(200, 200, 200))
             # Здесь можно было бы вставить аватар, но для простоты рисуем инициалы
-            initials = player['name'][:2].upper()
+            name_parts = player['name'].split()
+            if len(name_parts) >= 2:
+                initials = (name_parts[0][:1] + name_parts[1][:1]).upper()
+            else:
+                initials = player['name'].upper()
             draw.text((x_pos + 15, y_start + 15), initials, fill=text_color, font=small_font, anchor="mm")
         
         # Имя игрока
@@ -514,7 +524,11 @@ def draw_round_robin_table(draw, table_data, x_start, y_start):
         # Имя игрока
         if player['avatar']:
             draw.rectangle([x_start + 5, y_pos + 5, x_start + 25, y_pos + 25], fill=(200, 200, 200))
-            initials = player['name'][:2].upper()
+            name_parts = player['name'].split()
+            if len(name_parts) >= 2:
+                initials = (name_parts[0][:1] + name_parts[1][:1]).upper()
+            else:
+                initials = player['name'].upper()
             draw.text((x_start + 15, y_pos + 15), initials, fill=text_color, font=small_font, anchor="mm")
         
         draw.text((x_start + 30, y_pos + 5), player['name'], fill=text_color, font=player_font)

@@ -179,7 +179,13 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
     
     for user_id, user_data in users.items():
         if user_data.get('games') and user_id != callback.message.chat.id:
-            user_name = f"{user_data.get('first_name', 'Неизвестно')[:1]}.{user_data.get('last_name', '')}".strip()
+            # Если есть фамилия - сокращаем имя, если нет - используем полное имя
+            first_name = user_data.get('first_name', 'Неизвестно')
+            last_name = user_data.get('last_name', '')
+            if last_name:
+                user_name = f"{first_name[:1]}.{last_name}".strip()
+            else:
+                user_name = first_name
             
             for game in user_data['games']:
                 if (game.get('active', True) and 

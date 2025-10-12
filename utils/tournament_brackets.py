@@ -235,8 +235,10 @@ def get_player_initial(player: Player) -> str:
     if player.name and len(player.name) > 0:
         words = player.name.split()
         if len(words) >= 2:
+            # Если есть имя и фамилия - используем инициалы
             return f"{words[0][0].upper()}{words[1][0].upper()}"
         else:
-            return player.name[0].upper()
+            # Если только одно слово - используем его полностью
+            return player.name.upper()
     
     return "??"

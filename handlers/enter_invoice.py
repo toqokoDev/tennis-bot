@@ -40,7 +40,13 @@ async def create_users_inline_keyboard(users_list: List[tuple], action: str, pag
     end_idx = min(start_idx + users_per_page, len(users_list))
     
     for user_id, user_data in users_list[start_idx:end_idx]:
-        name = f"{user_data.get('first_name', '')[0]}. {user_data.get('last_name', '')}".strip()
+        # Если есть фамилия - сокращаем имя, если нет - используем полное имя
+        first_name = user_data.get('first_name', '')
+        last_name = user_data.get('last_name', '')
+        if last_name:
+            name = f"{first_name[0]}. {last_name}".strip()
+        else:
+            name = first_name.strip()
         
         age = await calculate_age(user_data.get('birth_date', '05.05.2000'))
         gender_profile = user_data.get('gender', '')

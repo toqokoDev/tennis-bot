@@ -237,15 +237,19 @@ def build_round_robin_table(players: List[Dict[str, Any]], results: Optional[Lis
         first = (p.get('first_name') or '').strip()
         last = (p.get('last_name') or '').strip()
         if first or last:
-            a = first[:1].upper() if first else ''
-            b = last[:1].upper() if last else ''
-            return (a + b) if (a or b) else '??'
+            # Если есть и имя и фамилия - используем инициалы, если только имя - используем его полностью
+            if first and last:
+                return (first[:1] + last[:1]).upper()
+            elif first:
+                return first.upper()
+            else:
+                return last.upper()
         name = (p.get('name') or '').strip()
         if name:
             parts = name.split()
             if len(parts) >= 2:
                 return (parts[0][:1] + parts[1][:1]).upper()
-            return (name[:2]).upper() if len(name) >= 2 else (name[:1].upper() or '??')
+            return name.upper()
         return '??'
 
     # Полное имя игрока
