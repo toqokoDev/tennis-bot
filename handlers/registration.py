@@ -167,11 +167,27 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
     
     # Проверяем, не зарегистрирован ли уже пользователь
     if await storage.is_user_registered(user_id):
-        await message.answer(
-            "✅ Вы уже зарегистрированы!\n"
-            "Используйте /profile для просмотра профиля.",
-            reply_markup=ReplyKeyboardRemove()
-        )
+        profile = await storage.get_user(user_id) or {}
+        first_name = profile.get('first_name', message.from_user.first_name or '')
+        last_name = profile.get('last_name', message.from_user.last_name or '')
+        rating = profile.get('rating_points', 0)
+        games_played = profile.get('games_played', 0)
+        games_wins = profile.get('games_wins', 0)
+        
+        greet = (
+            f"👋 Здравствуйте, <b>{first_name} {last_name}</b>!\n\n"
+            f"🏆 Ваш рейтинг: <b>{rating}</b>\n"
+            f"🎾 Сыграно игр: <b>{games_played}</b>\n"
+            f"✅ Побед: <b>{games_wins}</b>\n\n"
+            f"Вы зарегистрированы в официальном боте @tennis_playbot\n"
+            f"Выберите действие из меню ниже:"
+        )  
+
+        # Получаем адаптивную клавиатуру для вида спорта пользователя
+        sport = profile.get('sport', '🎾Большой теннис')
+        keyboard = get_base_keyboard(sport)
+        
+        await message.answer(greet, parse_mode="HTML", reply_markup=keyboard)
         return
     
     web_user_id = start_param.replace('web_', '', 1)
