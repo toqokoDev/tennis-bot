@@ -186,7 +186,7 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
         # Получаем адаптивную клавиатуру для вида спорта пользователя
         sport = profile.get('sport', '🎾Большой теннис')
         keyboard = get_base_keyboard(sport)
-        
+
         await message.answer(greet, parse_mode="HTML", reply_markup=keyboard)
         return
     
@@ -218,7 +218,7 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
         params["country"] = "Беларусь"
 
     profile = {
-        "telegram_id": user_id,
+        "telegram_id": int(user_id),
         "username": message.chat.username,
         "first_name": params.get("fname", ""),
         "last_name": params.get("lname", ""),
