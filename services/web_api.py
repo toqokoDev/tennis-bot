@@ -129,7 +129,16 @@ class WebAPIClient:
         country_name = web_user.get('country_name', '')
         city_name = web_user.get('city_name', '')
         district_name = web_user.get('district_name', '')
-        
+        # Обработка game_level: если это целое число, добавляем ".0"
+        raw_level = web_user.get('game_level', '')
+        level_str = str(raw_level)
+        try:
+            if level_str and float(level_str).is_integer():
+                # если это целое число (например, 4, 3), делаем '4.0'
+                level_str = f"{int(float(level_str))}.0"
+        except Exception:
+            # если не число, оставляем как есть
+            pass
         # Формируем параметры
         params = {
             'phone': web_user.get('phone', '').replace('+', ''),
@@ -139,7 +148,7 @@ class WebAPIClient:
             'bdate': bdate,
             'gender': gender,
             'role': role,
-            'level': str(web_user.get('game_level', '')),
+            'level': level_str,
             'price': None if str(web_user.get('hour_cost', '')) == '0' else int(web_user.get('hour_cost', '')),
             'payment': payment,
             'comment': web_user.get('about', '')
@@ -156,6 +165,18 @@ class WebAPIClient:
         # Добавляем район если есть
         if district_name:
             params['district'] = district_name
+        
+        # Добавляем фото
+        photo = web_user.get('photo', '')
+        photo_url = web_user.get('photo_url', '')
+        photo_url_large = web_user.get('photo_url_large', '')
+        
+        if photo:
+            params['photo'] = photo
+        if photo_url:
+            params['photo_url'] = photo_url
+        if photo_url_large:
+            params['photo_url_large'] = photo_url_large
         
         # Убираем пустые значения
         params = {k: v for k, v in params.items() if v}
