@@ -21,7 +21,8 @@ class WebAPIClient:
         # URLs для разных доменов
         self.domain_urls = {
             'com': 'https://tennis-play.com/profile/api.php',
-            'by': 'https://tennis-play.by/profile/api.php'
+            'by': 'https://tennis-play.by/profile/api.php',
+            'padeltennis': 'https://padeltennis-play.com/profile/api.php'
         }
     
     async def get_user_data(self, user_id: str, domain: str = 'com') -> Optional[Dict]:
