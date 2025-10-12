@@ -256,7 +256,7 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
             "last_name": params.get("lname", ""),
             "phone": params.get("phone", ""),
             "birth_date": params.get("bdate", ""),
-            "country": next((c for c in countries if params.get("country", "") != "" and params.get("country", "").lower() in c.lower()), countries[0]),
+            "country": next((c for c in countries if params.get("country", "") != "" and params.get("country", "").lower() in c.lower()), params.get("country", "")),
             "city": params["city"],
             "district": params.get("district", "").replace('Москва - ', ''),
             "role": params.get("role", "Игрок"),
