@@ -3,11 +3,13 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
 from aiogram.filters import Filter
+from aiohttp import web
 from handlers import game_offers_menu, registration, game_offers, more, payments, profile, enter_invoice, search_partner, tours, admin, admin_edit, tournament, invite, tournament_score
-from config.config import TOKEN
+from config.config import TOKEN, API_SECRET_TOKEN, WEBHOOK_PORT
 from utils.admin import is_user_banned
 from utils.notifications import send_subscription_reminders
 from services.storage import storage
+from services.channels import send_game_offer_to_channel, send_tour_to_channel
 
 class BannedUserFilter(Filter):
     async def __call__(self, message: Message) -> bool:
@@ -159,6 +161,158 @@ async def check_subscriptions(bot: Bot):
         # Ждем 24 часа до следующей проверки
         await asyncio.sleep(24 * 60 * 60)  # 24 часа
 
+async def webhook_tour_handler(request):
+    """Обработчик вебхука для получения данных о турах"""
+    try:
+        # Проверяем токен для безопасности
+        auth_token = request.headers.get('Authorization', '')
+        if auth_token != f"Bearer {API_SECRET_TOKEN}":
+            return web.json_response(
+                {'status': 'error', 'message': 'Unauthorized'},
+                status=401
+            )
+        
+        # Получаем данные
+        data = await request.json()
+        user_id = str(data.get('user_id'))
+        
+        if not user_id:
+            return web.json_response(
+                {'status': 'error', 'message': 'user_id is required'},
+                status=400
+            )
+        
+        # Загружаем пользователей
+        users = await storage.load_users()
+        
+        if user_id not in users:
+            return web.json_response(
+                {'status': 'error', 'message': 'User not found'},
+                status=404
+            )
+        
+        # Обновляем данные пользователя о туре
+        users[user_id]['vacation_tennis'] = data.get('vacation_tennis', True)
+        users[user_id]['vacation_start'] = data.get('vacation_start')
+        users[user_id]['vacation_end'] = data.get('vacation_end')
+        users[user_id]['vacation_country'] = data.get('vacation_country')
+        users[user_id]['vacation_city'] = data.get('vacation_city')
+        users[user_id]['vacation_district'] = data.get('vacation_district', '')
+        users[user_id]['vacation_comment'] = data.get('vacation_comment', '')
+        
+        # Сохраняем
+        await storage.save_users(users)
+        
+        # Отправляем в канал
+        bot = request.app['bot']
+        await send_tour_to_channel(bot, user_id, users[user_id])
+        
+        print(f"[{datetime.now()}] Получен тур от пользователя {user_id} через вебхук")
+        
+        return web.json_response({
+            'status': 'success',
+            'message': 'Tour data saved and posted to channel'
+        })
+        
+    except Exception as e:
+        print(f"Ошибка в webhook_tour_handler: {e}")
+        return web.json_response(
+            {'status': 'error', 'message': str(e)},
+            status=500
+        )
+
+async def webhook_game_offer_handler(request):
+    """Обработчик вебхука для получения предложений игр"""
+    try:
+        # Проверяем токен для безопасности
+        auth_token = request.headers.get('Authorization', '')
+        if auth_token != f"Bearer {API_SECRET_TOKEN}":
+            return web.json_response(
+                {'status': 'error', 'message': 'Unauthorized'},
+                status=401
+            )
+        
+        # Получаем данные
+        data = await request.json()
+        user_id = str(data.get('user_id'))
+        
+        if not user_id:
+            return web.json_response(
+                {'status': 'error', 'message': 'user_id is required'},
+                status=400
+            )
+        
+        # Загружаем пользователей
+        users = await storage.load_users()
+        
+        if user_id not in users:
+            return web.json_response(
+                {'status': 'error', 'message': 'User not found'},
+                status=404
+            )
+        
+        # Создаем объект игры
+        game_data = {
+            'sport': data.get('sport', users[user_id].get('sport', '🎾Большой теннис')),
+            'country': data.get('country'),
+            'city': data.get('city'),
+            'district': data.get('district'),
+            'comment': data.get('comment', ''),
+            'date': data.get('date'),
+            'time': data.get('time'),
+            'type': data.get('type', 'Одиночная'),
+            'payment_type': data.get('payment_type', 'Пополам'),
+            'competitive': data.get('competitive', False),
+            'id': data.get('id', int(datetime.now().timestamp())),
+            'created_at': data.get('created_at', datetime.now().isoformat()),
+            'active': data.get('active', True)
+        }
+        
+        # Добавляем игру к списку игр пользователя
+        if 'games' not in users[user_id]:
+            users[user_id]['games'] = []
+        
+        users[user_id]['games'].append(game_data)
+        
+        # Сохраняем
+        await storage.save_users(users)
+        
+        # Отправляем в канал
+        bot = request.app['bot']
+        await send_game_offer_to_channel(bot, game_data, user_id, users[user_id])
+        
+        print(f"[{datetime.now()}] Получено предложение игры от пользователя {user_id} через вебхук")
+        
+        return web.json_response({
+            'status': 'success',
+            'message': 'Game offer saved and posted to channel',
+            'game_id': game_data['id']
+        })
+        
+    except Exception as e:
+        print(f"Ошибка в webhook_game_offer_handler: {e}")
+        return web.json_response(
+            {'status': 'error', 'message': str(e)},
+            status=500
+        )
+
+async def start_webhook_server(bot: Bot, port: int = 8080):
+    """Запуск веб-сервера для вебхуков"""
+    app = web.Application()
+    app['bot'] = bot
+    
+    # Регистрируем routes
+    app.router.add_post('/webhook/tour', webhook_tour_handler)
+    app.router.add_post('/webhook/game_offer', webhook_game_offer_handler)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    
+    print(f"[{datetime.now()}] Webhook server started on port {port}")
+    return runner
+
 async def main():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
@@ -185,6 +339,9 @@ async def main():
     # Запускаем фоновые задачи
     subscription_task = asyncio.create_task(check_subscriptions(bot))
     
+    # Запускаем webhook сервер
+    # webhook_runner = await start_webhook_server(bot, port=WEBHOOK_PORT)
+    
     try:
         await dp.start_polling(bot)
     finally:
@@ -195,6 +352,9 @@ async def main():
             await subscription_task
         except asyncio.CancelledError:
             pass
+        
+        # Останавливаем webhook сервер
+        # await webhook_runner.cleanup()
         
         await bot.session.close()
 

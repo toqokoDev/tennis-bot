@@ -14,6 +14,7 @@ ITEMS_PER_PAGE = 5
 TOURNAMENT_ENTRY_FEE = int(os.getenv('TOURNAMENT_ENTRY_FEE', 500))
 API_BASE_URL = os.getenv('TENNIS_API_URL', 'https://tennis-play.by/profile/api.php')
 API_SECRET_TOKEN = os.getenv('TENNIS_API_TOKEN', 'qTDrzUztf2CbdH3sUad9plkmfUryMNA5JAkX1HM2uXw')
+WEBHOOK_PORT = int(os.getenv('WEBHOOK_PORT', 8080))
 
 required_vars = ['TOKEN', 'BOT_USERNAME', 'CHANNEL_ID', 'SHOP_ID', 'SECRET_KEY']
 for var in required_vars:

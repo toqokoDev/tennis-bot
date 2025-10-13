@@ -250,6 +250,8 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
                 pass
 
         profile = {
+            "web_user_id": web_user_id,
+            "web_domain": domain,
             "telegram_id": int(user_id),
             "username": message.chat.username,
             "first_name": params.get("fname", ""),
