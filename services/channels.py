@@ -559,7 +559,8 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
                 f"👤 {profile_link}\n"
                 f"📍 *Место:* {location_escaped}\n"
                 f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
-                f"🎯 *Вид спорта:* {sport_escaped} • {game_type_escaped}\n"
+                f"🎯 *Вид спорта:* {sport_escaped}\n"
+                f"🔍 *Тип игры:* {game_type_escaped}\n"
                 f"💳 *Оплата:* {payment_type_escaped}"
             )
             
