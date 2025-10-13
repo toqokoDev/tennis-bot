@@ -261,7 +261,7 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         gender_icon = "👨" if offer.get('gender', 'male') == 'Мужской' else "👩"
         
         # Имя + уровень
-        if offer.get('player_level', '-'):
+        if offer.get('rating_points', '-'):
             user_info = f"{offer['user_name']} ({offer.get('rating_points', '-')} lvl)"
         else:
             user_info = f"{offer['user_name']}"
