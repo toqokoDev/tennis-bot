@@ -599,7 +599,7 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
 async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]):
     """Отправляет информацию о туре в телеграм-канал"""
     try:
-        profile_link = await create_user_profile_link(user_data, user_id)
+        profile_link = await create_user_profile_link(user_data, user_id, additional=False)
         sport = user_data.get('sport', '🎾Большой теннис')
         
         # Формируем текст тура
