@@ -33,8 +33,5 @@ COPY . .
 
 VOLUME /app/data
 
-# Открываем порт для webhook API
-# EXPOSE 8080
-
 # Команда для запуска приложения
 CMD ["python", "main.py"]
