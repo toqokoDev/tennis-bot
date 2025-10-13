@@ -262,7 +262,7 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         
         # Имя + уровень
         if offer.get('player_level', '-'):
-            user_info = f"{offer['user_name']} ({offer.get('player_level', '-')} lvl)"
+            user_info = f"{offer['user_name']} ({offer.get('rating_points', '-')} lvl)"
         else:
             user_info = f"{offer['user_name']}"
         

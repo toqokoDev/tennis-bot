@@ -4,7 +4,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    Message
+    Message,
+    FSInputFile
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE
@@ -408,6 +409,10 @@ async def show_tours_page(message: types.Message, state: FSMContext):
     if message.content_type == 'text':
         await message.edit_text(text, reply_markup=builder.as_markup())
     else:
+        try:
+            await message.delete()
+        except:
+            pass
         await message.answer(text, reply_markup=builder.as_markup())
 
 @router.callback_query(F.data.startswith("tourpage_"))
@@ -487,13 +492,119 @@ async def view_tour_details(callback: types.CallbackQuery, state: FSMContext):
         ]
     )
     
-    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode='Markdown')
+    # Проверяем наличие фото
+    photo_path = user_data.get('photo_path')
+    if photo_path:
+        # Если есть фото, удаляем старое сообщение и отправляем новое с фото
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        
+        try:
+            photo = FSInputFile(photo_path)
+            await callback.message.answer_photo(
+                photo=photo,
+                caption=text,
+                reply_markup=keyboard,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            # Если не удалось отправить фото, отправляем текстом
+            await callback.message.answer(text, reply_markup=keyboard, parse_mode='Markdown')
+    else:
+        # Если фото нет, просто редактируем
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode='Markdown')
+    
     await callback.answer()
 
 @router.callback_query(F.data == "back_to_tours_list")
 async def back_to_tours_list(callback: types.CallbackQuery, state: FSMContext):
     """Возврат к списку туров"""
-    await show_tours_page(callback.message, state)
+    # Сначала пытаемся редактировать существующее сообщение
+    try:
+        await show_tours_page(callback.message, state)
+    except Exception as e:
+        # Если не удалось редактировать (например, сообщение с фото), удаляем и отправляем новое
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        
+        # Отправляем новое сообщение со списком туров
+        state_data = await state.get_data()
+        all_tours = state_data.get('all_tours', [])
+        current_page = state_data.get('current_page', 0)
+        sport = state_data.get('selected_sport')
+        
+        if not all_tours:
+            await callback.message.answer("❌ Нет туров для отображения")
+            await callback.answer()
+            return
+        
+        # Вычисляем индексы для текущей страницы
+        start_idx = current_page * ITEMS_PER_PAGE
+        end_idx = start_idx + ITEMS_PER_PAGE
+        page_tours = all_tours[start_idx:end_idx]
+        
+        # Заголовок
+        sport_icons = {
+            'tennis': '🎾',
+            'badminton': '🏸',
+            'table_tennis': '🏓'
+        }
+        sport_icon = sport_icons.get(sport, '🎾')
+
+        sport_text = "любому виду спорта" if sport == "any" else sport
+
+        text = f"{sport_icon} Туры по {sport_text} в {state_data.get('selected_city')}, {state_data.get('selected_country')}\n\n"
+        
+        # Создаем клавиатуру
+        builder = InlineKeyboardBuilder()
+        
+        # Кнопки для каждого тура на странице
+        for i, tour in enumerate(page_tours, start=1):
+            user_data = tour['user_data']
+            
+            # Смайлик гендера
+            gender = user_data.get('gender', '')
+            gender_icon = "👨" if gender == 'Мужской' else "👩" if gender == 'Женский' else '👤'
+            
+            # Имя сокращено до первой буквы + фамилия
+            first_name = user_data.get('first_name', '')
+            last_name = user_data.get('last_name', '')
+            user_name = f"{first_name[:1]}. {last_name}" if first_name and last_name else first_name or last_name or 'Неизвестно'
+            
+            level = user_data.get('player_level', '-')
+
+            start_date = await format_tour_date(tour.get('vacation_start', '-'))
+            end_date = await format_tour_date(tour.get('vacation_end', '-'))
+            
+            # Итоговая строка
+            tour_info = f"{start_date}-{end_date} | {gender_icon} {user_name} ({level})"
+            
+            builder.row(InlineKeyboardButton(
+                text=tour_info,
+                callback_data=f"viewtour_{tour['user_id']}"
+            ))
+        
+        builder.row(InlineKeyboardButton(
+            text="Предложить тур",
+            callback_data="create_tour_from_menu"
+        ))
+        
+        # Кнопки навигации
+        nav_buttons = []
+        if current_page > 0:
+            nav_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data="tourpage_prev"))
+        if end_idx < len(all_tours):
+            nav_buttons.append(InlineKeyboardButton(text="Вперед ➡️", callback_data="tourpage_next"))
+        
+        if nav_buttons:
+            builder.row(*nav_buttons)
+        
+        await callback.message.answer(text, reply_markup=builder.as_markup())
+    
     await callback.answer()
 
 @router.callback_query(F.data == "create_tour_from_menu")
