@@ -23,7 +23,7 @@ from config.profile import (
 
 from models.states import RegistrationStates
 
-from services.channels import send_registration_notification
+from services.channels import send_registration_notification, send_tour_to_channel
 from utils.admin import is_user_banned
 from utils.media import download_photo_to_path
 from utils.bot import show_current_data, show_profile
@@ -424,7 +424,6 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
         tour_sent = False
         if profile.get("vacation_tennis") and profile.get("vacation_start") and profile.get("vacation_end"):
             try:
-                from services.channels import send_tour_to_channel
                 await send_tour_to_channel(message.bot, user_id, profile)
                 tour_sent = True
             except Exception as e:

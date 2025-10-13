@@ -142,7 +142,7 @@ channels_usernames = {
     "☕️Бизнес-завтрак": "business_partnery"
 }
 
-tour_channel_id = "-1002972370826"
+tour_channel_id = "tennistours"
 
 def create_sport_keyboard(pref: str = "partner_sport_", exclude_sports: list = None):
     """Создает клавиатуру с видами спорта в заданном формате
