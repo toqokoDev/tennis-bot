@@ -184,8 +184,21 @@ class WebAPIClient:
         if photo_url_large:
             params['photo_url_large'] = photo_url_large
         
-        # Убираем пустые значения
-        params = {k: v for k, v in params.items() if v}
+        # Добавляем данные о туре (find_partner)
+        params['find_partner'] = web_user.get('find_partner', False)
+        params['find_partner_from'] = web_user.get('find_partner_from', '')
+        params['find_partner_to'] = web_user.get('find_partner_to', '')
+        params['find_partner_comment'] = web_user.get('find_partner_comment', '')
+        
+        # Добавляем данные о предложении игры (public_offer)
+        params['public_offer'] = web_user.get('public_offer', False)
+        params['public_offer_date'] = web_user.get('public_offer_date', '')
+        params['public_offer_time'] = web_user.get('public_offer_time', '')
+        params['repeat_everyweek'] = web_user.get('repeat_everyweek', False)
+        params['public_offer_comment'] = web_user.get('public_offer_comment', '')
+        
+        # Убираем пустые значения (кроме boolean значений)
+        params = {k: v for k, v in params.items() if v or isinstance(v, bool)}
         
         return params
 
