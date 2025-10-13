@@ -599,6 +599,13 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
 async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]):
     """Отправляет информацию о туре в телеграм-канал"""
     try:
+        logger.info(f"[TOUR] Начало отправки тура в канал для пользователя {user_id}")
+        logger.info(f"[TOUR] Данные: vacation_start={user_data.get('vacation_start')}, "
+                   f"vacation_end={user_data.get('vacation_end')}, "
+                   f"vacation_city={user_data.get('vacation_city')}, "
+                   f"vacation_country={user_data.get('vacation_country')}, "
+                   f"photo_path={user_data.get('photo_path')}")
+        
         profile_link = await create_user_profile_link(user_data, user_id, additional=False)
         sport = user_data.get('sport', '🎾Большой теннис')
         
@@ -631,6 +638,7 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         photo_path = user_data.get("photo_path")
 
         if photo_path:
+            logger.info(f"[TOUR] Отправка тура с фото: {photo_path}")
             await bot.send_photo(
                 chat_id=tour_channel_id,
                 photo=FSInputFile(BASE_DIR / photo_path),
@@ -638,15 +646,21 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
                 parse_mode="Markdown"
             )
         else:
+            logger.info(f"[TOUR] Отправка тура без фото")
             await bot.send_message(
                 chat_id=tour_channel_id,
                 text=tour_text,
-                parse_mode="Markdown"
+                parse_mode="Markdown",
+                disable_web_page_preview=True
             )
         
+        logger.info(f"[TOUR] ✅ Тур успешно отправлен в канал для пользователя {user_id}")
+        
     except Exception as e:
-        print(f"Ошибка при отправке тура в канал: {e}")
-        print(f"Тип ошибки: {type(e).__name__}")
+        logger.error(f"[TOUR] ❌ Ошибка при отправке тура в канал для пользователя {user_id}: {e}")
+        logger.error(f"[TOUR] Тип ошибки: {type(e).__name__}")
+        import traceback
+        logger.error(f"[TOUR] Traceback: {traceback.format_exc()}")
 
 async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]):
     """Отправляет анкету пользователя в канал (для регистрации)"""
@@ -801,7 +815,8 @@ async def send_tournament_created_to_channel(bot: Bot, tournament_id: str, tourn
             chat_id=channel_id,
             text=text,
             parse_mode="Markdown",
-            reply_markup=builder.as_markup()
+            reply_markup=builder.as_markup(),
+            disable_web_page_preview=True,
         )
     except Exception as e:
         print(f"Ошибка отправки уведомления о новом турнире: {e}")
@@ -861,7 +876,8 @@ async def send_tournament_application_to_channel(
                         chat_id=channel_id,
                         text=text,
                         parse_mode="Markdown",
-                        reply_markup=builder.as_markup()
+                        reply_markup=builder.as_markup(),
+                        disable_web_page_preview=True,
                     )
             except Exception as e:
                 logger.warning(f"Не удалось отправить фото участника: {e}")
@@ -870,7 +886,8 @@ async def send_tournament_application_to_channel(
                     chat_id=channel_id,
                     text=text,
                     parse_mode="Markdown",
-                    reply_markup=builder.as_markup()
+                    reply_markup=builder.as_markup(),
+                    disable_web_page_preview=True,
                 )
         else:
             # Нет фото, отправляем только текст
@@ -878,7 +895,8 @@ async def send_tournament_application_to_channel(
                 chat_id=channel_id,
                 text=text,
                 parse_mode="Markdown",
-                reply_markup=builder.as_markup()
+                reply_markup=builder.as_markup(),
+                disable_web_page_preview=True,
             )
     except Exception as e:
         logger.error(f"Ошибка отправки уведомления об участнике турнира: {e}")
@@ -942,7 +960,8 @@ async def send_tournament_started_to_channel(
                 chat_id=channel_id,
                 text=text,
                 parse_mode="Markdown",
-                reply_markup=builder.as_markup()
+                reply_markup=builder.as_markup(),
+                disable_web_page_preview=True,
             )
     except Exception as e:
         print(f"Ошибка отправки уведомления о начале турнира в канал: {e}")
@@ -1008,7 +1027,8 @@ async def send_tournament_finished_to_channel(
                 chat_id=channel_id,
                 text=text,
                 parse_mode="Markdown",
-                reply_markup=builder.as_markup()
+                reply_markup=builder.as_markup(),
+                disable_web_page_preview=True,
             )
         logger.info(f"✅ Уведомление о завершении турнира {tournament_id} отправлено в канал")
     except Exception as e:
