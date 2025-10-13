@@ -197,6 +197,7 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
                         'user_id': user_id,
                         'user_name': user_name,
                         'player_level': user_data.get('player_level'),
+                        'rating_points': user_data.get('rating_points'),
                         'gender': user_data.get('gender'),
                         'district': game.get('district'),
                         'game_id': game.get('id'),
