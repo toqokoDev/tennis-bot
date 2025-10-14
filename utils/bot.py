@@ -115,11 +115,28 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
     if config.get("has_about_me", True) and profile.get('profile_comment'):
         caption_lines.append(f"\n💬 О себе:\n{profile.get('profile_comment', '—')}")
     
-    caption = "\n".join(caption_lines) if caption_lines else "Анкета недоступна."
-
-    # Проверяем, является ли текущий пользователь админом
     is_user_admin = await is_admin(message.chat.id)
     profile_user_id = profile.get('telegram_id')
+
+
+    if is_user_admin:
+        partner_links = {
+            'com': 'https://tennis-play.com/partner/user/',
+            'by': 'https://tennis-play.by/partner/user/',
+            'kz': 'https://tennis-play.kz/partner/user/',
+            'padeltennis': 'https://padeltennis-play.com/partner/user/',
+            'tabletennis': 'https://tabletennis-play.com/partner/user/',
+            'tournaments': 'https://tennis-tournaments.com/partner/user/'
+        }
+        web_user_id = profile.get('web_user_id', '')
+        web_domain = profile.get('web_domain')
+        
+        if web_domain:
+            partner_link = partner_links.get(web_domain)
+            if partner_link:
+                caption_lines.append(f"\n\nСсылка на сайт: {partner_link}{web_user_id}")
+
+    caption = "\n".join(caption_lines) if caption_lines else "Анкета недоступна."
 
     admin_buttons = [
         [InlineKeyboardButton(text="🗑️ Удалить пользователя", callback_data=f"admin_select_user:{profile_user_id}")],

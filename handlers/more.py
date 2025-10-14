@@ -259,7 +259,7 @@ async def process_search_other_city(callback: types.CallbackQuery, state: FSMCon
         f"🏙 Топ городов в {country} с {search_type_text}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
-    await state.set_state(SearchStates.SEARCH_CITY)
+    await state.set_state(SearchStates.SEARCH_RESULTS)
     await callback.answer()
 
 @router.callback_query(F.data == "back_to_countries")
