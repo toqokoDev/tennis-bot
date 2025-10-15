@@ -458,6 +458,28 @@ async def perform_partner_search(message: Union[types.Message, types.CallbackQue
             
         results.append((user_id, profile))
     
+    # Сортировка партнеров по возрастанию уровня/рейтинга, если это не знакомства
+    if sport_type_val != "🍒Знакомства" and results:
+        def sort_key(item):
+            _uid, prof = item
+            # Настольный теннис сортируем по рейтингу (rating_points)
+            if sport_type_val == "🏓Настольный теннис":
+                rating_val = prof.get("rating_points")
+                if isinstance(rating_val, (int, float)):
+                    return (0, float(rating_val))
+                return (1, float("inf"))
+            # Остальные ракеточные виды спортов — по player_level (например, 1.0..7.0)
+            level_str = prof.get("player_level")
+            try:
+                return (0, float(str(level_str).replace(",", ".")))
+            except Exception:
+                rating_val = prof.get("rating_points")
+                if isinstance(rating_val, (int, float)):
+                    return (0, float(rating_val))
+                return (1, float("inf"))
+
+        results.sort(key=sort_key)
+
     if not results:
         sport_text = f" по виду спорта {sport_type_val}" if sport_type_val else ""
         gender_text = f", пол: {gender}" if gender else ""
@@ -894,7 +916,7 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
         await state.clear()
         return
     
-    results_per_page = 10
+    results_per_page = 5
     total_pages = (len(results) + results_per_page - 1) // results_per_page
     start_idx = page * results_per_page
     end_idx = min(start_idx + results_per_page, len(results))
@@ -938,20 +960,20 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
     pagination_buttons = []
     if page > 0:
         pagination_buttons.append(InlineKeyboardButton(
-            text="⬅️ Предыдущая",
+            text="⬅️",
             callback_data=f"partner_page_{page-1}"
         ))
     if page < total_pages - 1:
         pagination_buttons.append(InlineKeyboardButton(
-            text="Следующая ➡️",
+            text="➡️",
             callback_data=f"partner_page_{page+1}"
         ))
-    
+
     if pagination_buttons:
         builder.row(*pagination_buttons)
     
     builder.row(InlineKeyboardButton(
-        text="⬅️ Назад",
+        text="Назад",
         callback_data="partner_back_to_level"
     ))
     
@@ -1004,4 +1026,15 @@ async def handle_back_to_results_partner(callback: types.CallbackQuery, state: F
     data = await state.get_data()
     current_page = data.get('current_page', 0)
     await show_partner_results_list(callback.message, state, current_page)
+    await callback.answer()
+
+# Пагинация списка партнеров
+@router.callback_query(SearchPartnerStates.SEARCH_RESULTS, F.data.startswith("partner_page_"))
+async def handle_partner_page_change(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        page = int(callback.data.split("_")[-1])
+    except Exception:
+        await callback.answer()
+        return
+    await show_partner_results_list(callback.message, state, page)
     await callback.answer()

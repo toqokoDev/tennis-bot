@@ -634,6 +634,28 @@ async def perform_search(message: Union[types.Message, types.CallbackQuery], sta
             else:
                 results.append((user_id, profile))
     
+    # Сортировка игроков по возрастанию уровня/рейтинга (самые низкие сначала)
+    if search_type == "players" and results:
+        def sort_key(item):
+            _uid, prof = item
+            # Настольный теннис сортируем по рейтингу (rating_points)
+            if sport_type == "🏓Настольный теннис":
+                rating_val = prof.get("rating_points")
+                if isinstance(rating_val, (int, float)):
+                    return (0, float(rating_val))
+                return (1, float("inf"))
+            # Остальные виды спорта с уровнем сортируем по player_level (например, 1.0..7.0)
+            level_str = prof.get("player_level")
+            try:
+                return (0, float(str(level_str).replace(",", ".")))
+            except Exception:
+                rating_val = prof.get("rating_points")
+                if isinstance(rating_val, (int, float)):
+                    return (0, float(rating_val))
+                return (1, float("inf"))
+
+        results.sort(key=sort_key)
+
     if not results:
         search_type_text = "тренеров" if search_type == "coaches" else "игроков"
         sport_text = f" по виду спорта {sport_type}" if sport_type else ""
@@ -679,8 +701,8 @@ async def show_search_results_list(message: types.Message, state: FSMContext, pa
         await state.clear()
         return
     
-    # Пагинация - показываем по 10 результатов на странице
-    results_per_page = 10
+    # Пагинация - показываем по 5 результатов на странице
+    results_per_page = 5
     total_pages = (len(results) + results_per_page - 1) // results_per_page
     start_idx = page * results_per_page
     end_idx = min(start_idx + results_per_page, len(results))
@@ -724,12 +746,12 @@ async def show_search_results_list(message: types.Message, state: FSMContext, pa
     pagination_buttons = []
     if page > 0:
         pagination_buttons.append(InlineKeyboardButton(
-            text="⬅️ Предыдущая",
+            text="⬅️",
             callback_data=f"page_{page-1}"
         ))
     if page < total_pages - 1:
         pagination_buttons.append(InlineKeyboardButton(
-            text="Следующая ➡️",
+            text=" ➡️",
             callback_data=f"page_{page+1}"
         ))
     
@@ -739,7 +761,7 @@ async def show_search_results_list(message: types.Message, state: FSMContext, pa
     # Кнопка возврата
     back_callback = "back_to_cities"
     builder.row(InlineKeyboardButton(
-        text="⬅️ Назад",
+        text="Назад",
         callback_data=back_callback
     ))
     
