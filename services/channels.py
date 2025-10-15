@@ -141,7 +141,7 @@ async def send_registration_notification(message: types.Message, profile: dict):
             # Добавляем способ оплаты корта
             if profile.get('default_payment'):
                 payment = escape_markdown(profile.get('default_payment'))
-                registration_text += f"💳 *Оплата корта:* {payment}\n"
+                registration_text += f"\n💳 *Оплата корта:* {payment}\n"
             
             if profile.get('profile_comment'):
                 comment = escape_markdown(profile.get('profile_comment'))
