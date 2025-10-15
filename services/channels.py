@@ -51,12 +51,6 @@ async def send_registration_notification(message: types.Message, profile: dict):
         # Получаем пол
         gender = profile.get('gender', '')
         gender_emoji = "👨" if gender == "Мужской" else "👩" if gender == "Женский" else "👤"
-        
-        # Получаем username
-        username_text = ""
-        if profile.get('username'):
-            username = escape_markdown(profile.get('username'))
-            username_text = f"✉️ @{username}\n"
 
         # Разное оформление для тренеров и игроков
         if role == "Тренер":
@@ -84,8 +78,7 @@ async def send_registration_notification(message: types.Message, profile: dict):
             if profile.get('profile_comment'):
                 trainer_comment = escape_markdown(profile.get('profile_comment'))
                 registration_text += f"🎾 *О себе* {trainer_comment}\n"
-            
-            registration_text += f"{username_text}"
+        
         else:
             country = escape_markdown(profile.get('country', ''))
             registration_text = (
@@ -109,7 +102,7 @@ async def send_registration_notification(message: types.Message, profile: dict):
             if rating_points and rating_points > 0:
                 registration_text += f"⭐ *Рейтинг:* {format_rating(rating_points)}\n"
             
-            registration_text += f"📍 *Местоположение:* {escape_markdown(city)} ({country})\n{username_text}"
+            registration_text += f"📍 *Местоположение:* {escape_markdown(city)} ({country})"
         
         # Добавляем дополнительные поля в зависимости от вида спорта
         if category == "dating":
@@ -671,11 +664,6 @@ async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[s
         district = user_data.get('district', '')
         if district:
             city = f"{city} - {district}"
-            
-        username_text = "\n"
-        if user_data.get('username'):
-            username = user_data.get('username')
-            username_text = f"✉️ @{username}\n\n"
         
         role = user_data.get('role', 'Игрок')
         sport = user_data.get('sport', '🎾Большой теннис')
@@ -693,8 +681,7 @@ async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[s
                 "👨‍🏫 <b>Новый тренер присоединился к платформе!</b>\n\n"
                 f"🏆 <b>Тренер:</b> {await create_user_profile_link(user_data, user_id)}\n"
                 f"💰 <b>Стоимость:</b> {price} руб./тренировка\n"
-                f"📍 <b>Местоположение:</b> {escape_markdown(city)} ({country})\n"
-                f"{username_text}"
+                f"📍 <b>Местоположение:</b> {escape_markdown(city)} ({country})\n\n"
             )
         else:
             country = escape_markdown(user_data.get('country', ''))
@@ -709,7 +696,6 @@ async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[s
                 profile_text += f"💪 <b>Уровень игры:</b> {player_level}\n"
             
             profile_text += f"📍 <b>Местоположение:</b> {escape_markdown(city)} ({country})\n"
-            profile_text += f"{username_text}"
         
         # Добавляем дополнительные поля в зависимости от вида спорта
         if category == "dating":
