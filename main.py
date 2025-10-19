@@ -3,7 +3,7 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
 from aiogram.filters import Filter
-from handlers import game_offers_menu, registration, game_offers, more, payments, profile, enter_invoice, search_partner, tours, admin, admin_edit, tournament, invite, tournament_score
+from handlers import game_offers_menu, registration, game_offers, more, payments, profile, enter_invoice, search_partner, tours, admin, admin_edit, tournament, invite, tournament_score, beauty_contest
 from config.config import TOKEN
 from utils.admin import is_user_banned
 from utils.notifications import send_subscription_reminders
@@ -181,6 +181,7 @@ async def main():
     dp.include_router(tournament.router)
     dp.include_router(invite.router)
     dp.include_router(payments.router)
+    dp.include_router(beauty_contest.router)
 
     # Запускаем фоновые задачи
     subscription_task = asyncio.create_task(check_subscriptions(bot))

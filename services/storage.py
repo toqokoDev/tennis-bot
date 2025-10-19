@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import logging
 from contextlib import asynccontextmanager
 
-from config.paths import BANNED_USERS_FILE, GAMES_FILE, SESSIONS_DIR, USERS_FILE, TOURNAMENTS_FILE, TOURNAMENT_APPLICATIONS_FILE
+from config.paths import BANNED_USERS_FILE, GAMES_FILE, SESSIONS_DIR, USERS_FILE, TOURNAMENTS_FILE, TOURNAMENT_APPLICATIONS_FILE, BEAUTY_CONTEST_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ class StorageConfig:
     sessions_dir: Path = SESSIONS_DIR
     tournaments_file: Path = TOURNAMENTS_FILE
     tournament_applications_file: Path = TOURNAMENT_APPLICATIONS_FILE
+    beauty_contest_file: Path = BEAUTY_CONTEST_FILE
 
 class AsyncJSONStorage:
     def __init__(self, config: StorageConfig = None):
@@ -153,6 +154,15 @@ class AsyncJSONStorage:
     async def save_tournament_applications(self, applications_data: Dict[str, Any]) -> None:
         """Сохранение заявок на турниры"""
         await self._write_file(self.config.tournament_applications_file, applications_data)
+
+    # Beauty Contest methods
+    async def load_beauty_contest(self) -> Dict[str, Any]:
+        """Загрузка данных конкурса красоты"""
+        return await self._read_file(self.config.beauty_contest_file, {"applications": {}, "votes": {}, "user_votes": {}})
+
+    async def save_beauty_contest(self, beauty_contest_data: Dict[str, Any]) -> None:
+        """Сохранение данных конкурса красоты"""
+        await self._write_file(self.config.beauty_contest_file, beauty_contest_data)
 
 # Создаем глобальный экземпляр хранилища
 storage = AsyncJSONStorage()

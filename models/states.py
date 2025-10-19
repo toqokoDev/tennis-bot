@@ -234,4 +234,16 @@ class AdminEditGameStates(StatesGroup):
     EDIT_MEDIA = State()
     EDIT_WINNER = State()
     ENTER_TOURNAMENT_SCORE = State()  # Для внесения счета матча турнира
+
+class BeautyContestStates(StatesGroup):
+    MAIN_MENU = State()
+    SELECT_GENDER = State()
+    VIEW_PROFILES = State()
+    CONFIRM_APPLICATION = State()
+    DELETE_APPLICATION = State()
+
+class AdminBeautyContestStates(StatesGroup):
+    SELECT_PROFILE = State()
+    EDIT_PROFILE = State()
+    DELETE_PROFILE = State()
     

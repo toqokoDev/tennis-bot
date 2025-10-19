@@ -353,7 +353,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
         if str(g.get('id')) == game_id and g.get('active', True):
             game = g
             break
-    
+    game["media_filename"] = user_data.get('photo_path', '')
     if not game:
         await callback.answer("❌ Предложение не найдено")
         return
@@ -564,8 +564,8 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     
     # Добавляем ID для админа
     if await is_admin(callback.message.chat.id):
-        text += f"\n🆔 ID предложения: `{game_id}`"
-        text += f"\n🆔 ID пользователя: `{user_id}`"
+        text += f"\n🆔 ID предложения: {game_id}"
+        text += f"\n🆔 ID пользователя: {user_id}"
     
     # Создаем клавиатуру
     keyboard_buttons = []
@@ -611,8 +611,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                     await callback.message.answer_photo(
                         photo,
                         caption=text,
-                        reply_markup=keyboard,
-                        parse_mode='Markdown',
+                        reply_markup=keyboard
                     )
             elif game['media_filename'].endswith(('.mp4', '.mov')):
                 with open(media_path, 'rb') as video:
@@ -620,15 +619,14 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                     await callback.message.answer_video(
                         video,
                         caption=text,
-                        reply_markup=keyboard,
-                        parse_mode='Markdown',
+                        reply_markup=keyboard
                     )
             else:
-                await callback.message.edit_text(text, reply_markup=keyboard, parse_mode='Markdown')
+                await callback.message.edit_text(text, reply_markup=keyboard)
         else:
-            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode='Markdown')
+            await callback.message.edit_text(text, reply_markup=keyboard)
     else:
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode='Markdown')
+        await callback.message.edit_text(text, reply_markup=keyboard)
     
     await callback.answer()
 

@@ -29,6 +29,9 @@ async def handle_more(message: types.Message):
         types.InlineKeyboardButton(text="🔍 Поиск тренера", callback_data="find_coach")
     )
     builder.row(
+        types.InlineKeyboardButton(text="🌟 Mr & Mrs Tennis Play", callback_data="beauty_contest")
+    )
+    builder.row(
         types.InlineKeyboardButton(text="О нас", callback_data="about"),
         types.InlineKeyboardButton(text="📞 Контакты", callback_data="contacts")
     )
@@ -178,7 +181,7 @@ async def process_search_other_country(callback: types.CallbackQuery, state: FSM
     )
     await callback.answer()
 
-@router.callback_query(SearchStates.SEARCH_COUNTRY, F.data == "back_to_main")
+@router.callback_query(F.data == "back_to_main")
 async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     builder = InlineKeyboardBuilder()
@@ -188,6 +191,9 @@ async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
     builder.row(
         types.InlineKeyboardButton(text="🌍 Все игроки", callback_data="all_players"),
         types.InlineKeyboardButton(text="🔍 Поиск тренера", callback_data="find_coach")
+    )
+    builder.row(
+        types.InlineKeyboardButton(text="🌟 Mr & Mrs Tennis Play", callback_data="beauty_contest")
     )
     builder.row(
         types.InlineKeyboardButton(text="О нас", callback_data="about"),
@@ -367,7 +373,7 @@ async def show_sport_types_for_players(message: Union[types.Message, types.Callb
         builder.row(*row)
     
     builder.row(InlineKeyboardButton(
-        text="⬅️ Назад к меню",
+        text="Назад к меню",
         callback_data="back_to_main"
     ))
 
@@ -403,7 +409,7 @@ async def show_sport_types(message: Union[types.Message, types.CallbackQuery], s
         builder.row(*row)
     
     builder.row(InlineKeyboardButton(
-        text="⬅️ Назад к меню",
+        text="Назад к меню",
         callback_data="back_to_main"
     ))
 
@@ -473,33 +479,6 @@ async def process_sport_selection(callback: types.CallbackQuery, state: FSMConte
         await state.update_data(sport_type=sport_type)
     
     await show_price_ranges(callback.message, state)
-    await callback.answer()
-
-@router.callback_query(SearchStates.SEARCH_SPORT, F.data == "back_to_main")
-async def back_to_main_from_sport(callback: types.CallbackQuery, state: FSMContext):
-    await state.clear()
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        types.InlineKeyboardButton(text="✈️ Туры", callback_data="tours_main_menu")
-    )
-    builder.row(
-        types.InlineKeyboardButton(text="🌍 Все игроки", callback_data="all_players"),
-        types.InlineKeyboardButton(text="🔍 Поиск тренера", callback_data="find_coach")
-    )
-    builder.row(
-        types.InlineKeyboardButton(text="О нас", callback_data="about"),
-        types.InlineKeyboardButton(text="📞 Контакты", callback_data="contacts")
-    )
-    builder.row(
-        types.InlineKeyboardButton(text="🏆 Многодневные турниры", url="https://tennis-play.com/tournaments/"),
-        types.InlineKeyboardButton(text="🏆 Турниры выходного дня", url="https://tennis-play.com/tournaments/weekend/")
-    )
-    builder.row(
-        types.InlineKeyboardButton(text="👤 Моя анкета", callback_data="profile"),
-        types.InlineKeyboardButton(text="Перейти на сайт", url="https://tennis-play.com/")
-    )
-    
-    await callback.message.edit_text("Дополнительные опции:", reply_markup=builder.as_markup())
     await callback.answer()
 
 async def show_price_ranges(message: Union[types.Message, types.CallbackQuery], state: FSMContext):

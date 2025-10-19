@@ -10,6 +10,7 @@ SESSIONS_DIR = DATA_DIR / "sessions"
 GAMES_PHOTOS_DIR = DATA_DIR / "games_photo"
 TOURNAMENTS_FILE = DATA_DIR / "tournaments.json"
 TOURNAMENT_APPLICATIONS_FILE = DATA_DIR / "tournament_applications.json"
+BEAUTY_CONTEST_FILE = DATA_DIR / "beauty_contest.json"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
