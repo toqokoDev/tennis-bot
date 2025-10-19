@@ -37,10 +37,6 @@ router = Router()
 
 # ---------- Вспомогательные функции ----------
 
-@router.message(F.text)
-async def process_dating_interest_text(message: types.Message, state: FSMContext):
-    print(message)
-
 def get_levels_for_sport(sport: str) -> dict:
     """Получает уровни для выбранного вида спорта"""
     config = get_sport_config(sport)
