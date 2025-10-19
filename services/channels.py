@@ -185,19 +185,21 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
     game_type = data.get('game_type')
     score = data.get('score')
 
-    sport = users.get(user_id, {}).get('sport', '🎾Большой теннис')
+    # Берем вид спорта из данных игры, если нет - из профиля пользователя
+    sport = data.get('sport', users.get(user_id, {}).get('sport', '🎾Большой теннис'))
     
     # Получаем каналы для вида спорта
     channels = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
     
     # Определяем список каналов для отправки
     target_channels = []
-    user_city = users.get(user_id, {}).get('city', '')
+    # Берем город из данных игры, если нет - из профиля пользователя
+    game_city = data.get('city', users.get(user_id, {}).get('city', ''))
     if isinstance(channels, list):
         # Первый канал - для всех городов
         target_channels.append(channels[0])
         # Второй канал - только для Санкт-Петербурга
-        if len(channels) > 1 and user_city == 'Санкт-Петербург':
+        if len(channels) > 1 and game_city == 'Санкт-Петербург':
             target_channels.append(channels[1])
     else:
         # Для обратной совместимости (старый формат с одним каналом)
@@ -605,11 +607,13 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
         target_channels = []
         offer_city = game_data.get('city', '')
         if isinstance(channels, list):
-            # Первый канал - для всех городов
-            target_channels.append(channels[0])
             # Второй канал - только для Санкт-Петербурга
             if len(channels) > 1 and offer_city == 'Санкт-Петербург':
+                print(f"DEBUG: Отправка в канал {channels[1]} для Санкт-Петербурга")
                 target_channels.append(channels[1])
+            else:
+                print(f"DEBUG: Отправка в канал {channels[0]} для всех городов")
+                target_channels.append(channels[0])
         else:
             # Для обратной совместимости (старый формат с одним каналом)
             target_channels.append(channels)
