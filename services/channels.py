@@ -31,7 +31,21 @@ async def send_registration_notification(message: types.Message, profile: dict):
         
         role = profile.get('role', 'Игрок')
         sport = profile.get('sport', '🎾Большой теннис')
-        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Получаем каналы для вида спорта
+        channels = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Определяем список каналов для отправки
+        target_channels = []
+        if isinstance(channels, list):
+            # Первый канал - для всех городов
+            target_channels.append(channels[0])
+            # Второй канал - только для Санкт-Петербурга
+            if len(channels) > 1 and profile.get('city') == 'Санкт-Петербург':
+                target_channels.append(channels[1])
+        else:
+            # Для обратной совместимости (старый формат с одним каналом)
+            target_channels.append(channels)
         
         # Получаем конфигурацию для вида спорта
         config = get_sport_config(sport)
@@ -147,19 +161,21 @@ async def send_registration_notification(message: types.Message, profile: dict):
                 comment = escape_markdown(profile.get('profile_comment'))
                 registration_text += f"💬 *О себе:* {comment}"
         
-        if profile.get('photo_path'):
-            await message.bot.send_photo(
-                chat_id=channel_id,
-                photo=FSInputFile(BASE_DIR / profile.get('photo_path')),
-                caption=registration_text,
-                parse_mode="Markdown"
-            )
-        else:
-            await message.bot.send_message(
-                chat_id=channel_id,
-                text=registration_text,
-                parse_mode="Markdown"
-            )
+        # Отправляем во все целевые каналы
+        for channel_id in target_channels:
+            if profile.get('photo_path'):
+                await message.bot.send_photo(
+                    chat_id=channel_id,
+                    photo=FSInputFile(BASE_DIR / profile.get('photo_path')),
+                    caption=registration_text,
+                    parse_mode="Markdown"
+                )
+            else:
+                await message.bot.send_message(
+                    chat_id=channel_id,
+                    text=registration_text,
+                    parse_mode="Markdown"
+                )
     except Exception as e:
         print(f"Ошибка отправки уведомления: {e}")
 
@@ -170,7 +186,22 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
     score = data.get('score')
 
     sport = users.get(user_id, {}).get('sport', '🎾Большой теннис')
-    channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+    
+    # Получаем каналы для вида спорта
+    channels = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+    
+    # Определяем список каналов для отправки
+    target_channels = []
+    user_city = users.get(user_id, {}).get('city', '')
+    if isinstance(channels, list):
+        # Первый канал - для всех городов
+        target_channels.append(channels[0])
+        # Второй канал - только для Санкт-Петербурга
+        if len(channels) > 1 and user_city == 'Санкт-Петербург':
+            target_channels.append(channels[1])
+    else:
+        # Для обратной совместимости (старый формат с одним каналом)
+        target_channels.append(channels)
 
     game_text = ""
     media_group = []
@@ -378,43 +409,45 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
         builder.row(InlineKeyboardButton(text="👀 Смотреть турнир", url=deep_link))
         reply_markup = builder.as_markup()
     
-    if 'photo_id' in data:
-        await bot.send_photo(
-            chat_id=channel_id,
-            photo=data['photo_id'],
-            caption=game_text,
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
-    elif 'video_id' in data:
-        await bot.send_video(
-            chat_id=channel_id,
-            video=data['video_id'],
-            caption=game_text,
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
-    elif media_group:
-        # если фото/видео игры нет, шлём фото игроков как альбом
-        media_group[0].caption = game_text
-        media_group[0].parse_mode = "Markdown"
-        await bot.send_media_group(chat_id=channel_id, media=media_group)
-        # Для media_group отправляем кнопку отдельным сообщением (если есть)
-        if reply_markup:
-            await bot.send_message(
+    # Отправляем во все целевые каналы
+    for channel_id in target_channels:
+        if 'photo_id' in data:
+            await bot.send_photo(
                 chat_id=channel_id,
-                text="🏆 *Информация о турнире:*",
+                photo=data['photo_id'],
+                caption=game_text,
                 parse_mode="Markdown",
                 reply_markup=reply_markup
             )
-    else:
-        # если вообще нет фото — только текст
-        await bot.send_message(
-            chat_id=channel_id,
-            text=game_text,
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
+        elif 'video_id' in data:
+            await bot.send_video(
+                chat_id=channel_id,
+                video=data['video_id'],
+                caption=game_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+        elif media_group:
+            # если фото/видео игры нет, шлём фото игроков как альбом
+            media_group[0].caption = game_text
+            media_group[0].parse_mode = "Markdown"
+            await bot.send_media_group(chat_id=channel_id, media=media_group)
+            # Для media_group отправляем кнопку отдельным сообщением (если есть)
+            if reply_markup:
+                await bot.send_message(
+                    chat_id=channel_id,
+                    text="🏆 *Информация о турнире:*",
+                    parse_mode="Markdown",
+                    reply_markup=reply_markup
+                )
+        else:
+            # если вообще нет фото — только текст
+            await bot.send_message(
+                chat_id=channel_id,
+                text=game_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
 
 async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_id: str, user_data: Dict[str, Any]):
     """Отправляет предложение игры в телеграм-канал"""
@@ -565,26 +598,41 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
             comment_escaped = escape_markdown(game_data['comment'])
             offer_text += f"\n💬 *Комментарий:* {comment_escaped}"
             
-        # Получаем ID канала для данного вида спорта
-        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        # Получаем каналы для вида спорта
+        channels = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Определяем список каналов для отправки
+        target_channels = []
+        offer_city = game_data.get('city', '')
+        if isinstance(channels, list):
+            # Первый канал - для всех городов
+            target_channels.append(channels[0])
+            # Второй канал - только для Санкт-Петербурга
+            if len(channels) > 1 and offer_city == 'Санкт-Петербург':
+                target_channels.append(channels[1])
+        else:
+            # Для обратной совместимости (старый формат с одним каналом)
+            target_channels.append(channels)
 
         photo_path = user_data.get("photo_path")
 
-        if photo_path:
-            # отправляем фото + текст в подписи
-            await bot.send_photo(
-                chat_id=channel_id,
-                photo=FSInputFile(BASE_DIR / photo_path),
-                caption=offer_text,
-                parse_mode="Markdown"
-            )
-        else:
-            # если фото нет — обычное сообщение
-            await bot.send_message(
-                chat_id=channel_id,
-                text=offer_text,
-                parse_mode="Markdown"
-            )
+        # Отправляем во все целевые каналы
+        for channel_id in target_channels:
+            if photo_path:
+                # отправляем фото + текст в подписи
+                await bot.send_photo(
+                    chat_id=channel_id,
+                    photo=FSInputFile(BASE_DIR / photo_path),
+                    caption=offer_text,
+                    parse_mode="Markdown"
+                )
+            else:
+                # если фото нет — обычное сообщение
+                await bot.send_message(
+                    chat_id=channel_id,
+                    text=offer_text,
+                    parse_mode="Markdown"
+                )
         
     except Exception as e:
         print(f"Ошибка при отправке предложения игры: {e}")
@@ -667,7 +715,21 @@ async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[s
         
         role = user_data.get('role', 'Игрок')
         sport = user_data.get('sport', '🎾Большой теннис')
-        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Получаем каналы для вида спорта
+        channels = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Определяем список каналов для отправки
+        target_channels = []
+        if isinstance(channels, list):
+            # Первый канал - для всех городов
+            target_channels.append(channels[0])
+            # Второй канал - только для Санкт-Петербурга
+            if len(channels) > 1 and user_data.get('city') == 'Санкт-Петербург':
+                target_channels.append(channels[1])
+        else:
+            # Для обратной совместимости (старый формат с одним каналом)
+            target_channels.append(channels)
         
         # Получаем конфигурацию для вида спорта
         config = get_sport_config(sport)
@@ -738,19 +800,21 @@ async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[s
         
         photo_path = user_data.get("photo_path")
 
-        if photo_path:
-            await bot.send_photo(
-                chat_id=channel_id,
-                photo=FSInputFile(BASE_DIR / photo_path),
-                caption=profile_text,
-                parse_mode="HTML"
-            )
-        else:
-            await bot.send_message(
-                chat_id=channel_id,
-                text=profile_text,
-                parse_mode="HTML"
-            )
+        # Отправляем во все целевые каналы
+        for channel_id in target_channels:
+            if photo_path:
+                await bot.send_photo(
+                    chat_id=channel_id,
+                    photo=FSInputFile(BASE_DIR / photo_path),
+                    caption=profile_text,
+                    parse_mode="HTML"
+                )
+            else:
+                await bot.send_message(
+                    chat_id=channel_id,
+                    text=profile_text,
+                    parse_mode="HTML"
+                )
     except Exception as e:
         print(f"Ошибка отправки анкеты пользователя: {e}")
 
@@ -758,7 +822,22 @@ async def send_tournament_created_to_channel(bot: Bot, tournament_id: str, tourn
     """Отправляет уведомление о новом турнире в соответствующий канал с кнопкой "Участвовать"."""
     try:
         sport = tournament_data.get('sport', '🎾Большой теннис')
-        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Получаем каналы для вида спорта
+        channels = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Определяем список каналов для отправки
+        target_channels = []
+        tournament_city = tournament_data.get('city', '')
+        if isinstance(channels, list):
+            # Первый канал - для всех городов
+            target_channels.append(channels[0])
+            # Второй канал - только для Санкт-Петербурга
+            if len(channels) > 1 and tournament_city == 'Санкт-Петербург':
+                target_channels.append(channels[1])
+        else:
+            # Для обратной совместимости (старый формат с одним каналом)
+            target_channels.append(channels)
 
         # Локация
         city = tournament_data.get('city', '—')
@@ -797,13 +876,15 @@ async def send_tournament_created_to_channel(bot: Bot, tournament_id: str, tourn
         deep_link = f"https://t.me/{BOT_USERNAME}?start=join_tournament_{tournament_id}"
         builder.row(InlineKeyboardButton(text="✅ Участвовать", url=deep_link))
 
-        await bot.send_message(
-            chat_id=channel_id,
-            text=text,
-            parse_mode="Markdown",
-            reply_markup=builder.as_markup(),
-            disable_web_page_preview=True,
-        )
+        # Отправляем во все целевые каналы
+        for channel_id in target_channels:
+            await bot.send_message(
+                chat_id=channel_id,
+                text=text,
+                parse_mode="Markdown",
+                reply_markup=builder.as_markup(),
+                disable_web_page_preview=True,
+            )
     except Exception as e:
         print(f"Ошибка отправки уведомления о новом турнире: {e}")
 
@@ -817,7 +898,22 @@ async def send_tournament_application_to_channel(
     """Отправляет уведомление в канал о том, что пользователь записался в турнир, с кнопкой "Участвовать"."""
     try:
         sport = tournament_data.get('sport', '🎾Большой теннис')
-        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Получаем каналы для вида спорта
+        channels = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Определяем список каналов для отправки
+        target_channels = []
+        tournament_city = tournament_data.get('city', '')
+        if isinstance(channels, list):
+            # Первый канал - для всех городов
+            target_channels.append(channels[0])
+            # Второй канал - только для Санкт-Петербурга
+            if len(channels) > 1 and tournament_city == 'Санкт-Петербург':
+                target_channels.append(channels[1])
+        else:
+            # Для обратной совместимости (старый формат с одним каналом)
+            target_channels.append(channels)
 
         # Ссылка на профиль пользователя
         user_link = await create_user_profile_link(user_data, user_id, additional=False)
@@ -841,23 +937,36 @@ async def send_tournament_application_to_channel(
 
         # Проверяем, есть ли фото анкеты у участника
         photo_path = user_data.get('photo_path')
-        if photo_path:
-            try:
-                # Формируем путь к фото
-                abs_path = photo_path if os.path.isabs(photo_path) else os.path.join(BASE_DIR, photo_path)
-                if os.path.exists(abs_path):
-                    # Отправляем с фото
-                    photo_file = FSInputFile(abs_path)
-                    await bot.send_photo(
-                        chat_id=channel_id,
-                        photo=photo_file,
-                        caption=text,
-                        parse_mode="Markdown",
-                        reply_markup=builder.as_markup(),
-                    )
-                    logger.info(f"Отправлено уведомление с фото участника {user_id} в канал")
-                else:
-                    # Фото не найдено, отправляем без фото
+        
+        # Отправляем во все целевые каналы
+        for channel_id in target_channels:
+            if photo_path:
+                try:
+                    # Формируем путь к фото
+                    abs_path = photo_path if os.path.isabs(photo_path) else os.path.join(BASE_DIR, photo_path)
+                    if os.path.exists(abs_path):
+                        # Отправляем с фото
+                        photo_file = FSInputFile(abs_path)
+                        await bot.send_photo(
+                            chat_id=channel_id,
+                            photo=photo_file,
+                            caption=text,
+                            parse_mode="Markdown",
+                            reply_markup=builder.as_markup(),
+                        )
+                        logger.info(f"Отправлено уведомление с фото участника {user_id} в канал {channel_id}")
+                    else:
+                        # Фото не найдено, отправляем без фото
+                        await bot.send_message(
+                            chat_id=channel_id,
+                            text=text,
+                            parse_mode="Markdown",
+                            reply_markup=builder.as_markup(),
+                            disable_web_page_preview=True,
+                        )
+                except Exception as e:
+                    logger.warning(f"Не удалось отправить фото участника в канал {channel_id}: {e}")
+                    # Если не удалось отправить с фото, отправляем без него
                     await bot.send_message(
                         chat_id=channel_id,
                         text=text,
@@ -865,9 +974,8 @@ async def send_tournament_application_to_channel(
                         reply_markup=builder.as_markup(),
                         disable_web_page_preview=True,
                     )
-            except Exception as e:
-                logger.warning(f"Не удалось отправить фото участника: {e}")
-                # Если не удалось отправить с фото, отправляем без него
+            else:
+                # Нет фото, отправляем только текст
                 await bot.send_message(
                     chat_id=channel_id,
                     text=text,
@@ -875,15 +983,6 @@ async def send_tournament_application_to_channel(
                     reply_markup=builder.as_markup(),
                     disable_web_page_preview=True,
                 )
-        else:
-            # Нет фото, отправляем только текст
-            await bot.send_message(
-                chat_id=channel_id,
-                text=text,
-                parse_mode="Markdown",
-                reply_markup=builder.as_markup(),
-                disable_web_page_preview=True,
-            )
     except Exception as e:
         logger.error(f"Ошибка отправки уведомления об участнике турнира: {e}")
 
@@ -897,7 +996,22 @@ async def send_tournament_started_to_channel(
     """Отправляет уведомление в канал о начале турнира с фото сетки."""
     try:
         sport = tournament_data.get('sport', '🎾Большой теннис')
-        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Получаем каналы для вида спорта
+        channels = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Определяем список каналов для отправки
+        target_channels = []
+        tournament_city = tournament_data.get('city', '')
+        if isinstance(channels, list):
+            # Первый канал - для всех городов
+            target_channels.append(channels[0])
+            # Второй канал - только для Санкт-Петербурга
+            if len(channels) > 1 and tournament_city == 'Санкт-Петербург':
+                target_channels.append(channels[1])
+        else:
+            # Для обратной совместимости (старый формат с одним каналом)
+            target_channels.append(channels)
 
         # Локация
         city = tournament_data.get('city', '—')
@@ -929,26 +1043,28 @@ async def send_tournament_started_to_channel(
         deep_link = f"https://t.me/{BOT_USERNAME}?start=view_tournament_{tournament_id}"
         builder.row(InlineKeyboardButton(text="👀 Смотреть турнир", url=deep_link))
 
-        # Отправляем с фото сетки, если оно есть
-        if bracket_image_bytes:
-            from aiogram.types import BufferedInputFile
-            photo = BufferedInputFile(bracket_image_bytes, filename=f"tournament_{tournament_id}_bracket.png")
-            await bot.send_photo(
-                chat_id=channel_id,
-                photo=photo,
-                caption=text,
-                parse_mode="Markdown",
-                reply_markup=builder.as_markup(),
-            )
-        else:
-            # Если фото нет, отправляем только текст
-            await bot.send_message(
-                chat_id=channel_id,
-                text=text,
-                parse_mode="Markdown",
-                reply_markup=builder.as_markup(),
-                disable_web_page_preview=True,
-            )
+        # Отправляем во все целевые каналы
+        for channel_id in target_channels:
+            # Отправляем с фото сетки, если оно есть
+            if bracket_image_bytes:
+                from aiogram.types import BufferedInputFile
+                photo = BufferedInputFile(bracket_image_bytes, filename=f"tournament_{tournament_id}_bracket.png")
+                await bot.send_photo(
+                    chat_id=channel_id,
+                    photo=photo,
+                    caption=text,
+                    parse_mode="Markdown",
+                    reply_markup=builder.as_markup(),
+                )
+            else:
+                # Если фото нет, отправляем только текст
+                await bot.send_message(
+                    chat_id=channel_id,
+                    text=text,
+                    parse_mode="Markdown",
+                    reply_markup=builder.as_markup(),
+                    disable_web_page_preview=True,
+                )
     except Exception as e:
         print(f"Ошибка отправки уведомления о начале турнира в канал: {e}")
 
@@ -963,7 +1079,22 @@ async def send_tournament_finished_to_channel(
     """Отправляет уведомление в канал о завершении турнира с фото победителей."""
     try:
         sport = tournament_data.get('sport', '🎾Большой теннис')
-        channel_id = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Получаем каналы для вида спорта
+        channels = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
+        
+        # Определяем список каналов для отправки
+        target_channels = []
+        tournament_city = tournament_data.get('city', '')
+        if isinstance(channels, list):
+            # Первый канал - для всех городов
+            target_channels.append(channels[0])
+            # Второй канал - только для Санкт-Петербурга
+            if len(channels) > 1 and tournament_city == 'Санкт-Петербург':
+                target_channels.append(channels[1])
+        else:
+            # Для обратной совместимости (старый формат с одним каналом)
+            target_channels.append(channels)
 
         # Локация
         city = tournament_data.get('city', '—')
@@ -996,26 +1127,28 @@ async def send_tournament_finished_to_channel(
         deep_link = f"https://t.me/{BOT_USERNAME}?start=view_tournament_{tournament_id}"
         builder.row(InlineKeyboardButton(text="🏆 Смотреть турнир", url=deep_link))
 
-        # Отправляем с фото коллажа победителей, если оно есть
-        if winners_collage_bytes:
-            from aiogram.types import BufferedInputFile
-            photo = BufferedInputFile(winners_collage_bytes, filename=f"winners_{tournament_id}.png")
-            await bot.send_photo(
-                chat_id=channel_id,
-                photo=photo,
-                caption=text,
-                parse_mode="Markdown",
-                reply_markup=builder.as_markup(),
-            )
-        else:
-            # Если фото нет, отправляем только текст
-            await bot.send_message(
-                chat_id=channel_id,
-                text=text,
-                parse_mode="Markdown",
-                reply_markup=builder.as_markup(),
-                disable_web_page_preview=True,
-            )
-        logger.info(f"✅ Уведомление о завершении турнира {tournament_id} отправлено в канал")
+        # Отправляем во все целевые каналы
+        for channel_id in target_channels:
+            # Отправляем с фото коллажа победителей, если оно есть
+            if winners_collage_bytes:
+                from aiogram.types import BufferedInputFile
+                photo = BufferedInputFile(winners_collage_bytes, filename=f"winners_{tournament_id}.png")
+                await bot.send_photo(
+                    chat_id=channel_id,
+                    photo=photo,
+                    caption=text,
+                    parse_mode="Markdown",
+                    reply_markup=builder.as_markup(),
+                )
+            else:
+                # Если фото нет, отправляем только текст
+                await bot.send_message(
+                    chat_id=channel_id,
+                    text=text,
+                    parse_mode="Markdown",
+                    reply_markup=builder.as_markup(),
+                    disable_web_page_preview=True,
+                )
+        logger.info(f"✅ Уведомление о завершении турнира {tournament_id} отправлено во все каналы")
     except Exception as e:
         logger.error(f"Ошибка отправки уведомления о завершении турнира в канал: {e}")
