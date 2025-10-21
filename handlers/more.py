@@ -14,7 +14,7 @@ from models.states import SearchStates
 from services.storage import storage
 from utils.admin import is_admin
 from utils.bot import show_profile
-from utils.utils import calculate_age, count_users_by_location, get_top_countries, get_top_cities
+from utils.utils import calculate_age, count_users_by_location, get_top_countries, get_top_cities, remove_country_flag
 
 router = Router()
 
@@ -140,14 +140,14 @@ async def process_search_country(callback: types.CallbackQuery, state: FSMContex
         )])
     
     buttons.append([InlineKeyboardButton(
-        text="⬅️ Назад к странам", 
+        text="⬅️ Назад к странам",
         callback_data="back_to_countries"
     )])
     
     search_type_text = "тренеров" if search_type == "coaches" else "игроков"
     
     await callback.message.edit_text(
-        f"🏙 Выберите город для поиска {search_type_text} в {country}:",
+        f"🏙 Выберите город для поиска {search_type_text} в {remove_country_flag(country)}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     
@@ -262,7 +262,7 @@ async def process_search_other_city(callback: types.CallbackQuery, state: FSMCon
     )])
     
     await callback.message.edit_text(
-        f"🏙 Топ городов в {country} с {search_type_text}:",
+        f"🏙 Топ городов в {remove_country_flag(country)} с {search_type_text}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(SearchStates.SEARCH_RESULTS)
@@ -835,7 +835,7 @@ async def handle_back_to_cities(callback: types.CallbackQuery, state: FSMContext
     search_type_text = "тренеров" if search_type == "coaches" else "игроков"
     
     await callback.message.edit_text(
-        f"🏙 Выберите город для поиска {search_type_text} в {country}:",
+        f"🏙 Выберите город для поиска {search_type_text} в {remove_country_flag(country)}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(SearchStates.SEARCH_CITY)

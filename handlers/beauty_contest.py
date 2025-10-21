@@ -14,7 +14,7 @@ from handlers.more import back_to_main
 from models.states import BeautyContestStates
 from services.storage import storage
 from utils.admin import is_admin
-from utils.utils import calculate_age
+from utils.utils import calculate_age, remove_country_flag
 from config.paths import BASE_DIR
 
 router = Router()
@@ -164,7 +164,7 @@ async def beauty_contest_main_menu(callback: CallbackQuery, state: FSMContext):
     
     text = (
         "🌟 <b>Mr & Mrs Tennis Play</b>\n\n"
-        "Примите участие в конкурсе Mr & Mrs Tennis Play и получите голоса от других участников!\n\n"
+        "Примите участие в конкурсе Mr & Mrs Tennis Play, чтобы выиграть нашу бесплатную годовую подписку Premium и возможность 1 года бесплатного участия в наших  турнирах для вас и вашего друга!\n\nДля этого нужно просто зарегистрироваться и собирать голоса от других участников бота.\n\n"
         "📊 В конкурсе участвуют:\n"
         f"• Мужчин: {sum(1 for app in applications.values() if app.get('gender') == 'Мужской')}\n"
         f"• Женщин: {sum(1 for app in applications.values() if app.get('gender') == 'Женский')}\n\n"
@@ -178,6 +178,7 @@ async def beauty_contest_main_menu(callback: CallbackQuery, state: FSMContext):
     # Показываем статус голосов пользователя
     text += await get_votes_status_text(contest_data, user_id) + "\n"
     
+    text += f"\n\n<b>Результаты конкурса будут объявлены 15 января 2026 года</b>"
     try:
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     except:
@@ -299,7 +300,7 @@ async def show_profile_page(message: Message, viewer_id: int, state: FSMContext)
     text = (
         f"🌟 <b>{profile.get('first_name', '')} {profile.get('last_name', '')}</b>\n\n"
         f"🎂 Возраст: {age} лет\n"
-        f"🌍 Страна: {profile.get('country', '—')}\n"
+        f"🌍 Страна: {remove_country_flag(profile.get('country', '—'))}\n"
         f"🏙 Город: {profile.get('city', '—')}\n\n"
         f"💖 Голосов: <b>{vote_count}</b>\n\n"
     )
@@ -594,7 +595,7 @@ async def apply_to_contest(callback: CallbackQuery, state: FSMContext):
         "Ваша анкета:\n\n"
         f"👤 {user_data.get('first_name', '')} {user_data.get('last_name', '')}\n"
         f"🎂 Возраст: {age} лет\n"
-        f"🌍 Страна: {user_data.get('country', '—')}\n"
+        f"🌍 Страна: {remove_country_flag(user_data.get('country', '—'))}\n"
         f"🏙 Город: {user_data.get('city', '—')}\n\n"
     )
     

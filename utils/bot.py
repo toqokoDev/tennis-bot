@@ -7,7 +7,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
-from utils.utils import calculate_age
+from utils.utils import calculate_age, remove_country_flag
 from services.storage import storage
 from config.profile import get_sport_config, get_sport_texts
 
@@ -33,8 +33,16 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
     caption_lines = []
     
     # Добавляем username
-    username = f"@{profile.get('username')}" if profile.get('username') else "—"
-    caption_lines.append(f"\n<b>👤 {profile.get('first_name', '')} {profile.get('last_name', '')}</b> ({username})")
+    first_name = profile.get('first_name', '')
+    last_name = profile.get('last_name', '')
+    username = profile.get('username')
+    phone = profile.get('phone')
+    
+    # Если есть username — добавляем в скобках
+    if username:
+        caption_lines.append(f"\n<b>👤 {first_name} {last_name}</b> (@{username})")
+    else:
+        caption_lines.append(f"\n<b>👤 {first_name} {last_name}</b>")
     
     if profile.get('birth_date'):
         age = await calculate_age(profile['birth_date'])
@@ -60,7 +68,7 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
     if config.get("has_payment", True) and profile.get('price') is not None:
         caption_lines.append(f"💵 Стоимость тренировки: {profile.get('price')} руб")
     
-    caption_lines.append(f"\n🌍 Страна: {profile.get('country', '—')}")
+    caption_lines.append(f"\n🌍 Страна: {remove_country_flag(profile.get('country', '—'))}")
     city = profile.get('city', '—')
     district = profile.get('district', None)
     if district:
@@ -180,6 +188,29 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
     else:
         # Клавиатура для чужого профиля в зависимости от вида спорта
         keyboard_buttons = []
+
+        if username:
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text="📞 Связаться",
+                    url=f"https://t.me/{username}"
+                )
+            ])
+        elif phone:
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=f"📞 Связаться",
+                    url=f"https://t.me/{phone if phone.startswith('+') else '+' + phone}"
+                )
+            ])
+        else:
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text="🚫 Связаться нельзя",
+                    callback_data="no_contact_info"
+                )
+            ])
+
         
         # Добавляем кнопки в зависимости от вида спорта
         if sport not in ["☕️Бизнес-завтрак", "🍻По пиву", "🍒Знакомства"]:

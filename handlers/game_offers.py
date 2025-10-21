@@ -12,6 +12,7 @@ from models.states import GameOfferStates
 from utils.admin import is_admin
 from utils.bot import show_current_data
 from utils.game import get_user_games, save_user_game
+from utils.utils import remove_country_flag
 
 from config.profile import (
     WEEKDAYS, create_sport_keyboard, moscow_districts, game_types, payment_types, base_keyboard, cities_data, countries,
@@ -161,7 +162,7 @@ async def show_single_offer(callback: types.CallbackQuery, state: FSMContext):
     response = [
         f"🎾 *Предложение #{game['id']}* ({current_index + 1}/{len(active_games)})\n",
         f"🏆 *Вид спорта:* {sport}",
-        f"🌍 *Страна:* {game.get('country', '—')}",
+        f"🌍 *Страна:* {remove_country_flag(game.get('country', '—'))}",
         f"🏙 *Город:* {game.get('city', '—')}"+f" - {game.get('district', '')}" if game.get('district') else ''
     ]
     
@@ -455,12 +456,12 @@ async def ask_for_game_city(message: types.Message, state: FSMContext, country: 
 
     try:
         await message.edit_text(
-            f"🏙 Выберите город в {country}:",
+            f"🏙 Выберите город в {remove_country_flag(country)}:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     except:
         await message.answer(
-            f"🏙 Выберите город в {country}:",
+            f"🏙 Выберите город в {remove_country_flag(country)}:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     
@@ -1143,7 +1144,7 @@ async def list_my_games(message: types.Message, state: FSMContext):
     response = [
         f"🎾 *{texts['offer_prefix']} #{game['id']}* (1/{len(active_games)})\n",
         f"🏆 *Вид спорта:* {sport}",
-        f"🌍 *Страна:* {game.get('country', '—')}",
+        f"🌍 *Страна:* {remove_country_flag(game.get('country', '—'))}",
         f"🏙 *Город:* {game.get('city', '—')}"+f" - {game.get('district', '')}" if game.get('district') else ''
     ]
     

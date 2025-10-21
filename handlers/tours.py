@@ -12,7 +12,7 @@ from config.config import ITEMS_PER_PAGE
 from config.profile import create_sport_keyboard, sport_type, countries, cities_data, get_sport_config
 from models.states import BrowseToursStates, CreateTourStates
 from services.channels import send_tour_to_channel
-from utils.utils import create_user_profile_link, format_tour_date
+from utils.utils import create_user_profile_link, format_tour_date, remove_country_flag
 from utils.validate import validate_future_date, validate_date, validate_date_range
 from services.storage import storage
 
@@ -359,7 +359,7 @@ async def show_tours_page(message: types.Message, state: FSMContext):
 
     sport_text = "любому виду спорта" if sport == "any" else sport
 
-    text = f"{sport_icon} Туры по {sport_text} в {state_data.get('selected_city')}, {state_data.get('selected_country')}\n\n"
+    text = f"{sport_icon} Туры по {sport_text} в {state_data.get('selected_city')}, {remove_country_flag(state_data.get('selected_country'))}\n\n"
     
     # Создаем клавиатуру
     builder = InlineKeyboardBuilder()
@@ -466,7 +466,7 @@ async def view_tour_details(callback: types.CallbackQuery, state: FSMContext):
     text = (
         f"{sport_icon} Тур пользователя ({sport}):\n\n"
         f"{profile_link}\n"
-        f"📍 Место: {country}, {city}\n\n"
+        f"📍 Место: {remove_country_flag(country)}, {city}\n\n"
         f"📅 Даты поездки:\n"
         f"Начало: {user_data.get('vacation_start', '—')}\n"
         f"Окончание: {user_data.get('vacation_end', '—')}\n\n"
@@ -557,7 +557,7 @@ async def back_to_tours_list(callback: types.CallbackQuery, state: FSMContext):
 
         sport_text = "любому виду спорта" if sport == "any" else sport
 
-        text = f"{sport_icon} Туры по {sport_text} в {state_data.get('selected_city')}, {state_data.get('selected_country')}\n\n"
+        text = f"{sport_icon} Туры по {sport_text} в {state_data.get('selected_city')}, {remove_country_flag(state_data.get('selected_country'))}\n\n"
         
         # Создаем клавиатуру
         builder = InlineKeyboardBuilder()
@@ -866,7 +866,7 @@ async def process_tour_comment(message: types.Message, state: FSMContext):
     
     await message.answer(
         f"✅ Ваш тур успешно создан! Теперь другие пользователи смогут увидеть его в списке туров.\n\n"
-        f"📍 Место: {vacation_country}, {vacation_city}\n"
+        f"📍 Место: {remove_country_flag(vacation_country)}, {vacation_city}\n"
         f"📅 Даты: {vacation_start} - {vacation_end}\n"
         f"💬 Комментарий: {comment if comment else 'Не указан'}"
     )

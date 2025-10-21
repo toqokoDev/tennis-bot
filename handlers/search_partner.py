@@ -15,7 +15,7 @@ from config.profile import (
 from handlers.dating_filters import show_age_range_selection, show_dating_goal_selection, show_distance_selection
 from models.states import SearchPartnerStates
 from utils.bot import show_profile
-from utils.utils import calculate_age, count_users_by_location, get_users_by_location, get_top_countries, get_top_cities
+from utils.utils import calculate_age, count_users_by_location, get_users_by_location, get_top_countries, get_top_cities, remove_country_flag
 from services.storage import storage
 
 router = Router()
@@ -142,7 +142,7 @@ async def process_search_country_partner(callback: types.CallbackQuery, state: F
     
     # Редактируем предыдущее сообщение
     await callback.message.edit_text(
-        f"🏙 Выберите город для поиска партнера в {country}:",
+        f"🏙 Выберите город для поиска партнера в {remove_country_flag(country)}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     
@@ -274,7 +274,7 @@ async def partner_back_to_cities_from_district(callback: types.CallbackQuery, st
     )])
     
     await callback.message.edit_text(
-        f"🏙 Выберите город для поиска партнера в {country}:",
+        f"🏙 Выберите город для поиска партнера в {remove_country_flag(country)}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(SearchPartnerStates.SEARCH_CITY)
@@ -486,7 +486,7 @@ async def perform_partner_search(message: Union[types.Message, types.CallbackQue
         level_text = f", уровень: {level}" if level else ""
         
         await message_obj.edit_text(
-            f"😕 В городе {city} ({country}){sport_text}{gender_text}{level_text} не найдено подходящих партнеров.",
+            f"😕 В городе {city} ({remove_country_flag(country)}){sport_text}{gender_text}{level_text} не найдено подходящих партнеров.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="⬅️ Назад", callback_data="partner_back_to_level")
             ]])
@@ -654,7 +654,7 @@ async def partner_back_to_cities_from_gender(callback: types.CallbackQuery, stat
     )])
     
     await callback.message.edit_text(
-        f"🏙 Выберите город для поиска партнера в {country}:",
+        f"🏙 Выберите город для поиска партнера в {remove_country_flag(country)}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(SearchPartnerStates.SEARCH_CITY)
@@ -767,7 +767,7 @@ async def process_other_country_selection(callback: types.CallbackQuery, state: 
     
     # Редактируем предыдущее сообщение
     await callback.message.edit_text(
-        f"🏙 Выберите город для поиска партнера в {country}:",
+        f"🏙 Выберите город для поиска партнера в {remove_country_flag(country)}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     
@@ -845,7 +845,7 @@ async def process_search_other_city_partner(callback: types.CallbackQuery, state
     ))
     
     await callback.message.edit_text(
-        f"🏙 Топ городов в {country}:",
+        f"🏙 Топ городов в {remove_country_flag(country)}:",
         reply_markup=builder.as_markup()
     )
     await state.set_state(SearchPartnerStates.SEARCH_OTHER_CITIES)
@@ -896,7 +896,7 @@ async def back_to_cities_from_other(callback: types.CallbackQuery, state: FSMCon
     )])
     
     await callback.message.edit_text(
-        f"🏙 Выберите город для поиска партнера в {country}:",
+        f"🏙 Выберите город для поиска партнера в {remove_country_flag(country)}:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(SearchPartnerStates.SEARCH_CITY)
@@ -983,7 +983,7 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
     
     try:
         await message.edit_text(
-            f"🔍 Найдено {len(results)} партнеров в городе {city} ({country}){sport_text}{gender_text}{level_text}:\n\n"
+            f"🔍 Найдено {len(results)} партнеров в городе {city} ({remove_country_flag(country)}){sport_text}{gender_text}{level_text}:\n\n"
                 f"Страница {page + 1} из {total_pages}\n\n"
                 "Выберите профиль для просмотра:",
                 reply_markup=builder.as_markup()
@@ -994,7 +994,7 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
         except:
             pass
         await message.answer(
-            f"🔍 Найдено {len(results)} партнеров в городе {city} ({country}){sport_text}{gender_text}{level_text}:\n\n"
+            f"🔍 Найдено {len(results)} партнеров в городе {city} ({remove_country_flag(country)}){sport_text}{gender_text}{level_text}:\n\n"
                 f"Страница {page + 1} из {total_pages}\n\n"
                 "Выберите профиль для просмотра:",
                 reply_markup=builder.as_markup()

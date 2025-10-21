@@ -28,6 +28,7 @@ from utils.admin import is_user_banned
 from utils.media import download_photo_to_path
 from utils.bot import show_current_data, show_profile
 from utils.validate import validate_date, validate_date_range, validate_future_date, validate_price
+from utils.utils import remove_country_flag
 from services.storage import storage
 from services.web_api import web_api_client
 from services.channels import send_tournament_application_to_channel
@@ -767,7 +768,7 @@ async def ask_for_city(message: types.Message, state: FSMContext, country: str):
 
     await show_current_data(
         message, state,
-        f"🏙 Выберите Ваш город в стране: {country}",
+        f"🏙 Выберите Ваш город в стране: {remove_country_flag(country)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.CITY)
@@ -1335,7 +1336,7 @@ async def ask_for_vacation_city(message: types.Message, state: FSMContext, count
 
     await show_current_data(
         message, state,
-        f"🏙 Выберите город отдыха в стране: {country}",
+        f"🏙 Выберите город отдыха в стране: {remove_country_flag(country)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.VACATION_CITY)

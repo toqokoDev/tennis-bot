@@ -14,6 +14,7 @@ from services.storage import storage
 from utils.admin import is_admin
 from utils.bot import show_profile
 from utils.media import download_photo_to_path
+from utils.utils import remove_country_flag
 from handlers.profile import calculate_level_from_points
 
 admin_edit_router = Router()
@@ -512,12 +513,12 @@ async def admin_ask_for_city(message: types.Message, state: FSMContext, country:
 
     try:
         await message.edit_text(
-            f"🏙 Выберите город в стране: {country}",
+            f"🏙 Выберите город в стране: {remove_country_flag(country)}",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     except:
         await message.answer(
-            f"🏙 Выберите город в стране: {country}",
+            f"🏙 Выберите город в стране: {remove_country_flag(country)}",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     await state.set_state(AdminEditProfileStates.CITY)

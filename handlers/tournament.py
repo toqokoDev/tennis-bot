@@ -26,7 +26,7 @@ from utils.bracket_image_generator import (
 )
 from utils.round_robin_image_generator import build_round_robin_table
 from utils.tournament_manager import tournament_manager
-from utils.utils import calculate_age, level_to_points, calculate_new_ratings
+from utils.utils import calculate_age, level_to_points, calculate_new_ratings, remove_country_flag
 from handlers.profile import calculate_level_from_points
 from utils.tournament_notifications import TournamentNotifications
 import io
@@ -163,7 +163,7 @@ def generate_tournament_name(tournament_data, tournament_number):
     if tournament_data['city'] == "Москва" and 'district' in tournament_data:
         location = tournament_data['district']
     else:
-        location = f"{tournament_data['city']}, {tournament_data['country']}"
+        location = f"{tournament_data['city']}, {remove_country_flag(tournament_data['country'])}"
     
     # Генерируем название
     name = f"Турнир уровень {level} {location} №{tournament_number}"
@@ -1445,7 +1445,7 @@ async def skip_comment(callback: CallbackQuery, state: FSMContext):
     location = f"{tournament_data['city']}"
     if "district" in tournament_data:
         location += f" ({tournament_data['district']})"
-    location += f", {tournament_data['country']}"
+    location += f", {remove_country_flag(tournament_data['country'])}"
     
     text = f"🏆 Создание турнира\n\n"
     text += f"📋 Подтверждение данных:\n\n"
@@ -1495,7 +1495,7 @@ async def confirm_tournament(callback: CallbackQuery, state: FSMContext):
         location = f"{tournament_data['city']}"
         if "district" in tournament_data:
             location += f" ({tournament_data['district']})"
-        location += f", {tournament_data['country']}"
+        location += f", {remove_country_flag(tournament_data['country'])}"
         
         description = f"Турнир по {tournament_data['sport'].lower()}\n"
         description += f"Место: {location}\n"
@@ -1584,7 +1584,7 @@ async def input_comment(message: Message, state: FSMContext):
     location = f"{tournament_data['city']}"
     if "district" in tournament_data:
         location += f" ({tournament_data['district']})"
-    location += f", {tournament_data['country']}"
+    location += f", {remove_country_flag(tournament_data['country'])}"
     
     text = f"🏆 Создание турнира\n\n"
     text += f"📋 Подтверждение данных:\n\n"
@@ -1634,7 +1634,7 @@ async def confirm_create_tournament(callback: CallbackQuery, state: FSMContext):
             loc = f"{payload['city']}"
             if payload.get('district'):
                 loc += f" ({payload['district']})"
-            loc += f", {payload['country']}"
+            loc += f", {remove_country_flag(payload['country'])}"
             desc = f"Турнир по {payload['sport'].lower()}\n"
             desc += f"Место: {loc}\n"
             desc += f"Тип: {payload['type']}\n"
@@ -2294,7 +2294,7 @@ async def _continue_view_without_type(callback: CallbackQuery, state: FSMContext
 
         # Подготовим красивое превью
         name = generate_tournament_name(base, len(tournaments) + 1)
-        location = f"{base['city']}" + (f" ({base['district']})" if base.get('district') else "") + f", {base['country']}"
+        location = f"{base['city']}" + (f" ({base['district']})" if base.get('district') else "") + f", {remove_country_flag(base['country'])}"
         text = (
             f"🏷️ {name}\n\n"
             f"- Место: {location}\n"
@@ -2389,7 +2389,7 @@ async def _continue_view_with_type(callback: CallbackQuery, state: FSMContext, t
 
         # Подготовим красивое превью
         name = generate_tournament_name(base, len(tournaments) + 1)
-        location = f"{base['city']}" + (f" ({base['district']})" if base.get('district') else "") + f", {base['country']}"
+        location = f"{base['city']}" + (f" ({base['district']})" if base.get('district') else "") + f", {remove_country_flag(base['country'])}"
         text = (
             f"🏷️ {name}\n\n"
             f"- Место: {location}\n"
@@ -2427,7 +2427,7 @@ async def show_tournaments_list(callback: CallbackQuery, tournaments: dict, spor
     """Показывает список турниров"""
     if not tournaments:
         await callback.message.delete()
-        await callback.message.answer(f"🏆 Нет активных турниров по {sport} в {city}, {country}")
+        await callback.message.answer(f"🏆 Нет активных турниров по {sport} в {city}, {remove_country_flag(country)}")
         return
     
     # Преобразуем в список для пагинации
@@ -2435,7 +2435,7 @@ async def show_tournaments_list(callback: CallbackQuery, tournaments: dict, spor
     total_tournaments = len(tournament_list)
     
     text = f"🏆 Турниры по {sport}\n"
-    text += f"📍 {city}, {country}\n\n"
+    text += f"📍 {city}, {remove_country_flag(country)}\n\n"
     text += f"Найдено турниров: {total_tournaments}\n\n"
     
     # Показываем первый турнир
@@ -2578,7 +2578,7 @@ async def view_tournament_prev(callback: CallbackQuery, state: FSMContext):
         location += f" ({tournament_data['district']})"
     
     text = f"🏆 Турниры по {sport}\n"
-    text += f"📍 {city}, {country}\n\n"
+    text += f"📍 {city}, {remove_country_flag(country)}\n\n"
     text += f"Найдено турниров: {total_tournaments}\n\n"
     text += f"🏆 {tournament_data.get('name', 'Турнир')}\n"
     text += f"📍 {location} | {tournament_data.get('type', 'Не указан')}\n"
@@ -2704,7 +2704,7 @@ async def view_tournament_next(callback: CallbackQuery, state: FSMContext):
         location += f" ({tournament_data['district']})"
     
     text = f"🏆 Турниры по {sport}\n"
-    text += f"📍 {city}, {country}\n\n"
+    text += f"📍 {city}, {remove_country_flag(country)}\n\n"
     text += f"Найдено турниров: {total_tournaments}\n\n"
     text += f"🏆 {tournament_data.get('name', 'Турнир')}\n"
     text += f"📍 {location} | {tournament_data.get('type', 'Не указан')}\n"
@@ -2885,7 +2885,7 @@ async def apply_proposed_tournament(callback: CallbackQuery, state: FSMContext):
     from datetime import datetime
     name = generate_tournament_name(base, len(tournaments) + 1)
     tournament_id = f"tournament_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{len(tournaments)+1}"
-    location = f"{base['city']}" + (f" ({base['district']})" if base.get('district') else "") + f", {base['country']}"
+    location = f"{base['city']}" + (f" ({base['district']})" if base.get('district') else "") + f", {remove_country_flag(base['country'])}"
     description = (
         f"Турнир по {base['sport'].lower()}\n"
         f"Место: {location}\n"
