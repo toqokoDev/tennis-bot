@@ -178,7 +178,7 @@ async def beauty_contest_main_menu(callback: CallbackQuery, state: FSMContext):
     # Показываем статус голосов пользователя
     text += await get_votes_status_text(contest_data, user_id) + "\n"
     
-    text += f"\n\n<b>Результаты конкурса будут объявлены 15 января 2026 года</b>"
+    text += f"<b>Результаты конкурса будут объявлены 15 января 2026 года</b>"
     try:
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     except:
@@ -732,12 +732,6 @@ async def admin_menu(callback: CallbackQuery, state: FSMContext):
         InlineKeyboardButton(text="🗑 Удалить анкету", callback_data="bc_admin_delete")
     )
     builder.row(
-        InlineKeyboardButton(text="🔄 Сбросить все голоса", callback_data="bc_admin_reset_votes")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🗑 Очистить все анкеты", callback_data="bc_admin_clear_all")
-    )
-    builder.row(
         InlineKeyboardButton(text="Назад", callback_data="beauty_contest")
     )
     
@@ -829,92 +823,6 @@ async def admin_delete_confirm(callback: CallbackQuery, state: FSMContext):
     
     # Возвращаемся к списку
     await admin_delete_select(callback, state)
-
-@router.callback_query(F.data == "bc_admin_reset_votes")
-async def admin_reset_votes_confirm(callback: CallbackQuery, state: FSMContext):
-    """Подтверждение сброса всех голосов"""
-    user_id = int(callback.from_user.id)
-    
-    if not await is_admin(user_id):
-        await callback.answer("❌ Нет доступа")
-        return
-    
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="✅ Да, сбросить", callback_data="bc_admin_reset_votes_confirm"),
-        InlineKeyboardButton(text="❌ Отмена", callback_data="bc_admin_menu")
-    )
-    
-    text = (
-        "❓ <b>Сбросить все голоса?</b>\n\n"
-        "Вы уверены, что хотите сбросить все голоса в конкурсе?\n"
-        "Это действие нельзя отменить!"
-    )
-    
-    await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
-    await callback.answer()
-
-@router.callback_query(F.data == "bc_admin_reset_votes_confirm")
-async def admin_reset_votes(callback: CallbackQuery, state: FSMContext):
-    """Сброс всех голосов"""
-    user_id = int(callback.from_user.id)
-    
-    if not await is_admin(user_id):
-        await callback.answer("❌ Нет доступа")
-        return
-    
-    # Загружаем данные и сбрасываем голоса
-    contest_data = await storage.load_beauty_contest()
-    contest_data["votes"] = {}
-    contest_data["user_votes"] = {}
-    await storage.save_beauty_contest(contest_data)
-    
-    await callback.answer()
-    
-    # Возвращаемся в админское меню
-    await admin_menu(callback, state)
-
-@router.callback_query(F.data == "bc_admin_clear_all")
-async def admin_clear_all_confirm(callback: CallbackQuery, state: FSMContext):
-    """Подтверждение очистки всех анкет"""
-    user_id = int(callback.from_user.id)
-    
-    if not await is_admin(user_id):
-        await callback.answer("❌ Нет доступа")
-        return
-    
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="✅ Да, очистить", callback_data="bc_admin_clear_all_confirm"),
-        InlineKeyboardButton(text="❌ Отмена", callback_data="bc_admin_menu")
-    )
-    
-    text = (
-        "❓ <b>Очистить все анкеты?</b>\n\n"
-        "Вы уверены, что хотите удалить все анкеты и голоса?\n"
-        "Это действие нельзя отменить!"
-    )
-    
-    await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
-    await callback.answer()
-
-@router.callback_query(F.data == "bc_admin_clear_all_confirm")
-async def admin_clear_all(callback: CallbackQuery, state: FSMContext):
-    """Очистка всех анкет и голосов"""
-    user_id = int(callback.from_user.id)
-    
-    if not await is_admin(user_id):
-        await callback.answer("❌ Нет доступа")
-        return
-    
-    # Полностью очищаем данные конкурса
-    contest_data = {"applications": {}, "votes": {}, "user_votes": {}}
-    await storage.save_beauty_contest(contest_data)
-    
-    await callback.answer()
-    
-    # Возвращаемся в админское меню
-    await admin_menu(callback, state)
 
 # ============== ВОЗВРАТ В МЕНЮ "ЕЩЕ" ==============
 
