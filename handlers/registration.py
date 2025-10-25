@@ -609,26 +609,67 @@ async def cmd_start(message: types.Message, state: FSMContext):
         return
 
     # Если пользователь не зарегистрирован
-    await state.set_state(RegistrationStates.PHONE)
-    welcome_text = (
-        f"👋 Здравствуйте, <b>{message.from_user.full_name}</b>!\n\n"
-        "Вы находитесь в боте @tennis_playbot проекта Tennis-Play.com\n"
-        "Для начала пройдите краткую регистрацию.\n\n"
-        "Начивая регистрацию, Вы соглашаетесь с <a href='https://tennis-play.com/privacy-bot'>политикой обработки персональных данных</a> "
-        "и даёте согласие на <a href='https://tennis-play.com/soglasie'>обработку данных</a>\n\n"
-        "<b>Пожалуйста, отправьте номер телефона:</b>"
-    )
+    username = message.from_user.username
     
-    await message.answer(
-        welcome_text,
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        ),
-        parse_mode="HTML"
-    )
+    if not username:
+        # Если нет username, просим телефон
+        await state.set_state(RegistrationStates.PHONE)
+        welcome_text = (
+            f"👋 Здравствуйте, <b>{message.from_user.full_name}</b>!\n\n"
+            "Вы находитесь в боте @tennis_playbot проекта Tennis-Play.com\n"
+            "Для начала пройдите краткую регистрацию.\n\n"
+            "Начиная регистрацию, Вы соглашаетесь с <a href='https://tennis-play.com/privacy-bot'>политикой обработки персональных данных</a> "
+            "и даёте согласие на <a href='https://tennis-play.com/soglasie'>обработку данных</a>\n\n"
+            "<b>Пожалуйста, отправьте номер телефона:</b>"
+        )
+        
+        await message.answer(
+            welcome_text,
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
+                resize_keyboard=True,
+                one_time_keyboard=True
+            ),
+            parse_mode="HTML"
+        )
+    else:
+        # Если есть username, показываем кнопку "Начать регистрацию"
+        await state.set_state(RegistrationStates.REGISTRATION_START)
+        welcome_text = (
+            f"👋 Здравствуйте, <b>{message.from_user.full_name}</b>!\n\n"
+            "Вы находитесь в боте @tennis_playbot проекта Tennis-Play.com\n"
+            "Для начала пройдите краткую регистрацию.\n\n"
+            "Начиная регистрацию, Вы соглашаетесь с <a href='https://tennis-play.com/privacy-bot'>политикой обработки персональных данных</a> "
+            "и даёте согласие на <a href='https://tennis-play.com/soglasie'>обработку данных</a>\n\n"
+            "Нажмите кнопку ниже для начала регистрации:"
+        )
+        
+        await message.answer(
+            welcome_text,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🚀 Начать регистрацию", callback_data="start_registration")
+            ]]),
+            parse_mode="HTML"
+        )
+    
     await storage.save_session(user_id, await state.get_data())
+
+@router.callback_query(RegistrationStates.REGISTRATION_START, F.data == "start_registration")
+async def process_start_registration(callback: types.CallbackQuery, state: FSMContext):
+    """Обрабатывает нажатие кнопки 'Начать регистрацию'"""
+    # Сохраняем username из профиля пользователя
+    username = callback.from_user.username
+    await state.update_data(username=username)
+    
+    # Переходим к выбору вида спорта
+    await show_current_data(
+        callback.message, state,
+        "🎾 Выберите вид спорта:",
+        reply_markup=create_sport_keyboard(pref="sport_")
+    )
+    await state.set_state(RegistrationStates.SPORT)
+    await callback.answer()
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.message(Command("profile"))
 async def cmd_profile(message: types.Message):
@@ -1505,9 +1546,12 @@ async def create_user_profile(user_id: int, username: str, user_state: dict) -> 
     else:
         rating_points = levels_dict.get(player_level, {}).get("points", 0)
     
+    # Используем username из состояния, если он был сохранен, иначе переданный параметр
+    final_username = user_state.get("username", username)
+    
     profile = {
         "telegram_id": user_id,
-        "username": username,
+        "username": final_username,
         "first_name": user_state.get("first_name"),
         "last_name": user_state.get("last_name"),
         "phone": user_state.get("phone"),

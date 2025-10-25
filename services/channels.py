@@ -38,11 +38,10 @@ async def send_registration_notification(message: types.Message, profile: dict):
         # Определяем список каналов для отправки
         target_channels = []
         if isinstance(channels, list):
-            # Первый канал - для всех городов
-            target_channels.append(channels[0])
-            # Второй канал - только для Санкт-Петербурга
             if len(channels) > 1 and profile.get('city') == 'Санкт-Петербург':
                 target_channels.append(channels[1])
+            else:
+                target_channels.append(channels[0])
         else:
             # Для обратной совместимости (старый формат с одним каналом)
             target_channels.append(channels)
@@ -74,6 +73,7 @@ async def send_registration_notification(message: types.Message, profile: dict):
             registration_text = (
                 "👨‍🏫 *Новый тренер присоединился к платформе!*\n\n"
                 f"🏆 *Тренер:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n"
+                f"📍 *Город:* {escape_markdown(city)} ({country})\n"
             )
             
             # Добавляем возраст и пол если есть
@@ -87,20 +87,15 @@ async def send_registration_notification(message: types.Message, profile: dict):
             registration_text += (
                 f"🎯 *Вид спорта:* {sport_escaped}\n"
                 f"💰 *Стоимость:* {price} руб./тренировка\n"
-                f"📍 *Местоположение:* {escape_markdown(city)} ({country})\n"
             )
-            
-            # Добавляем информацию о корте/клубе для тренеров
-            if profile.get('profile_comment'):
-                trainer_comment = escape_markdown(profile.get('profile_comment'))
-                registration_text += f"🎾 *О себе* {trainer_comment}\n"
         
         else:
             country = escape_markdown(remove_country_flag(profile.get('country', '')))
             sport_escaped = escape_markdown(sport)
             registration_text = (
                 "🎾 *Новый игрок присоединился к сообществу!*\n\n"
-                f"👤 *Игрок:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n" 
+                f"👤 *Игрок:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n"
+                f"📍 *Город:* {escape_markdown(city)} ({country})\n"
             )
             
             # Добавляем возраст и пол если есть
@@ -121,8 +116,6 @@ async def send_registration_notification(message: types.Message, profile: dict):
             rating_points = profile.get('rating_points', 0)
             if rating_points and rating_points > 0:
                 registration_text += f"⭐ *Рейтинг:* {format_rating(rating_points)}\n"
-            
-            registration_text += f"📍 *Местоположение:* {escape_markdown(city)} ({country})"
         
         # Добавляем дополнительные поля в зависимости от вида спорта
         if category == "dating":
@@ -202,11 +195,10 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
     # Берем город из данных игры, если нет - из профиля пользователя
     game_city = data.get('city', users.get(user_id, {}).get('city', ''))
     if isinstance(channels, list):
-        # Первый канал - для всех городов
-        target_channels.append(channels[0])
-        # Второй канал - только для Санкт-Петербурга
         if len(channels) > 1 and game_city == 'Санкт-Петербург':
             target_channels.append(channels[1])
+        else:
+            target_channels.append(channels[0])
     else:
         # Для обратной совместимости (старый формат с одним каналом)
         target_channels.append(channels)
@@ -488,7 +480,7 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
             offer_text = (
                 f"💕 *Анкета для знакомств*\n\n"
                 f"👤 {profile_link}\n"
-                f"📍 *Место:* {location_escaped}\n"
+                f"📍 *Город:* {location_escaped}\n"
                 f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
             )
             
@@ -524,7 +516,7 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
                 offer_text = (
                     f"☕️ *Предложение бизнес-завтрака*\n\n"
                     f"👤 {profile_link}\n"
-                    f"📍 *Место:* {location_escaped}\n"
+                    f"📍 *Город:* {location_escaped}\n"
                     f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
                 )
             else:  # По пиву
@@ -544,7 +536,7 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
                 offer_text = (
                     f"🍻 *Предложение встречи за пивом*\n\n"
                     f"👤 {profile_link}\n"
-                    f"📍 *Место:* {location_escaped}\n"
+                    f"📍 *Город:* {location_escaped}\n"
                     f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
                 )
         elif category == "outdoor_sport":
@@ -566,7 +558,7 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
             offer_text = (
                 f"🏃 *Предложение активности*\n\n"
                 f"👤 {profile_link}\n"
-                f"📍 *Место:* {location_escaped}\n"
+                f"📍 *Город:* {location_escaped}\n"
                 f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
                 f"🎯 *Вид спорта:* {sport_escaped}\n"
             )
@@ -591,7 +583,7 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
             offer_text = (
                 f"🎾 *Предложение игры*\n\n"
                 f"👤 {profile_link}\n"
-                f"📍 *Место:* {location_escaped}\n"
+                f"📍 *Город:* {location_escaped}\n"
                 f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
                 f"🎯 *Вид спорта:* {sport_escaped}\n"
                 f"🔍 *Тип игры:* {game_type_escaped}\n"
@@ -713,121 +705,6 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         import traceback
         logger.error(f"[TOUR] Traceback: {traceback.format_exc()}")
 
-async def send_user_profile_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]):
-    """Отправляет анкету пользователя в канал (для регистрации)"""
-    try:
-        from config.profile import get_sport_config
-        
-        city = user_data.get('city', '—')
-        district = user_data.get('district', '')
-        if district:
-            city = f"{city} - {district}"
-        
-        role = user_data.get('role', 'Игрок')
-        sport = user_data.get('sport', '🎾Большой теннис')
-        
-        # Получаем каналы для вида спорта
-        channels = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
-        
-        # Определяем список каналов для отправки
-        target_channels = []
-        if isinstance(channels, list):
-            # Первый канал - для всех городов
-            target_channels.append(channels[0])
-            # Второй канал - только для Санкт-Петербурга
-            if len(channels) > 1 and user_data.get('city') == 'Санкт-Петербург':
-                target_channels.append(channels[1])
-        else:
-            # Для обратной совместимости (старый формат с одним каналом)
-            target_channels.append(channels)
-        
-        # Получаем конфигурацию для вида спорта
-        config = get_sport_config(sport)
-        category = config.get("category", "court_sport")
-
-        # Разное оформление для тренеров и игроков
-        if role == "Тренер":
-            price = escape_markdown(str(user_data.get('price', 0)))
-            country = escape_markdown(remove_country_flag(user_data.get('country', '')))
-            profile_text = (
-                "👨‍🏫 <b>Новый тренер присоединился к платформе!</b>\n\n"
-                f"🏆 <b>Тренер:</b> {await create_user_profile_link(user_data, user_id)}\n"
-                f"💰 <b>Стоимость:</b> {price} руб./тренировка\n"
-                f"📍 <b>Местоположение:</b> {escape_markdown(city)} ({country})\n\n"
-            )
-        else:
-            country = escape_markdown(remove_country_flag(user_data.get('country', '')))
-            profile_text = (
-                "🎾 <b>Новый игрок присоединился к сообществу!</b>\n\n"
-                f"👤 <b>Игрок:</b> {await create_user_profile_link(user_data, user_id)}\n" 
-            )
-            
-            # Добавляем уровень игры только если он указан
-            if user_data.get('player_level'):
-                player_level = escape_markdown(user_data.get('player_level'))
-                profile_text += f"💪 <b>Уровень игры:</b> {player_level}\n"
-            
-            profile_text += f"📍 <b>Местоположение:</b> {escape_markdown(city)} ({country})\n"
-        
-        # Добавляем дополнительные поля в зависимости от вида спорта
-        if category == "dating":
-            # Для знакомств
-            if user_data.get('dating_goal'):
-                dating_goal = escape_markdown(user_data.get('dating_goal'))
-                profile_text += f"💕 <b>Цель знакомства:</b> {dating_goal}\n"
-            
-            if user_data.get('dating_interests'):
-                interests = ', '.join(user_data.get('dating_interests', []))
-                interests_escaped = escape_markdown(interests)
-                profile_text += f"🎯 <b>Интересы:</b> {interests_escaped}\n"
-            
-            if user_data.get('dating_additional'):
-                dating_additional = escape_markdown(user_data.get('dating_additional'))
-                profile_text += f"📝 <b>О себе:</b> {dating_additional}\n"
-            
-        elif category == "meeting":
-            # Для встреч
-            if sport == "☕️Бизнес-завтрак":
-                if user_data.get('meeting_time'):
-                    meeting_time = escape_markdown(user_data.get('meeting_time'))
-                    profile_text += f"☕️ <b>Время встречи:</b> {meeting_time}\n"
-            else:  # По пиву
-                if user_data.get('meeting_time'):
-                    meeting_time = escape_markdown(user_data.get('meeting_time'))
-                    profile_text += f"🍻 <b>Время встречи:</b> {meeting_time}\n"
-                
-        elif category == "outdoor_sport":
-            # Для активных видов спорта
-            if user_data.get('profile_comment'):
-                comment = escape_markdown(user_data.get('profile_comment'))
-                profile_text += f"💬 <b>О себе:</b> {comment}\n"
-            
-        else:  # court_sport
-            # Для спортивных видов с кортами
-            if user_data.get('profile_comment'):
-                comment = escape_markdown(user_data.get('profile_comment'))
-                profile_text += f"💬 <b>О себе:</b> {comment}\n"
-        
-        photo_path = user_data.get("photo_path")
-
-        # Отправляем во все целевые каналы
-        for channel_id in target_channels:
-            if photo_path:
-                await bot.send_photo(
-                    chat_id=channel_id,
-                    photo=FSInputFile(BASE_DIR / photo_path),
-                    caption=profile_text,
-                    parse_mode="HTML"
-                )
-            else:
-                await bot.send_message(
-                    chat_id=channel_id,
-                    text=profile_text,
-                    parse_mode="HTML"
-                )
-    except Exception as e:
-        print(f"Ошибка отправки анкеты пользователя: {e}")
-
 async def send_tournament_created_to_channel(bot: Bot, tournament_id: str, tournament_data: Dict[str, Any]):
     """Отправляет уведомление о новом турнире в соответствующий канал с кнопкой "Участвовать"."""
     try:
@@ -840,11 +717,10 @@ async def send_tournament_created_to_channel(bot: Bot, tournament_id: str, tourn
         target_channels = []
         tournament_city = tournament_data.get('city', '')
         if isinstance(channels, list):
-            # Первый канал - для всех городов
-            target_channels.append(channels[0])
-            # Второй канал - только для Санкт-Петербурга
             if len(channels) > 1 and tournament_city == 'Санкт-Петербург':
                 target_channels.append(channels[1])
+            else:
+                target_channels.append(channels[0])
         else:
             # Для обратной совместимости (старый формат с одним каналом)
             target_channels.append(channels)
@@ -870,7 +746,7 @@ async def send_tournament_created_to_channel(bot: Bot, tournament_id: str, tourn
 
         text = (
             f"🏆 *{name}*\n\n"
-            f"🌍 *Место:* {escape_markdown(city)}, {escape_markdown(remove_country_flag(country))}\n"
+            f"🌍 *Город:* {escape_markdown(city)}, {escape_markdown(remove_country_flag(country))}\n"
             f"🎯 *Тип:* {type_text} • {gender}\n"
             f"🏅 *Категория:* {category}\n"
             f"🧩 *Уровень:* {level}\n"
@@ -916,11 +792,10 @@ async def send_tournament_application_to_channel(
         target_channels = []
         tournament_city = tournament_data.get('city', '')
         if isinstance(channels, list):
-            # Первый канал - для всех городов
-            target_channels.append(channels[0])
-            # Второй канал - только для Санкт-Петербурга
             if len(channels) > 1 and tournament_city == 'Санкт-Петербург':
                 target_channels.append(channels[1])
+            else:
+                target_channels.append(channels[0])
         else:
             # Для обратной совместимости (старый формат с одним каналом)
             target_channels.append(channels)
@@ -1014,11 +889,10 @@ async def send_tournament_started_to_channel(
         target_channels = []
         tournament_city = tournament_data.get('city', '')
         if isinstance(channels, list):
-            # Первый канал - для всех городов
-            target_channels.append(channels[0])
-            # Второй канал - только для Санкт-Петербурга
             if len(channels) > 1 and tournament_city == 'Санкт-Петербург':
                 target_channels.append(channels[1])
+            else:
+                target_channels.append(channels[0])
         else:
             # Для обратной совместимости (старый формат с одним каналом)
             target_channels.append(channels)
@@ -1041,7 +915,7 @@ async def send_tournament_started_to_channel(
         text = (
             f"🏁 *Турнир начался!*\n\n"
             f"🏆 *{name}*\n\n"
-            f"🌍 *Место:* {escape_markdown(city)}, {escape_markdown(remove_country_flag(country))}\n"
+            f"🌍 *Город:* {escape_markdown(city)}, {escape_markdown(remove_country_flag(country))}\n"
             f"🎯 *Тип:* {type_text} • {gender}\n"
             f"🏅 *Категория:* {category}\n"
             f"🧩 *Уровень:* {level}\n"
@@ -1097,11 +971,10 @@ async def send_tournament_finished_to_channel(
         target_channels = []
         tournament_city = tournament_data.get('city', '')
         if isinstance(channels, list):
-            # Первый канал - для всех городов
-            target_channels.append(channels[0])
-            # Второй канал - только для Санкт-Петербурга
             if len(channels) > 1 and tournament_city == 'Санкт-Петербург':
                 target_channels.append(channels[1])
+            else:
+                target_channels.append(channels[0])
         else:
             # Для обратной совместимости (старый формат с одним каналом)
             target_channels.append(channels)
@@ -1122,7 +995,7 @@ async def send_tournament_finished_to_channel(
         text = (
             f"🏁 *Турнир завершён!*\n\n"
             f"🏆 *{name}*\n\n"
-            f"🌍 *Место:* {escape_markdown(city)}, {escape_markdown(remove_country_flag(country))}\n"
+            f"🌍 *Город:* {escape_markdown(city)}, {escape_markdown(remove_country_flag(country))}\n"
             f"🧩 *Уровень:* {level}\n"
             f"👥 *Участников:* {participants_count}\n\n"
         )

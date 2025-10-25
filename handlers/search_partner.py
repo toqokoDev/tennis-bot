@@ -916,7 +916,7 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
         await state.clear()
         return
     
-    results_per_page = 5
+    results_per_page = 10
     total_pages = (len(results) + results_per_page - 1) // results_per_page
     start_idx = page * results_per_page
     end_idx = min(start_idx + results_per_page, len(results))
