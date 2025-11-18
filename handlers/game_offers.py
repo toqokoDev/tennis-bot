@@ -1035,7 +1035,7 @@ async def create_game_offer(message: types.Message, state: FSMContext):
     if user_id_str in users:
         if not users[user_id_str].get('subscription', {}).get('active', False):
             user_gender = users[user_id_str].get('gender', '')
-            sport = user_data.get('game_sport', user_data.get('sport', '🎾Большой теннис'))
+            sport = game_data.get('sport', user_data.get('sport', '🎾Большой теннис'))
             
             # Для женского пола в категориях "Знакомства" и "По пиву" не увеличиваем счетчик
             if not (user_gender == 'Женский' and sport in ['🍒Знакомства', '🍻По пиву']):

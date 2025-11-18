@@ -28,7 +28,7 @@ from utils.admin import is_user_banned
 from utils.media import download_photo_to_path
 from utils.bot import show_current_data, show_profile
 from utils.validate import validate_date, validate_date_range, validate_future_date, validate_price
-from utils.utils import remove_country_flag
+from utils.utils import calculate_age, remove_country_flag
 from services.storage import storage
 from services.web_api import web_api_client
 from services.channels import send_tournament_application_to_channel
@@ -253,8 +253,6 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
             await message.answer(greet, parse_mode="HTML", reply_markup=keyboard)
             return
         
-        # Парсим start_param: формат web_domain_userid
-        # Например: web_com_123 или web_by_456
         parts = start_param.replace('web_', '', 1).split('_', 1)
         domain = parts[0] if len(parts) > 1 else 'com'
         web_user_id = parts[1] if len(parts) > 1 else parts[0]
@@ -376,10 +374,13 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
             "vacation_start": vacation_start,
             "vacation_end": vacation_end,
             "vacation_country": next((c for c in countries if params.get("country", "") != "" and params.get("country", "").lower() in c.lower()), params.get("country", "")) if vacation_tennis else "",
-            "vacation_city": params["city"] if vacation_tennis else "",
+            "vacation_city": params.get("city", "") if vacation_tennis else "",
             "vacation_district": params.get("district", "").replace('Москва - ', '') if vacation_tennis else "",
             "vacation_comment": vacation_comment,
         }
+        
+        # Инициализируем счетчик игр
+        game_counter = 1
         
         # Проверяем актуальность даты предложения игры
         if params.get("public_offer", False):
@@ -394,9 +395,10 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
                     if offer_date >= today:
                         # Конвертируем дату в формат ДД.ММ (без года) для бота
                         formatted_date = offer_date.strftime("%d.%m")
-                        
+                            
                         # Создаем структуру игры с необходимыми полями
                         game_offer = {
+                            "user_level": profile["country"],
                             "sport": profile["sport"],
                             "country": profile["country"],
                             "city": profile["city"],
@@ -407,11 +409,22 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
                             "type": "Одиночная",
                             "payment_type": "Пополам",
                             "competitive": False,
-                            "id": len(profile["games"]) + 1,
+                            "id": game_counter,
                             "created_at": datetime.now().isoformat(timespec="seconds"),
                             "active": True
                         }
                         profile["games"].append(game_offer)
+
+                        if not profile.get('subscription', {}).get('active', False):
+                            user_gender = profile.get('gender', '')
+                            sport = game_offer.get('sport', profile.get('sport', '🎾Большой теннис'))
+                            
+                            # Для женского пола в категориях "Знакомства" и "По пиву" не увеличиваем счетчик
+                            if not (user_gender == 'Женский' and sport in ['🍒Знакомства', '🍻По пиву']):
+                                free_offers_used = profile.get('free_offers_used', 0)
+                                profile['free_offers_used'] = free_offers_used + 1
+
+                        game_counter += 1
                 except ValueError:
                     # Если ошибка парсинга даты, не добавляем игру
                     pass
@@ -419,28 +432,41 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
         await storage.save_user(user_id, profile)
         
         # Отправляем уведомление о регистрации
-        await send_registration_notification(message, profile)
+        try:
+            await send_registration_notification(message, profile)
+        except Exception as e:
+            print(f"Ошибка отправки уведомления о регистрации: {e}")
         
         # Отправляем тур в канал, если есть актуальные данные
         tour_sent = False
         if profile.get("vacation_tennis") and profile.get("vacation_start") and profile.get("vacation_end"):
             try:
+                print(f"Отправка тура в канал для пользователя {user_id}")
+                print(f"Данные тура: vacation_start={profile.get('vacation_start')}, vacation_end={profile.get('vacation_end')}, vacation_city={profile.get('vacation_city')}")
                 await send_tour_to_channel(message.bot, user_id, profile)
                 tour_sent = True
+                print(f"Тур успешно отправлен в канал")
             except Exception as e:
                 print(f"Ошибка отправки тура в канал: {e}")
+                import traceback
+                traceback.print_exc()
         
         # Отправляем предложения игр в канал
         games_sent = 0
         if profile.get("games"):
             from services.channels import send_game_offer_to_channel
-            for game in profile["games"]:
+            print(f"Найдено {len(profile['games'])} игр для отправки")
+            for i, game in enumerate(profile["games"]):
                 if game.get("active"):
                     try:
+                        print(f"Отправка игры {i+1}: {game.get('date', 'без даты')} в {game.get('city', 'без города')}")
                         await send_game_offer_to_channel(message.bot, game, user_id, profile)
                         games_sent += 1
+                        print(f"Игра {i+1} успешно отправлена в канал")
                     except Exception as e:
-                        print(f"Ошибка отправки предложения игры в канал: {e}")
+                        print(f"Ошибка отправки предложения игры {i+1} в канал: {e}")
+                        import traceback
+                        traceback.print_exc()
         
         # Показываем сообщение об успешной регистрации с информацией о перенесенных данных
         await show_registration_success_with_transfer_info(message, profile, tour_sent, games_sent)

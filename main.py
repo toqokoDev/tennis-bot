@@ -3,6 +3,7 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
 from aiogram.filters import Filter
+from aiogram.enums import ChatType
 from handlers import game_offers_menu, registration, game_offers, more, payments, profile, enter_invoice, search_partner, tours, admin, admin_edit, tournament, invite, tournament_score, beauty_contest
 from config.config import TOKEN
 from utils.admin import is_user_banned
@@ -15,6 +16,13 @@ class BannedUserFilter(Filter):
         user_id = str(message.from_user.id)
         banned_users = await storage.load_banned_users()
         return user_id in banned_users
+
+class PrivateChatFilter(Filter):
+    async def __call__(self, message: Message) -> bool:
+        """Фильтр для проверки, что сообщение из приватного чата"""
+        return message.chat.type == ChatType.PRIVATE
+
+async def non_private_chat_handler(message: Message): pass
 
 async def ban_check_handler(message: Message):
     """Обработчик для забаненных пользователей"""
@@ -163,7 +171,7 @@ async def main():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
 
-    # Добавляем обработчик для забаненных пользователей в самом начале
+    dp.message.register(non_private_chat_handler, PrivateChatFilter())
     dp.message.register(ban_check_handler, BannedUserFilter())
     
     # Подключаем роутеры       

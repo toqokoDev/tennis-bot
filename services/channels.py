@@ -8,7 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.paths import BASE_DIR
 from config.profile import channels_id, tour_channel_id
 from config.config import BOT_USERNAME
-from utils.utils import create_user_profile_link, escape_markdown, remove_country_flag
+from utils.utils import calculate_age, create_user_profile_link, escape_markdown, remove_country_flag
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +176,11 @@ async def send_registration_notification(message: types.Message, profile: dict):
                     parse_mode="Markdown"
                 )
     except Exception as e:
-        print(f"Ошибка отправки уведомления: {e}")
+        logger.error(f"[REG] ❌ Ошибка отправки уведомления о регистрации: {e}")
+        logger.error(f"[REG] Тип ошибки: {type(e).__name__}")
+        logger.error(f"[REG] Данные профиля: {profile}")
+        import traceback
+        logger.error(f"[REG] Traceback: {traceback.format_exc()}")
 
 async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], users: Dict[str, Any], user_id: str):
     """Отправляет уведомление о завершенной игре в канал"""
@@ -455,6 +459,13 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
         from config.profile import get_sport_config
         
         profile_link = await create_user_profile_link(user_data, user_id, additional=False)
+
+        if user_data.get('birth_date'):
+            age = await calculate_age(user_data['birth_date'])
+
+        if age > 0:
+            profile_link += f"\n*Возвраст: {age}"
+            
         sport = game_data.get('sport', user_data.get('sport', 'Не указан'))
         
         # Получаем конфигурацию для вида спорта
@@ -580,9 +591,15 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
             game_type_escaped = escape_markdown(game_data.get('type', '—'))
             payment_type_escaped = escape_markdown(game_data.get('payment_type', '—'))
             
+            if sport == "🏓Настольный теннис":
+                level_text = f"🏓 Рейтинг: {user_data.get('player_level')}"
+            else:
+                level_text = f"🏆 Уровень: {user_data.get('player_level')} ({user_data.get('rating_points', 0)} очков)"
+            
             offer_text = (
                 f"🎾 *Предложение игры*\n\n"
                 f"👤 {profile_link}\n"
+                f"{level_text}\n"
                 f"📍 *Город:* {location_escaped}\n"
                 f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
                 f"🎯 *Вид спорта:* {sport_escaped}\n"
@@ -637,7 +654,11 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
                 )
         
     except Exception as e:
-        print(f"Ошибка при отправке предложения игры: {e}")
+        logger.error(f"[GAME] ❌ Ошибка при отправке предложения игры для пользователя {user_id}: {e}")
+        logger.error(f"[GAME] Тип ошибки: {type(e).__name__}")
+        logger.error(f"[GAME] Данные игры: {game_data}")
+        import traceback
+        logger.error(f"[GAME] Traceback: {traceback.format_exc()}")
 
 async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]):
     """Отправляет информацию о туре в телеграм-канал"""

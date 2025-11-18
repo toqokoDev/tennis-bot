@@ -37,12 +37,18 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
     last_name = profile.get('last_name', '')
     username = profile.get('username')
     phone = profile.get('phone')
-    
+    network_link = ""
+
+    if username:
+        network_link = f"(<a href='https://t.me/{username}'>Связаться</a>)"
+    elif phone:
+        network_link = f"(<a href='https://t.me/{phone if phone.startswith('+') else '+' + phone}'>Связаться</a>)"
+
     # Если есть username — добавляем в скобках
     if username:
         caption_lines.append(f"\n<b>👤 {first_name} {last_name}</b> (@{username})")
     else:
-        caption_lines.append(f"\n<b>👤 {first_name} {last_name}</b>")
+        caption_lines.append(f"\n<b>👤 {first_name} {last_name}</b> {network_link}")
     
     if profile.get('birth_date'):
         age = await calculate_age(profile['birth_date'])
