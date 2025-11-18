@@ -20,7 +20,7 @@ class BannedUserFilter(Filter):
 class PrivateChatFilter(Filter):
     async def __call__(self, message: Message) -> bool:
         """Фильтр для проверки, что сообщение из приватного чата"""
-        return message.chat.type == ChatType.PRIVATE
+        return message.chat.type != ChatType.PRIVATE
 
 async def non_private_chat_handler(message: Message): pass
 
