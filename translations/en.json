@@ -149,6 +149,7 @@
       "meeting_time": "\n⏰ Meeting time: {text}",
       "about_me": "\n💬 About me:\n{text}",
       "unavailable": "Profile is unavailable.",
+      "website_link": "Website link: {link}",
       "buttons": {
         "edit_profile": "✏️ Edit profile",
         "find_vacation_partner": "✈️ Find a vacation partner",

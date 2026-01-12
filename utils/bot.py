@@ -184,7 +184,8 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
         if web_domain:
             partner_link = partner_links.get(web_domain)
             if partner_link:
-                caption_lines.append(f"\n\nСсылка на сайт: {partner_link}{web_user_id}/")
+                full_link = f"{partner_link}{web_user_id}/"
+                caption_lines.append(f"\n\n{t('profile.view.website_link', language, link=full_link)}")
 
     caption = "\n".join(caption_lines) if caption_lines else t("profile.view.unavailable", language)
 
