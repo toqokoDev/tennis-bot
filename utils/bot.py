@@ -207,15 +207,21 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
         # Получаем тексты для вида спорта
         texts = get_sport_texts(sport, language)
         
+        # Получаем тексты кнопок с проверкой
+        my_offers_text = texts.get("my_offers_button", "")
+        offer_text = texts.get("offer_button", "")
+        
+        # Если тексты пустые или None, используем значения по умолчанию
+        if not my_offers_text or my_offers_text.strip() == "":
+            my_offers_text = "📋 Мои предложения" if language == "ru" else "📋 My offers"
+        if not offer_text or offer_text.strip() == "":
+            offer_text = "🎾 Предложить игру" if language == "ru" else "🎾 Offer game"
+        
         # Добавляем кнопки в зависимости от вида спорта
         if sport not in ["☕️Бизнес-завтрак", "🍻По пиву", "🍒Знакомства"]:
             # Для спортивных видов
             if config.get("has_vacation", True):
                 keyboard_buttons.append([InlineKeyboardButton(text=t("profile.view.buttons.find_vacation_partner", language), callback_data="createTour")])
-            
-            # Получаем тексты кнопок с проверкой
-            my_offers_text = texts.get("my_offers_button") or "📋 Мои предложения"
-            offer_text = texts.get("offer_button") or "🎾 Предложить игру"
             
             keyboard_buttons.extend([
                 [InlineKeyboardButton(text=my_offers_text, callback_data="my_offers")],
@@ -224,8 +230,6 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
             ])
         else:
             # Для неспортивных видов
-            my_offers_text = texts.get("my_offers_button") or "📋 Мои предложения"
-            offer_text = texts.get("offer_button") or "🎾 Предложить игру"
             keyboard_buttons.append([InlineKeyboardButton(text=my_offers_text, callback_data="my_offers")])
             keyboard_buttons.append([InlineKeyboardButton(text=offer_text, callback_data="new_offer")])
         
