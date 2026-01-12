@@ -45,6 +45,9 @@ async def handle_more(message: types.Message):
         types.InlineKeyboardButton(text=t("more.buttons.my_profile", language), callback_data="profile"),
         types.InlineKeyboardButton(text=t("more.buttons.go_to_site", language), url="https://tennis-play.com/")
     )
+    builder.row(
+        types.InlineKeyboardButton(text=t("more.language_button", language), callback_data="select_language")
+    )
     
     await message.answer(t("more.additional_options", language), reply_markup=builder.as_markup())
 
