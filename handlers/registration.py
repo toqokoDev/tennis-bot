@@ -132,8 +132,7 @@ async def show_registration_success(message: types.Message, profile: dict):
     
     sport = profile.get("sport", "🎾Большой теннис")
     config = get_sport_config(sport)
-        language = await get_user_language_async(str(message.chat.id))
-        texts = get_sport_texts(sport, language)
+    texts = get_sport_texts(sport, language)
     channel_username = channels_usernames.get(sport, "")
     
     # Формируем сообщение
@@ -186,8 +185,7 @@ async def show_registration_success_with_transfer_info(message: types.Message, p
     
     sport = profile.get("sport", "🎾Большой теннис")
     config = get_sport_config(sport)
-        language = await get_user_language_async(str(message.chat.id))
-        texts = get_sport_texts(sport, language)
+    texts = get_sport_texts(sport, language)
     channel_username = channels_usernames.get(sport, "")
     
     # Формируем сообщение
