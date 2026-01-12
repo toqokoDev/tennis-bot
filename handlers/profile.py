@@ -9,8 +9,10 @@ from aiogram.types import (
 
 from config.paths import BASE_DIR, PHOTOS_DIR
 from config.profile import (
-    create_sport_keyboard, moscow_districts, base_keyboard, cities_data, countries, sport_type,
-    get_sport_config, get_sport_texts, get_base_keyboard, tennis_levels, table_tennis_levels,
+    create_sport_keyboard, moscow_districts, cities_data, countries, sport_type,
+    get_sport_config, get_sport_texts, get_base_keyboard, get_payment_types,
+    get_tennis_levels, get_table_tennis_levels,
+    get_dating_goals, get_dating_interests, get_dating_additional_fields,
     DATING_GOALS, DATING_INTERESTS, DATING_ADDITIONAL_FIELDS
 )
 from models.states import EditProfileStates
@@ -19,6 +21,22 @@ from utils.media import download_photo_to_path
 from utils.utils import remove_country_flag
 from services.storage import storage
 from handlers.registration import check_profile_completeness, get_missing_fields_text
+from utils.translations import get_user_language_async, t
+
+async def _get_menu_keyboard(user_id: int):
+    """Единая точка получения reply keyboard на языке пользователя."""
+    language = await get_user_language_async(str(user_id))
+    profile = await storage.get_user(user_id) or {}
+    sport = profile.get("sport", "🎾Большой теннис")
+    return get_base_keyboard(sport, language=language)
+
+async def _get_user_context(user_id: int):
+    """Возвращает (language, sport, keyboard) для сообщений."""
+    language = await get_user_language_async(str(user_id))
+    profile = await storage.get_user(user_id) or {}
+    sport = profile.get("sport", "🎾Большой теннис")
+    keyboard = get_base_keyboard(sport, language=language)
+    return language, sport, keyboard
 
 def calculate_level_from_points(rating_points: int, sport: str) -> str:
     """
@@ -34,11 +52,11 @@ def calculate_level_from_points(rating_points: int, sport: str) -> str:
     config = get_sport_config(sport)
     level_type = config.get("level_type", "tennis")
     
-    # Выбираем соответствующий словарь уровней
+    # Выбираем соответствующий словарь уровней (RU-данные нужны только для points)
     if level_type == "table_tennis_rating" or level_type == "table_tennis":
-        levels = table_tennis_levels
+        levels = get_table_tennis_levels("ru")
     else:
-        levels = tennis_levels
+        levels = get_tennis_levels("ru")
     
     # Сортируем уровни по очкам
     sorted_levels = sorted(levels.items(), key=lambda x: x[1]["points"])
@@ -71,7 +89,7 @@ async def migrate_profile_data(old_sport: str, new_sport: str, profile: dict) ->
     
     # Заполняем поля, которые нужны для нового вида спорта, но отсутствуют
     if new_config.get("has_role", True) and not new_profile.get("role"):
-        new_profile["role"] = "🎯 Игрок"  # По умолчанию игрок
+        new_profile["role"] = "Игрок"  # по умолчанию (каноническое значение)
     
     if new_config.get("has_level", True) and not new_profile.get("player_level"):
         # Для настольного тенниса используем рейтинг, для остальных - уровень
@@ -83,7 +101,7 @@ async def migrate_profile_data(old_sport: str, new_sport: str, profile: dict) ->
     
     if new_config.get("has_payment", True) and not new_profile.get("price"):
         new_profile["price"] = None  # По умолчанию пополам
-        new_profile["default_payment"] = "💰 Пополам"
+        new_profile["default_payment"] = "Пополам"
     
     if new_config.get("has_vacation", True):
         # Поля отпуска остаются как есть, если уже заполнены
@@ -91,8 +109,8 @@ async def migrate_profile_data(old_sport: str, new_sport: str, profile: dict) ->
     
     # Специальные поля для знакомств
     if new_sport == "🍒Знакомства":
-        if not new_profile.get("dating_goal"):
-            new_profile["dating_goal"] = "Общение"  # По умолчанию
+        if not new_profile.get("dating_goal_key") and not new_profile.get("dating_goal"):
+            new_profile["dating_goal"] = ""  # пусть заполнит, чтобы не было RU-дефолта в EN
         if not new_profile.get("dating_interests"):
             new_profile["dating_interests"] = []  # Пустой список
         if not new_profile.get("dating_additional"):
@@ -101,7 +119,7 @@ async def migrate_profile_data(old_sport: str, new_sport: str, profile: dict) ->
     # Специальные поля для встреч
     if new_sport in ["☕️Бизнес-завтрак", "🍻По пиву"]:
         if not new_profile.get("meeting_time"):
-            new_profile["meeting_time"] = "Уточню позже"  # По умолчанию
+            new_profile["meeting_time"] = ""  # пусть заполнит
     
     return new_profile
 
@@ -113,8 +131,10 @@ async def edit_profile_handler(callback: types.CallbackQuery, state: FSMContext)
     user_id = callback.message.chat.id
     profile = await storage.get_user(user_id)
     
+    language = await get_user_language_async(str(user_id))
+    
     if not profile:
-        await callback.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        await callback.answer(t("profile_edit.profile_not_found", language))
         return
     
     # Создаем клавиатуру для редактирования в зависимости от вида спорта
@@ -125,42 +145,42 @@ async def edit_profile_handler(callback: types.CallbackQuery, state: FSMContext)
     
     # Базовые поля (всегда доступны)
     buttons.append([
-        InlineKeyboardButton(text="📷 Фото", callback_data="1edit_photo"),
-        InlineKeyboardButton(text="🌍 Страна/Город", callback_data="1edit_location")
+        InlineKeyboardButton(text=t("profile_edit.buttons.photo", language), callback_data="1edit_photo"),
+        InlineKeyboardButton(text=t("profile_edit.buttons.location", language), callback_data="1edit_location")
     ])
     
     # Поля в зависимости от конфигурации
     if config.get("has_about_me", True):
-        buttons.append([InlineKeyboardButton(text="💬 О себе", callback_data="1edit_comment")])
+        buttons.append([InlineKeyboardButton(text=t("profile_edit.buttons.about_me", language), callback_data="1edit_comment")])
     
     if config.get("has_payment", True):
-        buttons.append([InlineKeyboardButton(text="💳 Оплата", callback_data="1edit_payment")])
+        buttons.append([InlineKeyboardButton(text=t("profile_edit.buttons.payment", language), callback_data="1edit_payment")])
     
     if config.get("has_role", True):
-        buttons.append([InlineKeyboardButton(text="👤 Роль", callback_data="1edit_role")])
+        buttons.append([InlineKeyboardButton(text=t("profile_edit.buttons.role", language), callback_data="1edit_role")])
     
     if config.get("has_level", True):
         # Проверяем, не редактировал ли пользователь уже рейтинг
         if not profile.get('rating_edited', False):
-            buttons.append([InlineKeyboardButton(text="📊 Уровень", callback_data="1edit_level")])
+            buttons.append([InlineKeyboardButton(text=t("profile_edit.buttons.level", language), callback_data="1edit_level")])
         else:
-            buttons.append([InlineKeyboardButton(text="📊 Уровень (изменен)", callback_data="1edit_level_disabled")])
+            buttons.append([InlineKeyboardButton(text=t("profile_edit.buttons.level_changed", language), callback_data="1edit_level_disabled")])
     
     # Специальные поля для знакомств
     if sport == "🍒Знакомства":
-        buttons.append([InlineKeyboardButton(text="💕 Цель знакомства", callback_data="1edit_dating_goal")])
-        buttons.append([InlineKeyboardButton(text="🎯 Интересы", callback_data="1edit_dating_interests")])
-        buttons.append([InlineKeyboardButton(text="📝 Дополнительно", callback_data="1edit_dating_additional")])
+        buttons.append([InlineKeyboardButton(text=t("profile_edit.buttons.dating_goal", language), callback_data="1edit_dating_goal")])
+        buttons.append([InlineKeyboardButton(text=t("profile_edit.buttons.dating_interests", language), callback_data="1edit_dating_interests")])
+        buttons.append([InlineKeyboardButton(text=t("profile_edit.buttons.dating_additional", language), callback_data="1edit_dating_additional")])
     
     # Специальные поля для встреч
     if sport in ["☕️Бизнес-завтрак", "🍻По пиву"]:
-        buttons.append([InlineKeyboardButton(text="⏰ Время встречи", callback_data="1edit_meeting_time")])
+        buttons.append([InlineKeyboardButton(text=t("profile_edit.buttons.meeting_time", language), callback_data="1edit_meeting_time")])
     
     # Вид спорта (всегда доступен)
-    buttons.append([InlineKeyboardButton(text="🎾 Вид спорта", callback_data="1edit_sport")])
+    buttons.append([InlineKeyboardButton(text=t("profile_edit.buttons.sport", language), callback_data="1edit_sport")])
     
     # Назад
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{user_id}")])
+    buttons.append([InlineKeyboardButton(text=t("common.back", language), callback_data=f"back_to_profile:{user_id}")])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
@@ -180,7 +200,8 @@ async def back_to_profile_handler(callback: types.CallbackQuery):
     if profile:
         await show_profile(callback.message, profile)
     else:
-        await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        language, _, keyboard = await _get_user_context(callback.message.chat.id)
+        await callback.message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await callback.answer()
 
@@ -191,14 +212,14 @@ async def delete_profile_handler(callback: types.CallbackQuery):
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="✅ Да, удалить", callback_data="confirm_delete"),
-                InlineKeyboardButton(text="❌ Нет, отмена", callback_data="cancel_delete")
+                InlineKeyboardButton(text=t("common.confirm", await get_user_language_async(str(callback.message.chat.id))), callback_data="confirm_delete"),
+                InlineKeyboardButton(text=t("common.cancel", await get_user_language_async(str(callback.message.chat.id))), callback_data="cancel_delete")
             ]
         ]
     )
     try:
         await callback.message.edit_text(
-            "⚠️ Вы уверены, что хотите удалить свой профиль? Это действие нельзя отменить!",
+            t("profile_edit.delete_confirm", await get_user_language_async(str(callback.message.chat.id))),
             reply_markup=confirm_keyboard
         )
     except:
@@ -207,7 +228,7 @@ async def delete_profile_handler(callback: types.CallbackQuery):
         except:
             pass
         await callback.message.answer(
-            "⚠️ Вы уверены, что хотите удалить свой профиль? Это действие нельзя отменить!",
+            t("profile_edit.delete_confirm", await get_user_language_async(str(callback.message.chat.id))),
             reply_markup=confirm_keyboard
         )
     
@@ -219,10 +240,9 @@ async def confirm_delete_handler(callback: types.CallbackQuery):
     users = await storage.load_users()
     user_key = str(user_id)
     
+    language = await get_user_language_async(str(user_id))
     main_inline_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
-        ]
+        inline_keyboard=[[InlineKeyboardButton(text=t("profile_edit.main_menu", language), callback_data="main_menu")]]
     )
     
     if user_key in users:
@@ -240,12 +260,12 @@ async def confirm_delete_handler(callback: types.CallbackQuery):
         await storage.save_users(users)
         
         await callback.message.edit_text(
-            "🗑️ Ваш профиль был успешно удален!",
+            t("profile_edit.deleted", language),
             reply_markup=main_inline_keyboard
         )
     else:
         await callback.message.edit_text(
-            "❌ Профиль не найден",
+            t("profile_edit.profile_not_found", language),
             reply_markup=main_inline_keyboard
         )
     
@@ -261,8 +281,8 @@ async def cancel_delete_handler(callback: types.CallbackQuery):
         await show_profile(callback.message, profile)
     else:
         await callback.message.edit_text(
-            "❌ Профиль не найден",
-            reply_markup=base_keyboard
+            t("profile_edit.profile_not_found", await get_user_language_async(str(user_id))),
+            reply_markup=await _get_menu_keyboard(user_id)
         )
     
     await callback.answer()
@@ -271,6 +291,10 @@ async def cancel_delete_handler(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("1edit_"))
 async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
     field = callback.data.replace("1edit_", "")
+    user_id = callback.message.chat.id
+    language = await get_user_language_async(str(user_id))
+    users = await storage.load_users()
+    user_key = str(user_id)
     
     try:
         await callback.message.delete()
@@ -278,71 +302,70 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
         pass
 
     if field == "comment":
-        await callback.message.answer("✏️ Введите новый комментарий о себе:")
+        await callback.message.answer(t("profile_edit.enter_comment", language))
         await state.set_state(EditProfileStates.COMMENT)
     elif field == "payment":
         buttons = [
-            [InlineKeyboardButton(text="💰 Пополам", callback_data="edit_payment_Пополам")],
-            [InlineKeyboardButton(text="💳 Я оплачиваю", callback_data="edit_payment_Я оплачиваю")],
-            [InlineKeyboardButton(text="💵 Соперник оплачивает", callback_data="edit_payment_Соперник оплачиваю")]
+            [InlineKeyboardButton(text=t("config.payment_types.split", language), callback_data="edit_payment_Пополам")],
+            [InlineKeyboardButton(text=t("config.payment_types.i_pay", language), callback_data="edit_payment_Я оплачиваю")],
+            # callback_data оставляем как было (обратная совместимость)
+            [InlineKeyboardButton(text=t("config.payment_types.opponent_pays", language), callback_data="edit_payment_Соперник оплачиваю")],
+            [InlineKeyboardButton(text=t("config.payment_types.loser_pays", language), callback_data="edit_payment_Проигравший оплачивает")],
         ]
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback.message.answer("✏️ Выберите тип оплата:", reply_markup=keyboard)
+        await callback.message.answer(t("profile_edit.select_payment", language), reply_markup=keyboard)
         await state.set_state(EditProfileStates.PAYMENT)
     elif field == "photo":
         buttons = [
-            [InlineKeyboardButton(text="📷 Загрузить фото", callback_data="edit_photo_upload")],
-            [InlineKeyboardButton(text="👀 Без фото", callback_data="edit_photo_none")],
-            [InlineKeyboardButton(text="📸 Из профиля", callback_data="edit_photo_profile")]
+            [InlineKeyboardButton(text=t("profile_edit.photo.upload", language), callback_data="edit_photo_upload")],
+            [InlineKeyboardButton(text=t("profile_edit.photo.none", language), callback_data="edit_photo_none")],
+            [InlineKeyboardButton(text=t("profile_edit.photo.from_telegram", language), callback_data="edit_photo_profile")]
         ]
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback.message.answer("✏️ Выберите вариант фото:", reply_markup=keyboard)
+        await callback.message.answer(t("profile_edit.select_photo", language), reply_markup=keyboard)
     elif field == "location":
         buttons = []
         for country in countries[:5]:
             buttons.append([InlineKeyboardButton(text=f"{country}", callback_data=f"edit_country_{country}")])
-        buttons.append([InlineKeyboardButton(text="🌎 Другая страна", callback_data="edit_other_country")])
+        buttons.append([InlineKeyboardButton(text=t("registration.other_country", language), callback_data="edit_other_country")])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback.message.answer("🌍 Выберите страну:", reply_markup=keyboard)
+        await callback.message.answer(t("profile_edit.select_country", language), reply_markup=keyboard)
         await state.set_state(EditProfileStates.COUNTRY)
     elif field == "sport":
-        await callback.message.answer("🎾 Выберите вид спорта:", reply_markup=create_sport_keyboard(pref="edit_sport_"))
+        await callback.message.answer(t("profile_edit.select_sport", language), reply_markup=create_sport_keyboard(pref="edit_sport_", language=language))
         await state.set_state(EditProfileStates.SPORT)
     elif field == "role":
         # Клавиатура для выбора роли
         buttons = [
-            [InlineKeyboardButton(text="🎾 Игрок", callback_data="edit_role_Игрок")],
-            [InlineKeyboardButton(text="👨‍🏫 Тренер", callback_data="edit_role_Тренер")]
+            [InlineKeyboardButton(text=t("config.roles.player", language), callback_data="edit_role_Игрок")],
+            [InlineKeyboardButton(text=t("config.roles.trainer", language), callback_data="edit_role_Тренер")]
         ]
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback.message.answer("👤 Выберите вашу роль:", reply_markup=keyboard)
+        await callback.message.answer(t("profile_edit.select_role", language), reply_markup=keyboard)
         await state.set_state(EditProfileStates.ROLE)
     elif field == "price":
         if user_key not in users:
-            await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+            await callback.message.answer(t("profile_edit.profile_not_found", language), reply_markup=await _get_menu_keyboard(user_id))
             await callback.answer()
             return
 
         role = users[user_key].get('role')
         if role != "Тренер":
-            await callback.message.answer("❌ Стоимость доступна только для тренеров.")
+            await callback.message.answer(t("profile_edit.price_only_trainer", language))
             await callback.answer()
             return
 
-        await callback.message.answer("💰 Введите стоимость тренировки (в рублях):")
+        await callback.message.answer(t("profile_edit.enter_price", language))
         await state.set_state(EditProfileStates.PRICE)
     elif field == "level":
         # Проверяем, можно ли пользователю редактировать уровень
-        users = await storage.load_users()
-        user_key = str(callback.message.chat.id)
-        
         if user_key in users:
             user_data = users[user_key]
             
             # Проверяем, не редактировал ли пользователь уже рейтинг
             if user_data.get('rating_edited', False):
-                await callback.message.answer("⚠️ Вы уже редактировали свой рейтинг. Изменить его можно только один раз.", reply_markup=base_keyboard)
+                await callback.message.answer(t("profile_edit.rating_already_edited", language), reply_markup=await _get_menu_keyboard(user_id))
                 await callback.answer()
                 return
             
@@ -351,42 +374,36 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
             
             # Просим пользователя ввести рейтинг
             if config.get("level_type") == "table_tennis":
-                await callback.message.answer("🏓 Введите ваш рейтинг в настольном теннисе (например: 1500, 2000, 2500):")
+                await callback.message.answer(t("profile_edit.enter_table_tennis_rating", language))
             else:
-                sport_name = sport.replace('🎾', '').replace('🏓', '').replace('🏸', '').replace('🏖️', '').replace('🥎', '').replace('🏆', '').strip()
-                await callback.message.answer(f"📊 Введите ваш рейтинг в {sport_name} (например: 1000, 1500, 2000):")
+                await callback.message.answer(t("profile_edit.enter_rating_points", language))
             
             await state.set_state(EditProfileStates.LEVEL)
         else:
-            await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+            await callback.message.answer(t("profile_edit.profile_not_found", language), reply_markup=await _get_menu_keyboard(user_id))
     elif field == "level_disabled":
-        await callback.message.answer("⚠️ Вы уже редактировали свой рейтинг. Изменить его можно только один раз.", reply_markup=base_keyboard)
+        await callback.message.answer(t("profile_edit.rating_already_edited", language), reply_markup=await _get_menu_keyboard(user_id))
         await callback.answer()
         return
     elif field == "dating_goal":
-        # Клавиатура для выбора цели знакомства
-        buttons = []
-        for i, goal in enumerate(DATING_GOALS):
-            buttons.append([InlineKeyboardButton(text=goal, callback_data=f"dgoal_{i}")])
-        
+        goal_keys = ["relationship", "communication", "friendship", "never_know"]
+        buttons = [[InlineKeyboardButton(text=t(f"config.dating_goals.{k}", language), callback_data=f"dgoal_{k}")] for k in goal_keys]
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback.message.answer("💕 Выберите вашу цель знакомства:", reply_markup=keyboard)
+        await callback.message.answer(t("profile_edit.select_dating_goal", language), reply_markup=keyboard)
         await state.set_state(EditProfileStates.DATING_GOAL)
     elif field == "dating_interests":
-        # Клавиатура для выбора интересов
-        buttons = []
-        for i, interest in enumerate(DATING_INTERESTS):
-            buttons.append([InlineKeyboardButton(text=interest, callback_data=f"dint_{i}")])
-        buttons.append([InlineKeyboardButton(text="Далее", callback_data="dint_done")])
-        
+        interest_keys = ["travel", "music", "cinema", "coffee", "guitar", "skiing", "board_games", "quizzes"]
+        buttons = [[InlineKeyboardButton(text=t(f"config.dating_interests.{k}", language), callback_data=f"dint_{k}")] for k in interest_keys]
+        buttons.append([InlineKeyboardButton(text=t("common.done", language), callback_data="dint_done")])
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback.message.answer("🎯 Выберите ваши интересы (можно несколько):", reply_markup=keyboard)
+        await state.update_data(dating_interests_keys=[])
+        await callback.message.answer(t("profile_edit.select_dating_interests", language), reply_markup=keyboard)
         await state.set_state(EditProfileStates.DATING_INTERESTS)
     elif field == "dating_additional":
-        await callback.message.answer("📝 Расскажите о себе дополнительно (работа, образование, рост и т.д.):")
+        await callback.message.answer(t("profile_edit.enter_dating_additional", language))
         await state.set_state(EditProfileStates.DATING_ADDITIONAL)
     elif field == "meeting_time":
-        await callback.message.answer("⏰ Напишите место, конкретный день и время или дни недели и временные промежутки, когда вам удобно встретиться:")
+        await callback.message.answer(t("profile_edit.enter_meeting_time", language))
         await state.set_state(EditProfileStates.MEETING_TIME)
     
     await callback.answer()
@@ -395,6 +412,7 @@ async def edit_field_handler(callback: types.CallbackQuery, state: FSMContext):
 @router.message(EditProfileStates.COMMENT, F.text)
 async def save_comment_edit(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
+    language, sport, keyboard = await _get_user_context(user_id)
     users = await storage.load_users()
     
     user_key = str(user_id)
@@ -404,10 +422,10 @@ async def save_comment_edit(message: types.Message, state: FSMContext):
         users[user_key]['profile_comment'] = message.text.strip()
         await storage.save_users(users)
         
-        await message.answer("✅ Комментарий о себе обновлен!")
+        await message.answer(t("profile_edit.comment_updated", language))
         await show_profile(message, users[user_key])
     else:
-        await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        await message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await state.clear()
 
@@ -416,6 +434,8 @@ async def save_payment_edit(callback: types.CallbackQuery):
     payment = callback.data.split("_", 2)[2]
     users = await storage.load_users()
     user_key = str(callback.message.chat.id)
+    user_id = callback.message.chat.id
+    language, sport, keyboard = await _get_user_context(user_id)
     
     if user_key in users:
         users[user_key]['default_payment'] = payment
@@ -426,10 +446,10 @@ async def save_payment_edit(callback: types.CallbackQuery):
         except:
             pass
         
-        await callback.message.answer("✅ Тип оплаты обновлен!")
+        await callback.message.answer(t("profile_edit.payment_updated", language))
         await show_profile(callback.message, users[user_key])
     else:
-        await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        await callback.message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await callback.answer()
 
@@ -462,10 +482,12 @@ async def save_sport_edit(callback: types.CallbackQuery, state: FSMContext):
         except:
             pass
         
-        await callback.message.answer("✅ Вид спорта обновлен!")
+        language, sport, keyboard = await _get_user_context(callback.message.chat.id)
+        await callback.message.answer(t("profile_edit.sport_updated", language))
         await show_profile(callback.message, migrated_profile)
     else:
-        await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        language, sport, keyboard = await _get_user_context(callback.message.chat.id)
+        await callback.message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await state.clear()
     await callback.answer()
@@ -476,6 +498,7 @@ async def save_role_edit(callback: types.CallbackQuery, state: FSMContext):
     role = callback.data.split("_", 2)[2]
     users = await storage.load_users()
     user_key = str(callback.message.chat.id)
+    language, sport, keyboard = await _get_user_context(callback.message.chat.id)
     
     if user_key in users:
         users[user_key]['role'] = role
@@ -490,7 +513,7 @@ async def save_role_edit(callback: types.CallbackQuery, state: FSMContext):
             except:
                 pass
             
-            await callback.message.answer("✅ Роль обновлена! (Стоимость для игроков недоступна)")
+            await callback.message.answer(t("profile_edit.role_updated_player", language))
             await show_profile(callback.message, users[user_key])
             await state.clear()
             await callback.answer()
@@ -505,13 +528,13 @@ async def save_role_edit(callback: types.CallbackQuery, state: FSMContext):
             except:
                 pass
             
-            await callback.message.answer("✅ Роль обновлена!\n\n💰 Теперь введите стоимость тренировки (в рублях):")
+            await callback.message.answer(t("profile_edit.role_updated_trainer_need_price", language))
             await state.set_state(EditProfileStates.PRICE)
             await callback.answer()
             return
     
     else:
-        await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        await callback.message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await state.clear()
     await callback.answer()
@@ -520,6 +543,7 @@ async def save_role_edit(callback: types.CallbackQuery, state: FSMContext):
 @router.message(EditProfileStates.PRICE, F.text)
 async def save_price_edit(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
+    language, sport, keyboard = await _get_user_context(user_id)
     users = await storage.load_users()
     user_key = str(user_id)
     
@@ -527,19 +551,19 @@ async def save_price_edit(message: types.Message, state: FSMContext):
         try:
             price = int(message.text.strip())
             if price < 0:
-                await message.answer("❌ Стоимость не может быть отрицательной. Попробуйте еще раз:")
+                await message.answer(t("profile_edit.price_negative", language))
                 return
             
             users[user_key]['price'] = price
             await storage.save_users(users)
             
-            await message.answer("✅ Стоимость тренировки обновлена!")
+            await message.answer(t("profile_edit.price_updated", language))
             await show_profile(message, users[user_key])
         except ValueError:
-            await message.answer("❌ Пожалуйста, введите корректное число для стоимости:")
+            await message.answer(t("profile_edit.price_invalid", language))
             return
     else:
-        await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        await message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await state.clear()
 
@@ -548,6 +572,7 @@ async def save_price_edit(message: types.Message, state: FSMContext):
 @router.message(EditProfileStates.LEVEL, F.text)
 async def save_level_edit(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
+    language, sport, keyboard = await _get_user_context(user_id)
     users = await storage.load_users()
     user_key = str(user_id)
     
@@ -559,10 +584,10 @@ async def save_level_edit(message: types.Message, state: FSMContext):
             # Пытаемся преобразовать в число для всех видов спорта
             rating = int(message.text.strip())
             if rating < 0:
-                await message.answer("❌ Рейтинг не может быть отрицательным. Попробуйте еще раз:")
+                await message.answer(t("profile_edit.rating_negative", language))
                 return
             if rating > 2800:
-                await message.answer("❌ Максимальный рейтинг - 2800. Попробуйте еще раз:")
+                await message.answer(t("profile_edit.rating_too_high", language))
                 return
             
             # Автоматически рассчитываем уровень на основе очков
@@ -574,7 +599,7 @@ async def save_level_edit(message: types.Message, state: FSMContext):
             users[user_key]['rating_edited'] = True
             await storage.save_users(users)
             
-            await message.answer(f"✅ Рейтинг обновлен!\n📊 Ваш уровень: {calculated_level}")
+            await message.answer(t("profile_edit.rating_updated", language, level=calculated_level))
             await show_profile(message, users[user_key])
             
         except ValueError:
@@ -585,10 +610,10 @@ async def save_level_edit(message: types.Message, state: FSMContext):
             users[user_key]['rating_edited'] = True
             await storage.save_users(users)
             
-            await message.answer(f"✅ Рейтинг обновлен!\n📊 Ваш уровень: {calculated_level}")
+            await message.answer(t("profile_edit.rating_updated", language, level=calculated_level))
             await show_profile(message, users[user_key])
     else:
-        await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        await message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await state.clear()
 
@@ -608,7 +633,8 @@ async def process_country_selection(callback: types.CallbackQuery, state: FSMCon
 
 @router.callback_query(EditProfileStates.COUNTRY, F.data == "edit_other_country")
 async def process_other_country(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("🌍 Введите название страны:", reply_markup=None)
+    language = await get_user_language_async(str(callback.message.chat.id))
+    await callback.message.edit_text(t("profile_edit.enter_country", language), reply_markup=None)
     await state.set_state(EditProfileStates.COUNTRY_INPUT)
     await callback.answer()
 
@@ -626,21 +652,22 @@ async def process_country_input(message: types.Message, state: FSMContext):
     await ask_for_city(message, state, country, current_city)
 
 async def ask_for_city(message: types.Message, state: FSMContext, country: str, current_city: str = ''):
+    language = await get_user_language_async(str(message.chat.id))
     data = await state.get_data()
     country = data.get('country', country)
     
     cities = cities_data.get(country, [])
     buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"edit_city_{city}")] for city in cities]
-    buttons.append([InlineKeyboardButton(text="Другой город", callback_data="edit_other_city")])
+    buttons.append([InlineKeyboardButton(text=t("registration.other_city", language), callback_data="edit_other_city")])
 
     try:
         await message.edit_text(
-            f"🏙 Выберите город в стране: {remove_country_flag(country)}",
+            t("profile_edit.select_city", language, country=remove_country_flag(country)),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     except:
         await message.answer(
-            f"🏙 Выберите город в стране: {remove_country_flag(country)}",
+            t("profile_edit.select_city", language, country=remove_country_flag(country)),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     await state.set_state(EditProfileStates.CITY)
@@ -711,14 +738,17 @@ async def save_location(callback: types.CallbackQuery, city: str, state: FSMCont
         except:
             pass
         
-        await callback.message.answer("✅ Страна и город обновлены!")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.message.answer(t("profile_edit.location_updated", language))
         await show_profile(callback.message, users[user_key])
     else:
-        await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        language, sport, keyboard = await _get_user_context(callback.message.chat.id)
+        await callback.message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await state.clear()
 
 async def save_location_message(message: types.Message, city: str, state: FSMContext):
+    language, sport, keyboard = await _get_user_context(message.from_user.id)
     users = await storage.load_users()
     user_key = str(message.from_user.id)
     
@@ -730,10 +760,10 @@ async def save_location_message(message: types.Message, city: str, state: FSMCon
         users[user_key]['city'] = city
         await storage.save_users(users)
         
-        await message.answer("✅ Страна и город обновлены!")
+        await message.answer(t("profile_edit.location_updated", language))
         await show_profile(message, users[user_key])
     else:
-        await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        await message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await state.clear()
 
@@ -743,9 +773,10 @@ async def edit_photo_handler(callback: types.CallbackQuery, state: FSMContext):
     action = callback.data.split("_", 2)[2]
     users = await storage.load_users()
     user_key = str(callback.message.chat.id)
+    language, sport, keyboard = await _get_user_context(callback.message.chat.id)
     
     if user_key not in users:
-        await callback.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        await callback.answer(t("profile_edit.profile_not_found", language))
         return
     
     try:
@@ -754,12 +785,12 @@ async def edit_photo_handler(callback: types.CallbackQuery, state: FSMContext):
         pass
 
     if action == "upload":
-        await callback.message.answer("📷 Отправьте новое фото профиля:")
+        await callback.message.answer(t("profile_edit.photo_send_new", language))
         await state.set_state(EditProfileStates.PHOTO_UPLOAD)
     elif action == "none":
         users[user_key]['photo_path'] = None
         await storage.save_users(users)
-        await callback.message.answer("✅ Фото профиля удалено!")
+        await callback.message.answer(t("profile_edit.photo_deleted", language))
         await show_profile(callback.message, users[user_key])
     elif action == "profile":
         # Логика для установки фото из профиля Telegram
@@ -775,14 +806,14 @@ async def edit_photo_handler(callback: types.CallbackQuery, state: FSMContext):
                     rel_path = dest_path.relative_to(BASE_DIR).as_posix()
                     users[user_key]['photo_path'] = rel_path
                     await storage.save_users(users)
-                    await callback.message.answer("✅ Фото из профиля установлено!")
+                    await callback.message.answer(t("profile_edit.photo_set_from_telegram", language))
                     await show_profile(callback.message, users[user_key])
                 else:
-                    await callback.message.answer("❌ Не удалось установить фото из профиля")
+                    await callback.message.answer(t("profile_edit.photo_set_failed", language))
             else:
-                await callback.message.answer("❌ В вашем профиле Telegram нет фото", reply_markup=base_keyboard)
+                await callback.message.answer(t("profile_edit.telegram_no_photo", language), reply_markup=keyboard)
         except Exception as e:
-            await callback.message.answer("❌ Ошибка при получении фото из профиля", reply_markup=base_keyboard)
+            await callback.message.answer(t("profile_edit.telegram_photo_error", language), reply_markup=keyboard)
     
     await callback.answer()
 
@@ -790,11 +821,12 @@ async def edit_photo_handler(callback: types.CallbackQuery, state: FSMContext):
 @router.message(EditProfileStates.PHOTO_UPLOAD, F.photo)
 async def save_photo_upload(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
+    language, sport, keyboard = await _get_user_context(user_id)
     users = await storage.load_users()
     user_key = str(user_id)
     
     if user_key not in users:
-        await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        await message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
         await state.clear()
         return
     
@@ -809,25 +841,27 @@ async def save_photo_upload(message: types.Message, state: FSMContext):
             rel_path = dest_path.relative_to(BASE_DIR).as_posix()
             users[user_key]['photo_path'] = rel_path
             await storage.save_users(users)
-            await message.answer("✅ Фото профиля обновлено!")
+            await message.answer(t("profile_edit.photo_updated", language))
             await show_profile(message, users[user_key])
         else:
-            await message.answer("❌ Не удалось сохранить фото", reply_markup=base_keyboard)
+            await message.answer(t("profile_edit.photo_save_failed", language), reply_markup=keyboard)
     except Exception as e:
-        await message.answer("❌ Ошибка при сохранении фото", reply_markup=base_keyboard)
+        await message.answer(t("profile_edit.photo_save_error", language), reply_markup=keyboard)
     
     await state.clear()
 
 # Обработчики для редактирования полей знакомств
 @router.callback_query(EditProfileStates.DATING_GOAL, F.data.startswith("dgoal_"))
 async def process_dating_goal_edit(callback: types.CallbackQuery, state: FSMContext):
-    goal_index = int(callback.data.split("_")[1])
-    goal = DATING_GOALS[goal_index]
+    language = await get_user_language_async(str(callback.message.chat.id))
+    goal_key = callback.data.split("_", 1)[1]
+    goal = t(f"config.dating_goals.{goal_key}", language)
     users = await storage.load_users()
     user_key = str(callback.message.chat.id)
     
     if user_key in users:
-        users[user_key]['dating_goal'] = goal
+        users[user_key]['dating_goal_key'] = goal_key
+        users[user_key]['dating_goal'] = goal  # legacy/display fallback
         await storage.save_users(users)
         
         try:
@@ -835,26 +869,29 @@ async def process_dating_goal_edit(callback: types.CallbackQuery, state: FSMCont
         except:
             pass
         
-        await callback.message.answer("✅ Цель знакомства обновлена!")
+        await callback.message.answer(t("profile_edit.dating_goal_updated", language))
         await show_profile(callback.message, users[user_key])
     else:
-        await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        _, _, keyboard = await _get_user_context(callback.message.chat.id)
+        await callback.message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await callback.answer()
     await state.clear()
 
 @router.callback_query(EditProfileStates.DATING_INTERESTS, F.data.startswith("dint_"))
 async def process_dating_interest_edit(callback: types.CallbackQuery, state: FSMContext):
+    language = await get_user_language_async(str(callback.message.chat.id))
     if callback.data == "dint_done":
         # Завершение выбора интересов
         user_data = await state.get_data()
-        interests = user_data.get('dating_interests', [])
+        interests_keys = user_data.get('dating_interests_keys', [])
         
         users = await storage.load_users()
         user_key = str(callback.message.chat.id)
         
         if user_key in users:
-            users[user_key]['dating_interests'] = interests
+            users[user_key]['dating_interests_keys'] = interests_keys
+            users[user_key]['dating_interests'] = [t(f"config.dating_interests.{k}", language) for k in interests_keys]  # legacy
             await storage.save_users(users)
             
             try:
@@ -862,39 +899,41 @@ async def process_dating_interest_edit(callback: types.CallbackQuery, state: FSM
             except:
                 pass
             
-            await callback.message.answer("✅ Интересы обновлены!")
+            await callback.message.answer(t("profile_edit.dating_interests_updated", language))
             await show_profile(callback.message, users[user_key])
         else:
-            await callback.message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+            _, _, keyboard = await _get_user_context(callback.message.chat.id)
+            await callback.message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
         
         await callback.answer()
         await state.clear()
         return
     
     # Обработка выбора интереса
-    interest_index = int(callback.data.split("_")[1])
-    interest = DATING_INTERESTS[interest_index]
+    interest_key = callback.data.split("_", 1)[1]
     user_data = await state.get_data()
-    interests = user_data.get('dating_interests', [])
+    interests_keys = user_data.get('dating_interests_keys', [])
     
-    if interest in interests:
-        interests.remove(interest)
+    if interest_key in interests_keys:
+        interests_keys.remove(interest_key)
     else:
-        interests.append(interest)
+        interests_keys.append(interest_key)
     
-    await state.update_data(dating_interests=interests)
+    await state.update_data(dating_interests_keys=interests_keys)
     
     # Обновляем кнопки
+    interest_keys = ["travel", "music", "cinema", "coffee", "guitar", "skiing", "board_games", "quizzes"]
     buttons = []
-    for i, interest_text in enumerate(DATING_INTERESTS):
-        if interest_text in interests:
-            buttons.append([InlineKeyboardButton(text=f"✅ {interest_text}", callback_data=f"dint_{i}")])
+    for k in interest_keys:
+        interest_text = t(f"config.dating_interests.{k}", language)
+        if k in interests_keys:
+            buttons.append([InlineKeyboardButton(text=f"✅ {interest_text}", callback_data=f"dint_{k}")])
         else:
-            buttons.append([InlineKeyboardButton(text=interest_text, callback_data=f"dint_{i}")])
-    buttons.append([InlineKeyboardButton(text="Далее", callback_data="dint_done")])
+            buttons.append([InlineKeyboardButton(text=interest_text, callback_data=f"dint_{k}")])
+    buttons.append([InlineKeyboardButton(text=t("common.done", language), callback_data="dint_done")])
     
     await callback.message.edit_text(
-        "🎯 Выберите ваши интересы (можно несколько):",
+        t("profile_edit.select_dating_interests", language),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await callback.answer()
@@ -904,15 +943,16 @@ async def save_dating_additional_edit(message: types.Message, state: FSMContext)
     additional = message.text.strip()
     users = await storage.load_users()
     user_key = str(message.from_user.id)
+    language, sport, keyboard = await _get_user_context(message.from_user.id)
     
     if user_key in users:
         users[user_key]['dating_additional'] = additional
         await storage.save_users(users)
         
-        await message.answer("✅ Дополнительная информация обновлена!")
+        await message.answer(t("profile_edit.dating_additional_updated", language))
         await show_profile(message, users[user_key])
     else:
-        await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        await message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await state.clear()
 
@@ -921,15 +961,16 @@ async def save_meeting_time_edit(message: types.Message, state: FSMContext):
     meeting_time = message.text.strip()
     users = await storage.load_users()
     user_key = str(message.from_user.id)
+    language, sport, keyboard = await _get_user_context(message.from_user.id)
     
     if user_key in users:
         users[user_key]['meeting_time'] = meeting_time
         await storage.save_users(users)
         
-        await message.answer("✅ Время встречи обновлено!")
+        await message.answer(t("profile_edit.meeting_time_updated", language))
         await show_profile(message, users[user_key])
     else:
-        await message.answer("❌ Профиль не найден", reply_markup=base_keyboard)
+        await message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await state.clear()
 
@@ -940,20 +981,21 @@ async def main_menu_callback(callback: types.CallbackQuery):
     users = await storage.load_users()
     user_data = users.get(str(user_id), {})
     sport = user_data.get('sport', '🎾Большой теннис')
+    language = await get_user_language_async(str(user_id))
     
     # Получаем адаптивную клавиатуру
-    keyboard = get_base_keyboard(sport)
+    keyboard = get_base_keyboard(sport, language=language)
     
     try:
         await callback.message.edit_text(
-            "🏠 Главное меню",
+            t("profile_edit.main_menu", language),
             reply_markup=keyboard
         )
     except:
         await callback.message.delete()
         
         await callback.message.answer(
-            "🏠 Главное меню",
+            t("profile_edit.main_menu", language),
             reply_markup=keyboard
         )
     await callback.answer()

@@ -29,6 +29,7 @@ from utils.tournament_manager import tournament_manager
 from utils.utils import calculate_age, level_to_points, calculate_new_ratings, remove_country_flag
 from handlers.profile import calculate_level_from_points
 from utils.tournament_notifications import TournamentNotifications
+from utils.translations import get_user_language_async, t
 import io
 from config.config import SHOP_ID, SECRET_KEY
 from yookassa import Configuration, Payment
@@ -929,8 +930,9 @@ async def build_and_render_tournament_image(tournament_data: dict, tournament_id
 @router.callback_query(F.data == "admin_create_tournament")
 async def create_tournament_callback(callback: CallbackQuery, state: FSMContext):
     """Обработчик создания турнира (только админы)"""
+    language = await get_user_language_async(str(callback.from_user.id))
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     # Очищаем данные предыдущего создания
@@ -947,7 +949,7 @@ async def create_tournament_callback(callback: CallbackQuery, state: FSMContext)
             "🍻По пиву", 
             "🍒Знакомства", 
             "☕️Бизнес-завтрак"
-        ])
+        ], language=language)
     )
     await callback.answer()
 
@@ -1330,8 +1332,9 @@ async def input_participants_count(message: Message, state: FSMContext):
     """Обработчик ввода количества участников"""
     try:
         count = int(message.text.strip())
+        language = await get_user_language_async(str(message.chat.id))
         if count <= 0:
-            await message.answer("❌ Количество участников должно быть больше 0. Попробуйте еще раз:")
+            await message.answer(t("tournament.participants_count_error", language))
             return
         
         tournament_data["participants_count"] = count
@@ -1362,7 +1365,8 @@ async def input_participants_count(message: Message, state: FSMContext):
             reply_markup=builder.as_markup()
         )
     except ValueError:
-        await message.answer("❌ Введите корректное число. Попробуйте еще раз:")
+        language = await get_user_language_async(str(message.chat.id))
+        await message.answer(t("tournament.invalid_number", language))
 
 # Обработчик выбора отображения в списке
 @router.callback_query(F.data.startswith("tournament_show_in_list:"))
@@ -1805,24 +1809,19 @@ async def cancel_create_tournament(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 # Команда для просмотра турниров
-@router.message(F.text == "🏆 Турниры")
+@router.message(F.text.in_([t("menu.tournaments", "ru"), t("menu.tournaments", "en")]))
 @router.message(Command("tournaments"))
 async def tournaments_main(message: Message, state: FSMContext):
     """Главное меню турниров"""
+    language = await get_user_language_async(str(message.chat.id))
     tournaments = await storage.load_tournaments()
     active_tournaments = {k: v for k, v in tournaments.items() if v.get('status') in ['active', 'started'] and v.get('show_in_list', True)}
     
-    text = (
-        f"🏆 Турниры\n\n"
-        f"Сейчас проходит: {len(active_tournaments)} активных турниров\n"
-        f"Участвуйте в соревнованиях и покажите свои навыки!\n\n"
-        f"📋 Вы можете просмотреть список доступных турниров, "
-        f"подать заявку на участие или посмотреть свои текущие турниры."
-    )
+    text = t("tournament.menu.text", language, active_count=len(active_tournaments))
     
     builder = InlineKeyboardBuilder()
-    builder.button(text="📋 Просмотреть список", callback_data="view_tournaments_start")
-    builder.button(text="🎯 Мои турниры", callback_data="my_tournaments_list:0")
+    builder.button(text=t("tournament.menu.view_list", language), callback_data="view_tournaments_start")
+    builder.button(text=t("tournament.menu.my_tournaments", language), callback_data="my_tournaments_list:0")
     builder.adjust(1)
     
     await message.answer(text, reply_markup=builder.as_markup())
@@ -1834,16 +1833,16 @@ async def view_tournaments_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ViewTournamentsStates.SELECT_SPORT)
 
     # Красивый выбор видов спорта, исключаем несоревновательные
+    language = await get_user_language_async(str(callback.from_user.id))
     sport_kb = create_sport_keyboard(pref="view_tournament_sport:", exclude_sports=[
         "🍻По пиву",
         "🍒Знакомства",
         "☕️Бизнес-завтрак"
-    ])
+    ], language=language)
 
     await callback.message.delete()
     await callback.message.answer(
-        f"🏆 Просмотр турниров\n\n"
-        f"📋 Шаг 1/5: Выберите вид спорта",
+        t("tournament.browse.step1", language),
         reply_markup=sport_kb
     )
     await callback.answer()
@@ -2425,9 +2424,14 @@ async def _continue_view_with_type(callback: CallbackQuery, state: FSMContext, t
 # Функция для показа списка турниров
 async def show_tournaments_list(callback: CallbackQuery, tournaments: dict, sport: str, country: str, city: str):
     """Показывает список турниров"""
+    language = await get_user_language_async(str(callback.message.chat.id))
+    
     if not tournaments:
         await callback.message.delete()
-        await callback.message.answer(f"🏆 Нет активных турниров по {sport} в {city}, {remove_country_flag(country)}")
+        await callback.message.answer(t("tournament.no_tournaments_found", language,
+                                       sport=sport,
+                                       city=city,
+                                       country=remove_country_flag(country)))
         return
     
     # Преобразуем в список для пагинации
@@ -2552,7 +2556,8 @@ async def view_tournament_prev(callback: CallbackQuery, state: FSMContext):
     )}
     
     if not filtered_tournaments:
-        await callback.answer("❌ Нет турниров для отображения")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_tournaments_to_display", language))
         return
     
     city_tournaments = filtered_tournaments
@@ -2562,7 +2567,8 @@ async def view_tournament_prev(callback: CallbackQuery, state: FSMContext):
     total_tournaments = len(tournament_list)
     
     if total_tournaments <= 1:
-        await callback.answer("❌ Это первый турнир")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.first_tournament", language))
         return
     
     prev_page = (page - 1) % total_tournaments
@@ -2680,7 +2686,8 @@ async def view_tournament_next(callback: CallbackQuery, state: FSMContext):
     )}
     
     if not filtered_tournaments:
-        await callback.answer("❌ Нет турниров для отображения")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_tournaments_to_display", language))
         return
     
     city_tournaments = filtered_tournaments
@@ -2690,7 +2697,8 @@ async def view_tournament_next(callback: CallbackQuery, state: FSMContext):
     total_tournaments = len(tournament_list)
     
     if total_tournaments <= 1:
-        await callback.answer("❌ Это последний турнир")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.last_tournament", language))
         return
     
     next_page = (page + 1) % total_tournaments
@@ -2768,34 +2776,36 @@ async def apply_tournament_handler(callback: CallbackQuery):
     tournament_id = callback.data.split(':')[1]
     tournaments = await storage.load_tournaments()
     
+    language = await get_user_language_async(str(callback.from_user.id))
+    
     if tournament_id not in tournaments:
-        await callback.answer("❌ Турнир не найден")
+        await callback.answer(t("tournament.tournament_not_found", language))
         return
     
     tournament_data = tournaments[tournament_id]
     
     # Проверяем статус турнира
     if tournament_data.get('status') != 'active':
-        await callback.answer("❌ Регистрация на этот турнир закрыта (турнир уже запущен или завершён)", show_alert=True)
+        await callback.answer(t("tournament.registration_closed", language), show_alert=True)
         return
     
     # Проверяем ограничение по количеству участников (если задано)
     max_participants = int(tournament_data.get('participants_count', 0) or 0)
     current_count = len(tournament_data.get('participants', {}))
     if max_participants and current_count >= max_participants:
-        await callback.answer("❌ В этом турнире больше нет мест")
+        await callback.answer(t("tournament.tournament_full", language))
         return
     
     # Регистрируем пользователя сразу
     user_id = callback.from_user.id
     if str(user_id) in tournament_data.get('participants', {}):
-        await callback.answer("✅ Вы уже зарегистрированы в этом турнире")
+        await callback.answer(t("tournament.already_registered", language))
         return
     
     users = await storage.load_users()
     user_data = users.get(str(user_id), {})
     if not user_data:
-        await callback.answer("❌ Сначала зарегистрируйтесь в системе")
+        await callback.answer(t("tournament.not_registered", language))
         return
     
     # Проверяем соответствие уровня игрока уровню турнира
@@ -2803,7 +2813,7 @@ async def apply_tournament_handler(callback: CallbackQuery):
     tournament_level = tournament_data.get('level', '')
     if not _is_level_match(user_level, tournament_level):
         await callback.answer(
-            f"❌ Ваш уровень ({user_level}) не соответствует уровню турнира ({tournament_level})",
+            t("tournament.level_mismatch", language, user_level=user_level, tournament_level=tournament_level),
             show_alert=True
         )
         return
@@ -2873,10 +2883,11 @@ async def apply_tournament_handler(callback: CallbackQuery):
 @router.callback_query(F.data == "apply_proposed_tournament")
 async def apply_proposed_tournament(callback: CallbackQuery, state: FSMContext):
     """Создает предложенный турнир и регистрирует пользователя"""
+    language = await get_user_language_async(str(callback.from_user.id))
     data = await state.get_data()
     base = data.get('proposed_tournament')
     if not base:
-        await callback.answer("❌ Не удалось найти предложение турнира")
+        await callback.answer(t("tournament.tournament_offer_not_found", language))
         return
 
     tournaments = await storage.load_tournaments()
@@ -3009,20 +3020,22 @@ async def tournament_pay_start(callback: CallbackQuery, state: FSMContext):
     tournament_id = callback.data.split(":")[1]
     tournaments = await storage.load_tournaments()
     tournament = tournaments.get(tournament_id)
+    language = await get_user_language_async(str(callback.from_user.id))
+    
     if not tournament:
-        await callback.answer("❌ Турнир не найден")
+        await callback.answer(t("tournament.tournament_not_found", language))
         return
     user_id = callback.from_user.id
     if str(user_id) not in tournament.get('participants', {}):
-        await callback.answer("❌ Сначала зарегистрируйтесь в турнире")
+        await callback.answer(t("tournament.not_registered_in_tournament", language))
         return
     fee = int(tournament.get('entry_fee', get_tournament_entry_fee()) or 0)
     if fee <= 0:
-        await callback.answer("ℹ️ Оплата не требуется")
+        await callback.answer(t("tournament.payment_not_required", language))
         return
     paid = tournament.get('payments', {}).get(str(user_id), {}).get('status') == 'succeeded'
     if paid:
-        await callback.answer("✅ Участие уже оплачено")
+        await callback.answer(t("tournament.payment_already_paid", language))
         return
     await state.update_data(tournament_id=tournament_id, tournament_fee=fee)
     await callback.message.answer(
@@ -3033,9 +3046,10 @@ async def tournament_pay_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(TournamentPaymentStates.WAITING_EMAIL, F.text)
 async def tournament_pay_get_email(message: Message, state: FSMContext):
+    language = await get_user_language_async(str(message.chat.id))
     email = message.text.strip()
     if '@' not in email or '.' not in email:
-        await message.answer("❌ Неверный email. Введите корректный email:")
+        await message.answer(t("tournament.invalid_email", language))
         return
     data = await state.get_data()
     tournament_id = data['tournament_id']
@@ -3106,9 +3120,11 @@ async def tournament_pay_confirm(callback: CallbackQuery, state: FSMContext):
                 reply_markup=builder.as_markup()
             )
         else:
-            await callback.message.answer("⌛ Платеж еще не завершен. Подождите и попробуйте снова.")
+            language = await get_user_language_async(str(callback.message.chat.id))
+            await callback.message.answer(t("tournament.payment_not_completed", language))
     except Exception as e:
-        await callback.message.answer(f"❌ Ошибка проверки платежа: {e}")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.message.answer(t("tournament.payment_check_error", language, error=str(e)))
     await state.clear()
     await callback.answer()
 
@@ -3279,17 +3295,19 @@ async def my_tournaments_list(callback: CallbackQuery):
 @router.message(Command("view_tournament_applications"))
 async def view_tournament_applications_command(message: Message, state: FSMContext):
     """Заявки отключены"""
+    language = await get_user_language_async(str(message.from_user.id))
     if not await is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора")
+        await message.answer(t("tournament.no_admin_rights", language))
         return
-    await message.answer("📋 Система заявок отключена: пользователи записываются сразу.")
+    await message.answer(t("tournament.applications_disabled", language))
 
 # Обработчик меню принятия заявки
 @router.callback_query(F.data == "admin_accept_application_menu")
 async def admin_accept_application_menu(callback: CallbackQuery, state: FSMContext):
     """Меню выбора заявки для принятия"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     applications = await storage.load_tournament_applications()
@@ -3330,7 +3348,8 @@ async def admin_accept_application_menu(callback: CallbackQuery, state: FSMConte
 async def admin_accept_application(callback: CallbackQuery, state: FSMContext):
     """Принятие заявки на турнир"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     app_id = callback.data.split(":", 1)[1]
@@ -3447,7 +3466,8 @@ async def admin_accept_application(callback: CallbackQuery, state: FSMContext):
 async def admin_reject_application_menu(callback: CallbackQuery, state: FSMContext):
     """Меню выбора заявки для отклонения"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     applications = await storage.load_tournament_applications()
@@ -3488,7 +3508,8 @@ async def admin_reject_application_menu(callback: CallbackQuery, state: FSMConte
 async def admin_reject_application(callback: CallbackQuery, state: FSMContext):
     """Отклонение заявки на турнир"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     app_id = callback.data.split(":", 1)[1]
@@ -3547,7 +3568,8 @@ async def admin_reject_application(callback: CallbackQuery, state: FSMContext):
 async def view_tournament_participants_command(message: Message, state: FSMContext):
     """Команда для просмотра участников турниров (только админы)"""
     if not await is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(message.from_user.id))
+        await message.answer(t("tournament.no_admin_rights", language))
         return
     
     tournaments = await storage.load_tournaments()
@@ -3578,7 +3600,8 @@ async def view_tournament_participants_command(message: Message, state: FSMConte
 async def admin_view_tournament_participants(callback: CallbackQuery, state: FSMContext):
     """Обработчик просмотра участников турнира для админа"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     tournament_id = callback.data.split(":", 1)[1]
@@ -3657,7 +3680,8 @@ async def admin_view_tournament_participants(callback: CallbackQuery, state: FSM
 async def admin_edit_game(callback: CallbackQuery, state: FSMContext):
     """Обработчик редактирования игры админом"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     game_id = callback.data.split(":", 1)[1]
@@ -3730,7 +3754,8 @@ async def admin_edit_game(callback: CallbackQuery, state: FSMContext):
 async def admin_edit_game_score(callback: CallbackQuery, state: FSMContext):
     """Обработчик изменения счета игры"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     game_id = callback.data.split(":", 1)[1]
@@ -3758,7 +3783,8 @@ async def admin_edit_game_score(callback: CallbackQuery, state: FSMContext):
 async def admin_edit_game_media(callback: CallbackQuery, state: FSMContext):
     """Обработчик изменения медиафайла игры"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     game_id = callback.data.split(":", 1)[1]
@@ -3780,7 +3806,8 @@ async def admin_edit_game_media(callback: CallbackQuery, state: FSMContext):
 async def admin_edit_game_winner(callback: CallbackQuery, state: FSMContext):
     """Обработчик изменения победителя игры"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     game_id = callback.data.split(":", 1)[1]
@@ -3832,7 +3859,8 @@ async def admin_edit_game_winner(callback: CallbackQuery, state: FSMContext):
 async def admin_edit_score_input(message: Message, state: FSMContext):
     """Обработчик ввода нового счета игры"""
     if not await is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(message.from_user.id))
+        await message.answer(t("tournament.no_admin_rights", language))
         await state.clear()
         return
     
@@ -3894,7 +3922,8 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
 async def admin_edit_media_input(message: Message, state: FSMContext):
     """Обработчик изменения медиафайла игры"""
     if not await is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(message.from_user.id))
+        await message.answer(t("tournament.no_admin_rights", language))
         await state.clear()
         return
     
@@ -3962,7 +3991,8 @@ async def admin_edit_media_input(message: Message, state: FSMContext):
 async def admin_set_winner(callback: CallbackQuery, state: FSMContext):
     """Обработчик установки нового победителя игры"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     parts = callback.data.split(":")
@@ -4011,7 +4041,8 @@ async def admin_set_winner(callback: CallbackQuery, state: FSMContext):
 async def admin_delete_game(callback: CallbackQuery, state: FSMContext):
     """Обработчик удаления игры"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     game_id = callback.data.split(":", 1)[1]
@@ -5419,7 +5450,8 @@ async def delete_tournament_yes(callback: CallbackQuery, state: FSMContext):
 async def admin_rm_part_menu(callback: CallbackQuery, state: FSMContext):
     """Меню удаления участника для админа"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     tournament_id = callback.data.split(":", 1)[1]
@@ -5451,7 +5483,8 @@ async def admin_rm_part_menu(callback: CallbackQuery, state: FSMContext):
 async def admin_remove_participant(callback: CallbackQuery, state: FSMContext):
     """Удаление участника из турнира для админа"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     parts = callback.data.split(":")
@@ -5492,7 +5525,8 @@ async def admin_remove_participant(callback: CallbackQuery, state: FSMContext):
 async def admin_add_participant(callback: CallbackQuery, state: FSMContext):
     """Добавление участника в турнир для админа"""
     if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("tournament.no_admin_rights", language))
         return
     
     tournament_id = callback.data.split(":", 1)[1]
@@ -6005,7 +6039,8 @@ async def admin_set_winner_and_ask_score(callback: CallbackQuery, state: FSMCont
 async def admin_process_tournament_score_input(message: Message, state: FSMContext):
     """Обработчик ввода счета матча турнира"""
     if not await is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(message.from_user.id))
+        await message.answer(t("tournament.no_admin_rights", language))
         await state.clear()
         return
     

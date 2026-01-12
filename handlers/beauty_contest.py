@@ -15,6 +15,7 @@ from models.states import BeautyContestStates
 from services.storage import storage
 from utils.admin import is_admin
 from utils.utils import calculate_age, remove_country_flag
+from utils.translations import get_user_language_async, t
 from config.paths import BASE_DIR
 
 router = Router()
@@ -78,6 +79,7 @@ async def can_vote_for_gender(contest_data: dict, voter_id: str, target_gender: 
 
 async def get_votes_status_text(contest_data: dict, voter_id: str) -> str:
     """Получить текст статуса голосов пользователя"""
+    language = await get_user_language_async(voter_id)
     user_votes = get_user_votes_info(contest_data, voter_id)
     is_premium = await has_premium(voter_id)
     
@@ -90,19 +92,13 @@ async def get_votes_status_text(contest_data: dict, voter_id: str) -> str:
     
     max_votes = 2 if is_premium else 1
     
-    text = f"🗳 <b>Ваши голоса:</b>\n"
-    text += f"• За мужчин: {male_used}/{max_votes} использовано\n"
-    
-    text += f"• За женщин: {female_used}/{max_votes} использовано\n"
-    
-    text += "\n"
+    text = t("beauty_contest.votes_status", language, 
+             male_used=male_used, female_used=female_used, max_votes=max_votes)
     
     if is_premium:
-        text += "⭐️ <b>Premium активен!</b>\n"
-        text += "Вы можете отдать по 2 голоса за каждый пол\n"
+        text += t("beauty_contest.premium_active", language)
     else:
-        text += "💡 <b>Подсказка:</b>\n"
-        text += "С Premium подпиской вы получите еще по 1 голосу за каждый пол!\n"
+        text += t("beauty_contest.premium_hint", language)
     
     return text
 
@@ -115,17 +111,19 @@ async def beauty_contest_main_menu(callback: CallbackQuery, state: FSMContext):
     users = await storage.load_users()
     user_data = users.get(user_id)
     
+    language = await get_user_language_async(user_id)
+    
     if not user_data:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="Назад к меню", callback_data="back_to_more"))
+        builder.row(InlineKeyboardButton(text=t("beauty_contest.back_to_menu", language), callback_data="back_to_more"))
         try:
             await callback.message.edit_text(
-                "❌ Сначала зарегистрируйтесь в боте!",
+                t("beauty_contest.not_registered", language),
                 reply_markup=builder.as_markup()
             )
         except:
             await callback.message.answer(
-                "❌ Сначала зарегистрируйтесь в боте!",
+                t("beauty_contest.not_registered", language),
                 reply_markup=builder.as_markup()
             )
         await callback.answer()
@@ -140,45 +138,46 @@ async def beauty_contest_main_menu(callback: CallbackQuery, state: FSMContext):
     
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="👀 Просмотреть анкеты", callback_data="bc_view_profiles")
+        InlineKeyboardButton(text=t("beauty_contest.view_profiles", language), callback_data="bc_view_profiles")
     )
     
     if has_application:
         builder.row(
-            InlineKeyboardButton(text="❌ Удалить свою заявку", callback_data="bc_delete_application")
+            InlineKeyboardButton(text=t("beauty_contest.delete_application", language), callback_data="bc_delete_application")
         )
     else:
         builder.row(
-            InlineKeyboardButton(text="📝 Заявиться на конкурс", callback_data="bc_apply")
+            InlineKeyboardButton(text=t("beauty_contest.apply_to_contest", language), callback_data="bc_apply")
         )
     
     # Админские функции
     if await is_admin(int(user_id)):
         builder.row(
-            InlineKeyboardButton(text="⚙️ Управление анкетами (Админ)", callback_data="bc_admin_menu")
+            InlineKeyboardButton(text=t("beauty_contest.admin_menu", language), callback_data="bc_admin_menu")
         )
     
     builder.row(
-        InlineKeyboardButton(text="Назад к меню", callback_data="back_to_more")
+        InlineKeyboardButton(text=t("beauty_contest.back_to_menu", language), callback_data="back_to_more")
     )
     
+    male_count = sum(1 for app in applications.values() if app.get('gender') == 'Мужской')
+    female_count = sum(1 for app in applications.values() if app.get('gender') == 'Женский')
+    
     text = (
-        "🌟 <b>Mr & Mrs Tennis Play</b>\n\n"
-        "Примите участие в конкурсе Mr & Mrs Tennis Play, чтобы выиграть нашу бесплатную годовую подписку Premium и возможность 1 года бесплатного участия в наших  турнирах для вас и вашего друга!\n\nДля этого нужно просто зарегистрироваться и собирать голоса от других участников бота.\n\n"
-        "📊 В конкурсе участвуют:\n"
-        f"• Мужчин: {sum(1 for app in applications.values() if app.get('gender') == 'Мужской')}\n"
-        f"• Женщин: {sum(1 for app in applications.values() if app.get('gender') == 'Женский')}\n\n"
+        t("beauty_contest.main_title", language) + "\n\n" +
+        t("beauty_contest.main_description", language) +
+        t("beauty_contest.participants_count", language, male_count=male_count, female_count=female_count)
     )
     
     if has_application:
         user_votes = contest_data.get("votes", {}).get(user_id, {})
         vote_count = len(user_votes)
-        text += f"✅ Вы участвуете в конкурсе\n💖 Голосов: {vote_count}\n\n"
+        text += t("beauty_contest.you_participate", language, vote_count=vote_count)
     
     # Показываем статус голосов пользователя
     text += await get_votes_status_text(contest_data, user_id) + "\n"
     
-    text += f"<b>Результаты конкурса будут объявлены 15 января 2026 года</b>"
+    text += t("beauty_contest.results_date", language)
     try:
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     except:
@@ -192,16 +191,17 @@ async def beauty_contest_main_menu(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "bc_view_profiles")
 async def select_gender(callback: CallbackQuery, state: FSMContext):
     """Выбор пола для просмотра анкет"""
+    language = await get_user_language_async(str(callback.from_user.id))
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="👨 Мужчины", callback_data="bc_gender_male"),
-        InlineKeyboardButton(text="👩 Женщины", callback_data="bc_gender_female")
+        InlineKeyboardButton(text=t("beauty_contest.male", language), callback_data="bc_gender_male"),
+        InlineKeyboardButton(text=t("beauty_contest.female", language), callback_data="bc_gender_female")
     )
     builder.row(
-        InlineKeyboardButton(text="Назад", callback_data="beauty_contest")
+        InlineKeyboardButton(text=t("common.back", language), callback_data="beauty_contest")
     )
     
-    text = "Выберите пол участников для просмотра:"
+    text = t("beauty_contest.select_gender", language)
     
     try:
         await callback.message.edit_text(text, reply_markup=builder.as_markup())
@@ -227,17 +227,19 @@ async def show_profiles_by_gender(callback: CallbackQuery, state: FSMContext):
         if app.get("gender") == gender
     }
     
+    language = await get_user_language_async(str(callback.from_user.id))
+    
     if not filtered_profiles:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="Назад", callback_data="bc_view_profiles"))
+        builder.row(InlineKeyboardButton(text=t("common.back", language), callback_data="bc_view_profiles"))
         try:
             await callback.message.edit_text(
-                "❌ Нет анкет с таким полом\n\nВыберите другой пол или вернитесь назад.",
+                t("beauty_contest.no_profiles", language),
                 reply_markup=builder.as_markup()
             )
         except:
             await callback.message.answer(
-                "❌ Нет анкет с таким полом\n\nВыберите другой пол или вернитесь назад.",
+                t("beauty_contest.no_profiles", language),
                 reply_markup=builder.as_markup()
             )
         await callback.answer()
@@ -267,11 +269,13 @@ async def show_profile_page(message: Message, viewer_id: int, state: FSMContext)
     profiles = data.get("profiles", [])
     current_page = data.get("current_page", 0)
     
+    language = await get_user_language_async(str(viewer_id))
+    
     if not profiles or current_page >= len(profiles):
         await message.edit_text(
-            "❌ Анкеты закончились",
+            t("beauty_contest.profiles_ended", language),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="Назад", callback_data="bc_view_profiles")
+                InlineKeyboardButton(text=t("common.back", language), callback_data="bc_view_profiles")
             ]])
         )
         return
@@ -296,19 +300,23 @@ async def show_profile_page(message: Message, viewer_id: int, state: FSMContext)
     
     # Формируем текст анкеты
     age = await calculate_age(profile.get('birth_date', ''))
+    country = remove_country_flag(profile.get('country', '—'))
+    city = profile.get('city', '—')
+    first_name = profile.get('first_name', '')
+    last_name = profile.get('last_name', '')
 
-    text = (
-        f"🌟 <b>{profile.get('first_name', '')} {profile.get('last_name', '')}</b>\n\n"
-        f"🎂 Возраст: {age} лет\n"
-        f"🌍 Страна: {remove_country_flag(profile.get('country', '—'))}\n"
-        f"🏙 Город: {profile.get('city', '—')}\n\n"
-        f"💖 Голосов: <b>{vote_count}</b>\n\n"
-    )
+    text = t("beauty_contest.profile_info", language,
+             first_name=first_name,
+             last_name=last_name,
+             age=age,
+             country=country,
+             city=city,
+             vote_count=vote_count)
     
     if profile.get('comment'):
-        text += f"💬 О себе: {profile.get('comment')}\n\n"
+        text += t("beauty_contest.about_me", language, comment=profile.get('comment'))
     
-    text += f"Анкета {current_page + 1} из {len(profiles)}"
+    text += t("beauty_contest.profile_number", language, current=current_page + 1, total=len(profiles))
     
     # Создаем клавиатуру
     builder = InlineKeyboardBuilder()
@@ -317,37 +325,41 @@ async def show_profile_page(message: Message, viewer_id: int, state: FSMContext)
     if viewer_id_str == user_id:
         # Нельзя голосовать за себя
         builder.row(
-            InlineKeyboardButton(text="🚫 Это ваша анкета", callback_data="bc_self_vote")
+            InlineKeyboardButton(text=t("beauty_contest.self_vote", language), callback_data="bc_self_vote")
         )
     elif has_voted_for_this:
         # Уже голосовали за этого участника
         builder.row(
-            InlineKeyboardButton(text="💔 Убрать голос", callback_data=f"bc_unvote_{user_id}")
+            InlineKeyboardButton(text=t("beauty_contest.remove_vote", language), callback_data=f"bc_unvote_{user_id}")
         )
     elif can_vote:
         # Можно голосовать
         builder.row(
-            InlineKeyboardButton(text="💖 Проголосовать", callback_data=f"bc_vote_{user_id}")
+            InlineKeyboardButton(text=t("beauty_contest.vote", language), callback_data=f"bc_vote_{user_id}")
         )
     else:
         # Голоса закончились
-        gender_text = "мужчин" if target_gender == "Мужской" else "женщин"
-        builder.row(
-            InlineKeyboardButton(text=f"🚫 Голоса за {gender_text} закончились", callback_data="bc_no_votes")
-        )
+        if target_gender == "Мужской":
+            builder.row(
+                InlineKeyboardButton(text=t("beauty_contest.no_votes_male", language), callback_data="bc_no_votes")
+            )
+        else:
+            builder.row(
+                InlineKeyboardButton(text=t("beauty_contest.no_votes_female", language), callback_data="bc_no_votes")
+            )
     
     # Навигация
     nav_buttons = []
     if current_page > 0:
-        nav_buttons.append(InlineKeyboardButton(text="◀️ Предыдущая", callback_data="bc_prev_page"))
+        nav_buttons.append(InlineKeyboardButton(text=t("beauty_contest.prev_profile", language), callback_data="bc_prev_page"))
     if current_page < len(profiles) - 1:
-        nav_buttons.append(InlineKeyboardButton(text="Следующая ▶️", callback_data="bc_next_page"))
+        nav_buttons.append(InlineKeyboardButton(text=t("beauty_contest.next_profile", language), callback_data="bc_next_page"))
     
     if nav_buttons:
         builder.row(*nav_buttons)
     
     builder.row(
-        InlineKeyboardButton(text="Назад к выбору пола", callback_data="bc_view_profiles")
+        InlineKeyboardButton(text=t("beauty_contest.back_to_gender", language), callback_data="bc_view_profiles")
     )
     
     # Пытаемся отправить фото
@@ -378,14 +390,15 @@ async def show_profile_page(message: Message, viewer_id: int, state: FSMContext)
 @router.callback_query(F.data == "bc_self_vote")
 async def self_vote_handler(callback: CallbackQuery):
     """Обработка попытки проголосовать за себя"""
-    await callback.answer("❌ Нельзя голосовать за себя!", show_alert=True)
+    language = await get_user_language_async(str(callback.from_user.id))
+    await callback.answer(t("beauty_contest.cannot_vote_self", language), show_alert=True)
 
 @router.callback_query(F.data == "bc_no_votes")
 async def no_votes_handler(callback: CallbackQuery):
     """Обработка когда голоса закончились"""
+    language = await get_user_language_async(str(callback.from_user.id))
     await callback.answer(
-        "❌ У вас закончились голоса за этот пол.\n\n"
-        "💡 Оформите Premium подписку, чтобы получить дополнительные голоса!",
+        t("beauty_contest.no_votes_left", language),
         show_alert=True
     )
 
@@ -395,9 +408,11 @@ async def vote_for_profile(callback: CallbackQuery, state: FSMContext):
     target_user_id = callback.data.split("_")[2]
     voter_id = str(callback.from_user.id)
     
+    language = await get_user_language_async(voter_id)
+    
     # Проверяем, что пользователь не голосует за себя
     if voter_id == target_user_id:
-        await callback.answer("❌ Нельзя голосовать за себя!")
+        await callback.answer(t("beauty_contest.cannot_vote_self_alert", language))
         return
     
     # Загружаем данные конкурса
@@ -411,7 +426,7 @@ async def vote_for_profile(callback: CallbackQuery, state: FSMContext):
     target_gender = target_profile.get("gender")
     
     if not target_gender:
-        await callback.answer("❌ Ошибка: не удалось определить пол участника")
+        await callback.answer(t("beauty_contest.gender_error", language))
         return
     
     # Проверяем, может ли пользователь голосовать за этот пол
@@ -445,7 +460,7 @@ async def vote_for_profile(callback: CallbackQuery, state: FSMContext):
     # Проверяем, не голосовал ли уже за этого участника
     votes_list_key = "male_votes" if target_gender == "Мужской" else "female_votes"
     if target_user_id in user_votes[voter_id][votes_list_key]:
-        await callback.answer("❌ Вы уже голосовали за этого участника!", show_alert=True)
+        await callback.answer(t("beauty_contest.already_voted", language), show_alert=True)
         return
     
     if target_user_id not in votes:
@@ -467,7 +482,7 @@ async def vote_for_profile(callback: CallbackQuery, state: FSMContext):
     contest_data["user_votes"] = user_votes
     await storage.save_beauty_contest(contest_data)
     
-    await callback.answer("💖 Ваш голос учтён!")
+    await callback.answer(t("beauty_contest.vote_counted", language))
     
     # Обновляем страницу
     await show_profile_page(callback.message, callback.from_user.id, state)
@@ -504,11 +519,13 @@ async def unvote_for_profile(callback: CallbackQuery, state: FSMContext):
         if target_user_id in user_votes[voter_id].get(votes_list_key, []):
             user_votes[voter_id][votes_list_key].remove(target_user_id)
     
+    language = await get_user_language_async(voter_id)
+    
     contest_data["votes"] = votes
     contest_data["user_votes"] = user_votes
     await storage.save_beauty_contest(contest_data)
     
-    await callback.answer("💔 Голос убран")
+    await callback.answer(t("beauty_contest.vote_removed", language))
     
     # Обновляем страницу
     await show_profile_page(callback.message, callback.from_user.id, state)
@@ -549,17 +566,19 @@ async def apply_to_contest(callback: CallbackQuery, state: FSMContext):
     users = await storage.load_users()
     user_data = users.get(user_id)
     
+    language = await get_user_language_async(user_id)
+    
     if not user_data:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="Назад", callback_data="beauty_contest"))
+        builder.row(InlineKeyboardButton(text=t("common.back", language), callback_data="beauty_contest"))
         try:
             await callback.message.edit_text(
-                "❌ Ошибка получения данных",
+                t("beauty_contest.error_getting_data", language),
                 reply_markup=builder.as_markup()
             )
         except:
             await callback.message.answer(
-                "❌ Ошибка получения данных",
+                t("beauty_contest.error_getting_data", language),
                 reply_markup=builder.as_markup()
             )
         await callback.answer()
@@ -569,18 +588,16 @@ async def apply_to_contest(callback: CallbackQuery, state: FSMContext):
     photo_path = BASE_DIR / user_data['photo_path']
     if not photo_path.exists():
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="Назад", callback_data="beauty_contest"))
+        builder.row(InlineKeyboardButton(text=t("common.back", language), callback_data="beauty_contest"))
         try:
             await callback.message.edit_text(
-                "❌ <b>Для участия в конкурсе необходимо загрузить фото в профиль!</b>\n\n"
-                "Перейдите в раздел '👤 Моя анкета' и загрузите фото.",
+                t("beauty_contest.photo_required", language),
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
         except:
             await callback.message.answer(
-                "❌ <b>Для участия в конкурсе необходимо загрузить фото в профиль!</b>\n\n"
-                "Перейдите в раздел '👤 Моя анкета' и загрузите фото.",
+                t("beauty_contest.photo_required", language),
                 reply_markup=builder.as_markup(),
                 parse_mode="HTML"
             )
@@ -589,25 +606,30 @@ async def apply_to_contest(callback: CallbackQuery, state: FSMContext):
     
     # Показываем данные для подтверждения
     age = await calculate_age(user_data.get('birth_date', ''))
+    country = remove_country_flag(user_data.get('country', '—'))
+    city = user_data.get('city', '—')
+    first_name = user_data.get('first_name', '')
+    last_name = user_data.get('last_name', '')
     
     text = (
-        "📝 <b>Подтвердите участие в конкурсе</b>\n\n"
-        "Ваша анкета:\n\n"
-        f"👤 {user_data.get('first_name', '')} {user_data.get('last_name', '')}\n"
-        f"🎂 Возраст: {age} лет\n"
-        f"🌍 Страна: {remove_country_flag(user_data.get('country', '—'))}\n"
-        f"🏙 Город: {user_data.get('city', '—')}\n\n"
+        t("beauty_contest.confirm_application", language) +
+        t("beauty_contest.profile_data", language,
+          first_name=first_name,
+          last_name=last_name,
+          age=age,
+          country=country,
+          city=city)
     )
     
     if user_data.get('comment'):
-        text += f"💬 О себе: {user_data.get('comment')}\n\n"
+        text += t("beauty_contest.about_me_field", language, comment=user_data.get('comment'))
     
-    text += "Подтвердите участие в конкурсе красоты:"
+    text += t("beauty_contest.confirm_participation", language)
     
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="✅ Подтвердить", callback_data="bc_confirm_apply"),
-        InlineKeyboardButton(text="❌ Отмена", callback_data="beauty_contest")
+        InlineKeyboardButton(text=t("beauty_contest.confirm_button", language), callback_data="bc_confirm_apply"),
+        InlineKeyboardButton(text=t("beauty_contest.cancel_button", language), callback_data="beauty_contest")
     )
     
     try:
@@ -640,9 +662,11 @@ async def confirm_application(callback: CallbackQuery, state: FSMContext):
     contest_data = await storage.load_beauty_contest()
     applications = contest_data.get("applications", {})
     
+    language = await get_user_language_async(user_id)
+    
     # Проверяем, нет ли уже заявки
     if user_id in applications:
-        await callback.answer("❌ Вы уже участвуете в конкурсе!")
+        await callback.answer(t("beauty_contest.already_applied", language))
         return
     
     # Добавляем заявку
@@ -747,9 +771,10 @@ async def admin_menu(callback: CallbackQuery, state: FSMContext):
 async def admin_delete_select(callback: CallbackQuery, state: FSMContext):
     """Выбор анкеты для удаления"""
     user_id = int(callback.from_user.id)
+    language = await get_user_language_async(str(user_id))
     
     if not await is_admin(user_id):
-        await callback.answer("❌ Нет доступа")
+        await callback.answer(t("beauty_contest.no_access", language))
         return
     
     # Загружаем данные
@@ -759,9 +784,9 @@ async def admin_delete_select(callback: CallbackQuery, state: FSMContext):
     
     if not applications:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="Назад", callback_data="bc_admin_menu"))
+        builder.row(InlineKeyboardButton(text=t("common.back", language), callback_data="bc_admin_menu"))
         await callback.message.edit_text(
-            "❌ Нет анкет для удаления",
+            t("beauty_contest.no_profiles_to_delete", language),
             reply_markup=builder.as_markup()
         )
         await callback.answer()
@@ -784,10 +809,10 @@ async def admin_delete_select(callback: CallbackQuery, state: FSMContext):
         )
     
     builder.row(
-        InlineKeyboardButton(text="Назад", callback_data="bc_admin_menu")
+        InlineKeyboardButton(text=t("common.back", language), callback_data="bc_admin_menu")
     )
     
-    text = "Выберите анкету для удаления:"
+    text = t("beauty_contest.select_profile_to_delete", language)
     
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
     await callback.answer()
@@ -796,9 +821,10 @@ async def admin_delete_select(callback: CallbackQuery, state: FSMContext):
 async def admin_delete_confirm(callback: CallbackQuery, state: FSMContext):
     """Подтверждение удаления анкеты админом"""
     user_id = int(callback.from_user.id)
+    language = await get_user_language_async(str(user_id))
     
     if not await is_admin(user_id):
-        await callback.answer("❌ Нет доступа")
+        await callback.answer(t("beauty_contest.no_access", language))
         return
     
     target_user_id = callback.data.split("_")[3]

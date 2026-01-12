@@ -7,7 +7,16 @@ from dataclasses import dataclass
 import logging
 from contextlib import asynccontextmanager
 
-from config.paths import BANNED_USERS_FILE, GAMES_FILE, SESSIONS_DIR, USERS_FILE, TOURNAMENTS_FILE, TOURNAMENT_APPLICATIONS_FILE, BEAUTY_CONTEST_FILE
+from config.paths import (
+    BANNED_USERS_FILE,
+    GAMES_FILE,
+    LANGUAGES_FILE,
+    SESSIONS_DIR,
+    USERS_FILE,
+    TOURNAMENTS_FILE,
+    TOURNAMENT_APPLICATIONS_FILE,
+    BEAUTY_CONTEST_FILE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +25,7 @@ class StorageConfig:
     users_file: Path = USERS_FILE
     games_file: Path = GAMES_FILE
     banned_file: Path = BANNED_USERS_FILE
+    languages_file: Path = LANGUAGES_FILE
     sessions_dir: Path = SESSIONS_DIR
     tournaments_file: Path = TOURNAMENTS_FILE
     tournament_applications_file: Path = TOURNAMENT_APPLICATIONS_FILE
@@ -95,6 +105,24 @@ class AsyncJSONStorage:
         async with self._transaction(self.config.users_file, {}) as users:
             if user_id in users:
                 users[user_id].update(updates)
+
+    # Languages methods (separate file)
+    async def load_languages(self) -> Dict[str, str]:
+        """Загрузка языков пользователей (отдельный файл)"""
+        return await self._read_file(self.config.languages_file, {})
+
+    async def get_user_language(self, user_id: str) -> Optional[str]:
+        """Получение языка пользователя из отдельного файла"""
+        langs = await self.load_languages()
+        lang = langs.get(str(user_id))
+        return lang if lang in {"ru", "en"} else None
+
+    async def set_user_language(self, user_id: str, language: str) -> None:
+        """Сохранение языка пользователя в отдельный файл (атомарно)"""
+        if language not in {"ru", "en"}:
+            return
+        async with self._transaction(self.config.languages_file, {}) as langs:
+            langs[str(user_id)] = language
     
     # Games methods
     async def load_games(self) -> List[Any]:

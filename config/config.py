@@ -19,10 +19,10 @@ API_SECRET_TOKEN = os.getenv('TENNIS_API_TOKEN', 'qTDrzUztf2CbdH3sUad9plkmfUryMN
 EMAIL_SMTP_HOST = os.getenv('EMAIL_SMTP_HOST', 'smtp.yandex.ru')
 EMAIL_SMTP_PORT = int(os.getenv('EMAIL_SMTP_PORT', 465))
 EMAIL_SMTP_USERNAME = os.getenv('EMAIL_SMTP_USERNAME', 'info@tennis-play.com')
-EMAIL_SMTP_PASSWORD = os.getenv('EMAIL_SMTP_PASSWORD', '')
+EMAIL_SMTP_PASSWORD = os.getenv('EMAIL_SMTP_PASSWORD', '1q2w3e1q')
 EMAIL_FROM_ADDRESS = os.getenv('EMAIL_FROM_ADDRESS', 'info@tennis-play.com')
 EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Tennis-Play.com')
-EMAIL_ADMIN = os.getenv('EMAIL_ADMIN', 'info@tennis-play.com')
+EMAIL_ADMIN = os.getenv('EMAIL_ADMIN', 'toqoko@gmail.com') #promosite1@ya.ru
 
 required_vars = ['TOKEN', 'BOT_USERNAME', 'CHANNEL_ID', 'SHOP_ID', 'SECRET_KEY']
 for var in required_vars:

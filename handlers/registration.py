@@ -15,10 +15,23 @@ from aiogram.types import (
 
 from config.paths import BASE_DIR, PHOTOS_DIR
 from config.profile import (
-    create_sport_keyboard, moscow_districts, player_levels, tennis_levels, table_tennis_levels, 
-    base_keyboard, cities_data, sport_type, countries, SPORT_FIELD_CONFIG,
-    DATING_GOALS, DATING_INTERESTS, DATING_ADDITIONAL_FIELDS, get_sport_config, get_sport_texts, get_base_keyboard,
-    channels_usernames
+    create_sport_keyboard,
+    moscow_districts,
+    player_levels,
+    base_keyboard,
+    cities_data,
+    sport_type,
+    countries,
+    SPORT_FIELD_CONFIG,
+    DATING_GOALS,
+    DATING_INTERESTS,
+    DATING_ADDITIONAL_FIELDS,
+    get_sport_config,
+    get_sport_texts,
+    get_base_keyboard,
+    get_tennis_levels,
+    get_table_tennis_levels,
+    channels_usernames,
 )
 
 from models.states import RegistrationStates
@@ -33,22 +46,23 @@ from services.storage import storage
 from services.web_api import web_api_client
 from services.channels import send_tournament_application_to_channel
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from utils.translations import get_user_language_async, t
 
 router = Router()
 
 # ---------- Вспомогательные функции ----------
 
-def get_levels_for_sport(sport: str) -> dict:
+def get_levels_for_sport(sport: str, language: str = "ru") -> dict:
     """Получает уровни для выбранного вида спорта"""
     config = get_sport_config(sport)
     level_type = config.get("level_type", "tennis")
     
     if level_type == "table_tennis":
-        return table_tennis_levels
+        return get_table_tennis_levels(language)
     elif level_type == "table_tennis_rating":
         return {}  # Для ввода рейтинга не нужны предустановленные уровни
     else:
-        return tennis_levels
+        return get_tennis_levels(language)
 
 def check_profile_completeness(profile: dict, sport: str) -> tuple[bool, list]:
     """
@@ -113,40 +127,42 @@ def get_missing_fields_text(missing_fields: list, sport: str) -> str:
 
 async def show_registration_success(message: types.Message, profile: dict):
     """Показывает сообщение об успешной регистрации с кнопками"""
+    user_id = str(message.chat.id)
+    language = await get_user_language_async(user_id)
+    
     sport = profile.get("sport", "🎾Большой теннис")
     config = get_sport_config(sport)
-    texts = get_sport_texts(sport)
+        language = await get_user_language_async(str(message.chat.id))
+        texts = get_sport_texts(sport, language)
     channel_username = channels_usernames.get(sport, "")
     
     # Формируем сообщение
-    success_text = f"✅ <b>Регистрация завершена!</b>\n\n"
-    success_text += f"Добро пожаловать в сообщество {sport}!\n\n"
+    success_text = t("registration.registration_complete", language, sport=sport)
     
     if channel_username:
-        success_text += f"📢 <b>Подписывайтесь на наш канал с новостями:</b>\n"
-        success_text += f"@{channel_username}\n\n"
+        success_text += t("registration.channel_subscribe", language, channel=channel_username)
     
-    success_text += "Выберите действие:"
+    success_text += t("registration.select_action", language)
     
     # Создаем кнопки
     buttons = []
     
     # Кнопка "Предложить игру"
     buttons.append([InlineKeyboardButton(
-        text=texts.get("offer_button", "🎾 Предложить игру"), 
+        text=texts.get("offer_button", t("registration.offer_game_button", language)), 
         callback_data="new_offer"
     )])
     
     # Кнопка "Создать тур" (только для видов спорта с has_vacation=True)
     if config.get("has_vacation", False):
         buttons.append([InlineKeyboardButton(
-            text="✈️ Создать тур", 
+            text=t("registration.create_tour_button", language), 
             callback_data="create_tour"
         )])
     
     # Кнопка "Главное меню"
     buttons.append([InlineKeyboardButton(
-        text="🏠 Главное меню", 
+        text=t("registration.main_menu_button", language), 
         callback_data="main_menu"
     )])
     
@@ -165,49 +181,51 @@ async def show_registration_success(message: types.Message, profile: dict):
 
 async def show_registration_success_with_transfer_info(message: types.Message, profile: dict, tour_sent: bool, games_sent: int):
     """Показывает сообщение об успешной регистрации с информацией о перенесенных данных"""
+    user_id = str(message.chat.id)
+    language = await get_user_language_async(user_id)
+    
     sport = profile.get("sport", "🎾Большой теннис")
     config = get_sport_config(sport)
-    texts = get_sport_texts(sport)
+        language = await get_user_language_async(str(message.chat.id))
+        texts = get_sport_texts(sport, language)
     channel_username = channels_usernames.get(sport, "")
     
     # Формируем сообщение
-    success_text = f"✅ <b>Регистрация завершена!</b>\n\n"
-    success_text += f"Добро пожаловать в сообщество {sport}!\n\n"
+    success_text = t("registration.registration_complete_with_transfer", language, sport=sport)
     
     # Добавляем информацию о перенесенных данных
     if tour_sent or games_sent > 0:
-        success_text += "📦 <b>Данные с сайта успешно перенесены:</b>\n"
+        success_text += t("registration.registration_complete_with_transfer", language).split("\n\n")[-1] if "📦" in t("registration.registration_complete_with_transfer", language) else ""
         if tour_sent:
-            success_text += "✈️ Тур опубликован в канале\n"
+            success_text += t("registration.tour_published", language)
         if games_sent > 0:
-            success_text += f"🎾 Предложений игр: {games_sent}\n"
+            success_text += t("registration.games_transferred", language, count=games_sent)
         success_text += "\n"
     
     if channel_username:
-        success_text += f"📢 <b>Подписывайтесь на наш канал с новостями:</b>\n"
-        success_text += f"@{channel_username}\n\n"
+        success_text += t("registration.channel_subscribe", language, channel=channel_username)
     
-    success_text += "Выберите действие:"
+    success_text += t("registration.select_action", language)
     
     # Создаем кнопки
     buttons = []
     
     # Кнопка "Предложить игру"
     buttons.append([InlineKeyboardButton(
-        text=texts.get("offer_button", "🎾 Предложить игру"), 
+        text=texts.get("offer_button", t("registration.offer_game_button", language)), 
         callback_data="new_offer"
     )])
     
     # Кнопка "Создать тур" (только для видов спорта с has_vacation=True)
     if config.get("has_vacation", False):
         buttons.append([InlineKeyboardButton(
-            text="✈️ Создать тур", 
+            text=t("registration.create_tour_button", language), 
             callback_data="create_tour"
         )])
     
     # Кнопка "Главное меню"
     buttons.append([InlineKeyboardButton(
-        text="🏠 Главное меню", 
+        text=t("registration.main_menu_button", language), 
         callback_data="main_menu"
     )])
     
@@ -237,18 +255,17 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
             games_played = profile.get('games_played', 0)
             games_wins = profile.get('games_wins', 0)
             
-            greet = (
-                f"👋 Здравствуйте, <b>{first_name} {last_name}</b>!\n\n"
-                f"🏆 Ваш рейтинг: <b>{rating}</b>\n"
-                f"🎾 Сыграно игр: <b>{games_played}</b>\n"
-                f"✅ Побед: <b>{games_wins}</b>\n\n"
-                f"Вы зарегистрированы в официальном боте @tennis_playbot\n"
-                f"Выберите действие из меню ниже:"
-            )  
+            language = profile.get('language', 'ru')
+            greet = t("main.greeting", language,
+                     first_name=first_name,
+                     last_name=last_name,
+                     rating=rating,
+                     games_played=games_played,
+                     games_wins=games_wins)  
 
             # Получаем адаптивную клавиатуру для вида спорта пользователя
             sport = profile.get('sport', '🎾Большой теннис')
-            keyboard = get_base_keyboard(sport)
+            keyboard = get_base_keyboard(sport, language=language)
 
             await message.answer(greet, parse_mode="HTML", reply_markup=keyboard)
             return
@@ -257,8 +274,12 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
         domain = parts[0] if len(parts) > 1 else 'com'
         web_user_id = parts[1] if len(parts) > 1 else parts[0]
         
+        # Определяем язык по умолчанию (можно улучшить, определив по локали пользователя)
+        language = "ru"
+        await state.update_data(language=language)
+        
         await message.answer(
-            "⏳ Получаю ваши данные с сайта...",
+            t("registration.getting_data", language),
             reply_markup=ReplyKeyboardRemove()
         )
         
@@ -266,17 +287,10 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
         
         if not web_user_data:
             await message.answer(
-                "❌ Не удалось получить данные с сайта.\n\n"
-                f"ID пользователя: {web_user_id}\n\n"
-                "Возможные причины:\n"
-                "• Пользователь не найден на сайте\n"
-                "• Ошибка подключения к API\n"
-                "• Неверные настройки API\n\n"
-                "Пожалуйста, пройдите обычную регистрацию.\n"
-                "<b>Для начала отправьте ваш номер телефона:</b>",
+                t("registration.data_error", language, user_id=web_user_id),
                 parse_mode="HTML",
                 reply_markup=ReplyKeyboardMarkup(
-                    keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
+                    keyboard=[[KeyboardButton(text="📱 " + t("registration.send_phone", language).replace("<b>", "").replace("</b>", ""), request_contact=True)]],
                     resize_keyboard=True,
                     one_time_keyboard=True
                 )
@@ -473,12 +487,13 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
         
     except Exception as e:
         # Если произошла любая ошибка, переключаем на обычную регистрацию
+        language = "ru"
+        await state.update_data(language=language)
         await message.answer(
-            "Пожалуйста, пройдите регистрацию.\n\n"
-            "<b>Для начала отправьте ваш номер телефона:</b>",
+            t("registration.welcome", language, name=message.from_user.full_name) + t("registration.send_phone", language),
             parse_mode="HTML",
             reply_markup=ReplyKeyboardMarkup(
-                keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
+                keyboard=[[KeyboardButton(text="📱 " + t("registration.send_phone", language).replace("<b>", "").replace("</b>", ""), request_contact=True)]],
                 resize_keyboard=True,
                 one_time_keyboard=True
             )
@@ -493,10 +508,12 @@ async def cmd_start(message: types.Message, state: FSMContext):
     
     # Проверяем, забанен ли пользователь
     if await is_user_banned(user_id):
+        language = "ru"  # По умолчанию русский для забаненных
+        if await storage.is_user_registered(user_id):
+            profile = await storage.get_user(user_id) or {}
+            language = profile.get('language', 'ru')
         await message.answer(
-            "⛔ Ваш аккаунт заблокирован.\n\n"
-            "Вы не можете использовать бота. Если вы считаете, что это ошибка, "
-            "свяжитесь с администрацией.",
+            t("main.banned_start", language),
             reply_markup=ReplyKeyboardRemove()
         )
         return
@@ -524,16 +541,18 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 
                 # Проверяем, не забанен ли целевой пользователь
                 if await is_user_banned(profile_user_id):
-                    await message.answer("⛔ Этот профиль недоступен.")
+                    language = await get_user_language_async(user_id)
+                    await message.answer(t("main.profile_unavailable", language))
                     return
                 
                 users = await storage.load_users()
+                language = await get_user_language_async(user_id)
                 
                 if profile_user_id in users:
                     profile_user = users[profile_user_id]
                     await show_profile(message, profile_user)
                 else:
-                    await message.answer("Профиль не найден.")
+                    await message.answer(t("main.profile_not_found", language))
                     
                 return
             elif start_param.startswith('join_tournament_'):
@@ -541,21 +560,23 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 tournament_id = start_param.replace('join_tournament_', '')
                 # Если пользователь еще не зарегистрирован — попросим зарегистрироваться
                 if not await storage.is_user_registered(user_id):
+                    language = "ru"
                     await message.answer(
-                        "❌ Сначала пройдите регистрацию, затем повторите ссылку для участия.")
+                        t("main.not_registered", language))
                     # Продолжим обычный start- flow регистрации ниже
                 else:
+                    language = await get_user_language_async(user_id)
                     # Регистрируем в турнире (если есть место и не записан)
                     tournaments = await storage.load_tournaments()
-                    t = tournaments.get(tournament_id)
-                    if not t:
-                        await message.answer("❌ Турнир не найден")
+                    tournament = tournaments.get(tournament_id)
+                    if not tournament:
+                        await message.answer(t("main.tournament_not_found", language))
                         return
-                    participants = t.get('participants', {}) or {}
+                    participants = tournament.get('participants', {}) or {}
                     # Проверка мест
-                    max_participants = int(t.get('participants_count', 0) or 0)
+                    max_participants = int(tournament.get('participants_count', 0) or 0)
                     if max_participants and len(participants) >= max_participants:
-                        await message.answer("❌ В этом турнире больше нет мест")
+                        await message.answer(t("main.tournament_full", language))
                         return
                     if str(user_id) in participants:
                         # Уже участвует — покажем кнопку перехода
@@ -564,7 +585,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
                         kb.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
                         kb.adjust(1)
                         await message.answer(
-                            f"✅ Вы уже участвуете в турнире: {t.get('name', 'Турнир')}",
+                            t("main.already_in_tournament", language, name=tournament.get('name', 'Турнир')),
                             reply_markup=kb.as_markup()
                         )
                         return
@@ -577,12 +598,12 @@ async def cmd_start(message: types.Message, state: FSMContext):
                         'added_at': datetime.now().isoformat(),
                         'added_by': int(user_id)
                     }
-                    t['participants'] = participants
-                    tournaments[tournament_id] = t
+                    tournament['participants'] = participants
+                    tournaments[tournament_id] = tournament
                     await storage.save_tournaments(tournaments)
                     # Уведомление в канал
                     try:
-                        await send_tournament_application_to_channel(message.bot, tournament_id, t, str(user_id), u)
+                        await send_tournament_application_to_channel(message.bot, tournament_id, tournament, str(user_id), u)
                     except Exception:
                         pass
                     # Ответ пользователю с кнопками
@@ -592,7 +613,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
                     kb.button(text="🏠 Главное меню", callback_data="tournaments_main_menu")
                     kb.adjust(1)
                     await message.answer(
-                        "✅ Вы добавлены в турнир!",
+                        t("main.added_to_tournament", language),
                         reply_markup=kb.as_markup()
                     )
                 return
@@ -612,47 +633,75 @@ async def cmd_start(message: types.Message, state: FSMContext):
     
     if await storage.is_user_registered(user_id):
         profile = await storage.get_user(user_id) or {}
+        language = profile.get('language', 'ru')
         first_name = profile.get('first_name', message.from_user.first_name or '')
         last_name = profile.get('last_name', message.from_user.last_name or '')
         rating = profile.get('rating_points', 0)
         games_played = profile.get('games_played', 0)
         games_wins = profile.get('games_wins', 0)
         
-        greet = (
-            f"👋 Здравствуйте, <b>{first_name} {last_name}</b>!\n\n"
-            f"🏆 Ваш рейтинг: <b>{rating}</b>\n"
-            f"🎾 Сыграно игр: <b>{games_played}</b>\n"
-            f"✅ Побед: <b>{games_wins}</b>\n\n"
-            f"Вы зарегистрированы в официальном боте @tennis_playbot\n"
-            f"Выберите действие из меню ниже:"
-        )  
+        greet = t("main.greeting", language, 
+                 first_name=first_name, 
+                 last_name=last_name,
+                 rating=rating,
+                 games_played=games_played,
+                 games_wins=games_wins)
 
         # Получаем адаптивную клавиатуру для вида спорта пользователя
         sport = profile.get('sport', '🎾Большой теннис')
-        keyboard = get_base_keyboard(sport)
+        keyboard = get_base_keyboard(sport, language=language)
         await message.answer(greet, parse_mode="HTML", reply_markup=keyboard)
         await state.clear()
         return
 
-    # Если пользователь не зарегистрирован
-    username = message.from_user.username
+    # Если пользователь не зарегистрирован, сначала выбираем язык
+    language = "ru"  # По умолчанию русский
+    await state.update_data(language=language)
+    
+    # Предлагаем выбрать язык
+    buttons = [
+        [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru")],
+        [InlineKeyboardButton(text="🇬🇧 English", callback_data="lang_en")]
+    ]
+    
+    welcome_text = (
+        f"👋 Здравствуйте, <b>{message.from_user.full_name}</b>!\n\n"
+        "Вы находитесь в боте @tennis_playbot проекта Tennis-Play.com\n"
+        "Для начала пройдите краткую регистрацию.\n\n"
+        "Начиная регистрацию, Вы соглашаетесь с <a href='https://tennis-play.com/privacy-bot'>политикой обработки персональных данных</a> "
+        "и даёте согласие на <a href='https://tennis-play.com/soglasie'>обработку данных</a>\n\n"
+        "<b>Выберите язык / Choose language:</b>"
+    )
+    
+    await message.answer(
+        welcome_text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(RegistrationStates.LANGUAGE)
+    await storage.save_session(user_id, await state.get_data())
+
+@router.callback_query(RegistrationStates.LANGUAGE, F.data.startswith("lang_"))
+async def process_language_selection(callback: types.CallbackQuery, state: FSMContext):
+    """Обрабатывает выбор языка"""
+    language = callback.data.split("_")[1]  # "ru" или "en"
+    await state.update_data(language=language)
+    # Сохраняем выбранный язык в отдельный файл (даже до завершения регистрации)
+    await storage.set_user_language(str(callback.message.chat.id), language)
+    
+    username = callback.from_user.username
     
     if not username:
         # Если нет username, просим телефон
         await state.set_state(RegistrationStates.PHONE)
-        welcome_text = (
-            f"👋 Здравствуйте, <b>{message.from_user.full_name}</b>!\n\n"
-            "Вы находитесь в боте @tennis_playbot проекта Tennis-Play.com\n"
-            "Для начала пройдите краткую регистрацию.\n\n"
-            "Начиная регистрацию, Вы соглашаетесь с <a href='https://tennis-play.com/privacy-bot'>политикой обработки персональных данных</a> "
-            "и даёте согласие на <a href='https://tennis-play.com/soglasie'>обработку данных</a>\n\n"
-            "<b>Пожалуйста, отправьте номер телефона:</b>"
-        )
+        welcome_text = t("registration.welcome", language, name=callback.from_user.full_name)
+        welcome_text += t("registration.send_phone", language)
         
-        await message.answer(
+        await callback.message.edit_text(
             welcome_text,
             reply_markup=ReplyKeyboardMarkup(
-                keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
+                keyboard=[[KeyboardButton(text="📱 " + t("registration.send_phone", language).replace("<b>", "").replace("</b>", ""), request_contact=True)]],
                 resize_keyboard=True,
                 one_time_keyboard=True
             ),
@@ -661,24 +710,19 @@ async def cmd_start(message: types.Message, state: FSMContext):
     else:
         # Если есть username, показываем кнопку "Начать регистрацию"
         await state.set_state(RegistrationStates.REGISTRATION_START)
-        welcome_text = (
-            f"👋 Здравствуйте, <b>{message.from_user.full_name}</b>!\n\n"
-            "Вы находитесь в боте @tennis_playbot проекта Tennis-Play.com\n"
-            "Для начала пройдите краткую регистрацию.\n\n"
-            "Начиная регистрацию, Вы соглашаетесь с <a href='https://tennis-play.com/privacy-bot'>политикой обработки персональных данных</a> "
-            "и даёте согласие на <a href='https://tennis-play.com/soglasie'>обработку данных</a>\n\n"
-            "Нажмите кнопку ниже для начала регистрации:"
-        )
+        welcome_text = t("registration.welcome", language, name=callback.from_user.full_name)
+        welcome_text += t("registration.start_registration", language)
         
-        await message.answer(
+        await callback.message.edit_text(
             welcome_text,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="🚀 Начать регистрацию", callback_data="start_registration")
+                InlineKeyboardButton(text=t("registration.start_button", language), callback_data="start_registration")
             ]]),
             parse_mode="HTML"
         )
     
-    await storage.save_session(user_id, await state.get_data())
+    await callback.answer()
+    await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.REGISTRATION_START, F.data == "start_registration")
 async def process_start_registration(callback: types.CallbackQuery, state: FSMContext):
@@ -687,11 +731,15 @@ async def process_start_registration(callback: types.CallbackQuery, state: FSMCo
     username = callback.from_user.username
     await state.update_data(username=username)
     
+    # Получаем язык из состояния
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    
     # Переходим к выбору вида спорта
     await show_current_data(
         callback.message, state,
-        "🎾 Выберите вид спорта:",
-        reply_markup=create_sport_keyboard(pref="sport_")
+        t("registration.select_sport", language),
+        reply_markup=create_sport_keyboard(pref="sport_", language=language)
     )
     await state.set_state(RegistrationStates.SPORT)
     await callback.answer()
@@ -699,9 +747,11 @@ async def process_start_registration(callback: types.CallbackQuery, state: FSMCo
 
 @router.message(Command("profile"))
 async def cmd_profile(message: types.Message):
-    user_id = message.chat.id
+    user_id = str(message.chat.id)
+    language = await get_user_language_async(user_id)
+    
     if not await storage.is_user_registered(user_id):
-        await message.answer("❌ Вы еще не зарегистрированы. Введите /start для регистрации.")
+        await message.answer(t("main.not_registered", language))
         return
     
     profile = await storage.get_user(user_id) or {}
@@ -709,21 +759,26 @@ async def cmd_profile(message: types.Message):
 
 @router.message(Command("profile_id"))
 async def cmd_profile_id(message: types.Message):
+    user_id = str(message.chat.id)
+    language = await get_user_language_async(user_id)
+    
     try:
-        user_id = int(message.text.split()[1])
+        target_user_id = int(message.text.split()[1])
     except (IndexError, ValueError):
-        await message.answer("❌ Использование: /profile_id USER_ID")
+        await message.answer(t("main.profile_id_usage", language))
         return
     
-    profile = await storage.get_user(user_id)
+    profile = await storage.get_user(target_user_id)
     if not profile:
-        await message.answer("❌ Пользователь с таким ID не найден.")
+        await message.answer(t("main.user_not_found", language))
         return
     
     await show_profile(message, profile)
 
 @router.message(RegistrationStates.PHONE, (F.contact | F.text))
 async def process_phone(message: Message, state: FSMContext):
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
 
     phone = None
     phone_pattern = re.compile(r'^\+?\d{10,15}$')
@@ -736,20 +791,20 @@ async def process_phone(message: Message, state: FSMContext):
             phone = text
 
     if not phone:
-        await message.answer("❌ Пожалуйста, отправьте корректный номер телефона.")
+        await message.answer(t("registration.invalid_phone", language))
         return
 
     await state.update_data(phone=phone)
 
     await message.answer(
-        "✅ Номер телефона получен!",
+        t("registration.phone_received", language),
         reply_markup=ReplyKeyboardRemove()
     )
 
     await show_current_data(
         message, state,
-        "🎾 Выберите вид спорта:",
-        reply_markup=create_sport_keyboard(pref="sport_")
+        t("registration.select_sport", language),
+        reply_markup=create_sport_keyboard(pref="sport_", language=language)
     )
     await state.set_state(RegistrationStates.SPORT)
     await storage.save_session(message.chat.id, await state.get_data())
@@ -759,7 +814,11 @@ async def process_phone(message: Message, state: FSMContext):
 async def process_sport_selection(callback: types.CallbackQuery, state: FSMContext):
     sport = callback.data.split("_", maxsplit=1)[1]
     await state.update_data(sport=sport)
-    await callback.message.edit_text("📝 Введите ваше имя:", reply_markup=None)
+    
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    
+    await callback.message.edit_text(t("registration.enter_first_name", language), reply_markup=None)
     await state.set_state(RegistrationStates.FIRST_NAME)
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
@@ -767,22 +826,29 @@ async def process_sport_selection(callback: types.CallbackQuery, state: FSMConte
 @router.message(RegistrationStates.FIRST_NAME, F.text)
 async def process_first_name(message: Message, state: FSMContext):
     await state.update_data(first_name=message.text.strip())
-    await message.answer("📝 Введите вашу фамилию:")
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    await message.answer(t("registration.enter_last_name", language))
     await state.set_state(RegistrationStates.LAST_NAME)
     await storage.save_session(message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.LAST_NAME, F.text)
 async def process_last_name(message: Message, state: FSMContext):
     await state.update_data(last_name=message.text.strip())
-    await message.answer("📅 Введите вашу дату рождения в формате ДД.ММ.ГГГГ:")
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    await message.answer(t("registration.enter_birth_date", language))
     await state.set_state(RegistrationStates.BIRTH_DATE)
     await storage.save_session(message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.BIRTH_DATE, F.text)
 async def process_birth_date(message: Message, state: FSMContext):
     date_str = message.text.strip()
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    
     if not await validate_date(date_str):
-        await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
+        await message.answer(t("registration.invalid_date", language))
         return
     
     await state.update_data(birth_date=date_str)
@@ -810,7 +876,9 @@ async def process_country_selection(callback: types.CallbackQuery, state: FSMCon
 
 @router.callback_query(RegistrationStates.COUNTRY, F.data == "other_country")
 async def process_other_country(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("🌍 Введите название страны:", reply_markup=None)
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    await callback.message.edit_text(t("registration.enter_country", language), reply_markup=None)
     await state.set_state(RegistrationStates.COUNTRY_INPUT)
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
@@ -818,7 +886,9 @@ async def process_other_country(callback: types.CallbackQuery, state: FSMContext
 @router.message(RegistrationStates.COUNTRY_INPUT, F.text)
 async def process_country_input(message: Message, state: FSMContext):
     await state.update_data(country=message.text.strip())
-    await message.answer("🏙 Введите название города:")
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    await message.answer(t("registration.enter_city", language))
     await state.set_state(RegistrationStates.CITY_INPUT)
     await storage.save_session(message.chat.id, await state.get_data())
 
@@ -829,13 +899,15 @@ async def process_city_input(message: Message, state: FSMContext):
     await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_city(message: types.Message, state: FSMContext, country: str):
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
     cities = cities_data.get(country, [])
     buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"city_{city}")] for city in cities]
-    buttons.append([InlineKeyboardButton(text="Другой город", callback_data="other_city")])
+    buttons.append([InlineKeyboardButton(text=t("registration.other_city", language), callback_data="other_city")])
 
     await show_current_data(
         message, state,
-        f"🏙 Выберите Ваш город в стране: {remove_country_flag(country)}",
+        t("registration.select_city", language, country=remove_country_flag(country)),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.CITY)
@@ -845,6 +917,9 @@ async def ask_for_city(message: types.Message, state: FSMContext, country: str):
 async def process_city_selection(callback: types.CallbackQuery, state: FSMContext):
     city = callback.data.split("_", maxsplit=1)[1]
 
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    
     if city == "Москва":
         buttons = []
         row = []
@@ -855,7 +930,7 @@ async def process_city_selection(callback: types.CallbackQuery, state: FSMContex
                 row = []
         await show_current_data(
             callback.message, state,
-            "🏙 Выберите округ Москвы:",
+            t("registration.select_district", language),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     else:
@@ -876,7 +951,9 @@ async def process_district_selection(callback: types.CallbackQuery, state: FSMCo
 
 @router.callback_query(RegistrationStates.CITY, F.data == "other_city")
 async def process_other_city(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("🏙 Введите название города:", reply_markup=None)
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    await callback.message.edit_text(t("registration.enter_city", language), reply_markup=None)
     await state.set_state(RegistrationStates.CITY_INPUT)
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
@@ -891,13 +968,14 @@ async def ask_for_role(message: types.Message, state: FSMContext):
         await ask_for_gender(message, state)
         return
     
+    language = user_data.get("language", "ru")
     buttons = [
-        [InlineKeyboardButton(text="🎯 Игрок", callback_data="role_Игрок")],
-        [InlineKeyboardButton(text="👨‍🏫 Тренер", callback_data="role_Тренер")]
+        [InlineKeyboardButton(text=t("registration.player", language), callback_data="role_Игрок")],
+        [InlineKeyboardButton(text=t("registration.trainer", language), callback_data="role_Тренер")]
     ]
     await show_current_data(
         message, state,
-        "🎭 Выберите роль:",
+        t("registration.select_role", language),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.ROLE)
@@ -908,8 +986,11 @@ async def process_role_selection(callback: types.CallbackQuery, state: FSMContex
     role = callback.data.split("_", maxsplit=1)[1]
     await state.update_data(role=role)
 
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    
     if role == "Тренер":
-        await callback.message.edit_text("💵 Введите стоимость тренировки (в рублях, только цифры):", reply_markup=None)
+        await callback.message.edit_text(t("registration.enter_trainer_price", language), reply_markup=None)
         await state.set_state(RegistrationStates.TRAINER_PRICE)
     else:
         # Переходим к следующему шагу в зависимости от вида спорта
@@ -920,13 +1001,15 @@ async def process_role_selection(callback: types.CallbackQuery, state: FSMContex
 
 async def ask_for_gender(message: types.Message, state: FSMContext):
     """Спрашивает пол пользователя"""
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
     buttons = [
-        [InlineKeyboardButton(text="👨 Мужской", callback_data="gender_Мужской")],
-        [InlineKeyboardButton(text="👩 Женский", callback_data="gender_Женский")]
+        [InlineKeyboardButton(text=t("registration.male", language), callback_data="gender_Мужской")],
+        [InlineKeyboardButton(text=t("registration.female", language), callback_data="gender_Женский")]
     ]
     await show_current_data(
         message, state,
-        "👫 Укажите пол:",
+        t("registration.select_gender", language),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.GENDER)
@@ -948,8 +1031,11 @@ async def ask_for_level_or_gender(message: types.Message, state: FSMContext):
 @router.message(RegistrationStates.TRAINER_PRICE, F.text)
 async def process_trainer_price(message: types.Message, state: FSMContext):
     price_str = message.text.strip()
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    
     if not await validate_price(price_str):
-        await message.answer("❌ Пожалуйста, введите корректную стоимость тренировки (только цифры, больше 0):")
+        await message.answer(t("registration.invalid_price", language))
         return
     
     await state.update_data(price=int(price_str))
@@ -963,7 +1049,8 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
     user_data = await state.get_data()
     sport = user_data.get("sport")
     config = get_sport_config(sport)
-    levels_dict = get_levels_for_sport(sport)
+    language = user_data.get("language", "ru")
+    levels_dict = get_levels_for_sport(sport, language)
     
     # Для настольного тенниса показываем специальный интерфейс
     if config.get("level_type") in ["table_tennis", "table_tennis_rating"]:
@@ -986,7 +1073,8 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
         description = levels_dict[level]["desc"]
         levels_text += f"*{level}* - {description}\n\n"
     
-    levels_text += f"*Страница {page + 1} из {total_pages}*\n\n👇 *Выберите ваш уровень:*"
+    language = user_data.get("language", "ru")
+    levels_text += t("common.page", language, current=page + 1, total=total_pages) + "\n\n👇 *" + t("registration.select_level", language) + "*"
     
     # Создаем кнопки для уровней
     buttons = []
@@ -999,9 +1087,9 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
     # Добавляем кнопки навигации
     nav_buttons = []
     if page > 0:
-        nav_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"levelpage_{page-1}"))
+        nav_buttons.append(InlineKeyboardButton(text=t("common.back", language), callback_data=f"levelpage_{page-1}"))
     if page < total_pages - 1:
-        nav_buttons.append(InlineKeyboardButton(text="Вперед ➡️", callback_data=f"levelpage_{page+1}"))
+        nav_buttons.append(InlineKeyboardButton(text=t("common.next", language), callback_data=f"levelpage_{page+1}"))
     
     if nav_buttons:
         buttons.append(nav_buttons)
@@ -1026,8 +1114,10 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
 
 async def ask_for_table_tennis_rating(message: types.Message, state: FSMContext):
     """Спрашивает рейтинг для настольного тенниса"""
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
     await message.edit_text(
-        "🏓 Укажите ваш рейтинг в настольном теннису (цифры):",
+        t("registration.enter_table_tennis_rating", language),
         reply_markup=None
     )
     await state.set_state(RegistrationStates.TABLE_TENNIS_RATING)
@@ -1094,22 +1184,27 @@ async def ask_for_profile_comment(message: types.Message, state: FSMContext):
     about_me_text = config.get("about_me_text")
     comment_text = config.get("comment_text", "• Комментарий:")
     
+    language = user_data.get("language", "ru")
+    skip_text = f" (или /skip для пропуска)" if language == "ru" else " (or /skip to skip)"
+    
     if about_me_text:
-        await message.edit_text(f"{about_me_text} (или /skip для пропуска):", reply_markup=None)
+        await message.edit_text(f"{about_me_text}{skip_text}", reply_markup=None)
     else:
-        await message.edit_text(f"{comment_text} (или /skip для пропуска):", reply_markup=None)
+        await message.edit_text(t("registration.enter_profile_comment", language), reply_markup=None)
     
     await state.set_state(RegistrationStates.PROFILE_COMMENT)
     await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_dating_goals(message: types.Message, state: FSMContext):
     """Спрашивает цели знакомств"""
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
     buttons = []
     for goal in DATING_GOALS:
         buttons.append([InlineKeyboardButton(text=goal, callback_data=f"dating_goal_{goal}")])
     
     await message.edit_text(
-        "💕 Цель знакомства:",
+        t("registration.select_dating_goal", language),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.DATING_GOAL)
@@ -1117,14 +1212,16 @@ async def ask_for_dating_goals(message: types.Message, state: FSMContext):
 
 async def ask_for_photo(message: types.Message, state: FSMContext):
     """Спрашивает фото профиля"""
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
     buttons = [
-        [InlineKeyboardButton(text="📷 Загрузить фото", callback_data="photo_upload")],
-        [InlineKeyboardButton(text="👀 Без фото", callback_data="photo_none")],
-        [InlineKeyboardButton(text="Фото из профиля", callback_data="photo_profile")]
+        [InlineKeyboardButton(text=t("registration.upload_photo_button", language), callback_data="photo_upload")],
+        [InlineKeyboardButton(text=t("registration.no_photo_button", language), callback_data="photo_none")],
+        [InlineKeyboardButton(text=t("registration.profile_photo_button", language), callback_data="photo_profile")]
     ]
     await show_current_data(
         message, state,
-        "📷 Фото профиля:",
+        t("registration.select_photo", language),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.PHOTO)
@@ -1153,8 +1250,11 @@ async def process_dating_goal(callback: types.CallbackQuery, state: FSMContext):
     goal = callback.data.split("_", maxsplit=2)[2]
     await state.update_data(dating_goal=goal)
     
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    
     if goal == "Свой вариант":
-        await callback.message.edit_text("💕 Опишите вашу цель знакомства:", reply_markup=None)
+        await callback.message.edit_text(t("registration.enter_dating_goal", language), reply_markup=None)
         await state.set_state(RegistrationStates.DATING_GOAL)
         return
     
@@ -1171,12 +1271,14 @@ async def process_dating_goal_text(message: types.Message, state: FSMContext):
 
 async def ask_for_dating_interests(message: types.Message, state: FSMContext):
     """Спрашивает интересы для знакомств"""
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
     buttons = []
     for interest in DATING_INTERESTS:
         buttons.append([InlineKeyboardButton(text=interest, callback_data=f"dating_interest_{interest}")])
     
     await message.edit_text(
-        "🎯 Ваши интересы (можно выбрать несколько):",
+        t("registration.select_dating_interests", language),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.DATING_INTERESTS)
@@ -1189,8 +1291,10 @@ async def process_dating_interest(callback: types.CallbackQuery, state: FSMConte
     user_data = await state.get_data()
     selected_interests = user_data.get("dating_interests", [])
     
+    language = user_data.get("language", "ru")
+    
     if interest == "Свой вариант в дополнение":
-        await callback.message.edit_text("🎯 Опишите ваши дополнительные интересы:", reply_markup=None)
+        await callback.message.edit_text(t("registration.enter_dating_interests", language), reply_markup=None)
         await state.set_state(RegistrationStates.DATING_INTERESTS)
         return
     
@@ -1281,8 +1385,11 @@ async def process_meeting_time(message: types.Message, state: FSMContext):
 async def process_photo_choice(callback: types.CallbackQuery, state: FSMContext):
     choice = callback.data.split("_", maxsplit=1)[1]
 
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    
     if choice == "upload":
-        await callback.message.edit_text("📷 Отправьте фотографию одним сообщением (из галереи или сделайте снимок):", reply_markup=None)
+        await callback.message.edit_text(t("registration.upload_photo", language), reply_markup=None)
         return
 
     if choice == "profile":
@@ -1299,13 +1406,13 @@ async def process_photo_choice(callback: types.CallbackQuery, state: FSMContext)
                     await state.update_data(photo="profile", photo_path=rel_path)
                     await ask_for_next_step_after_photo(callback.message, state)
                 else:
-                    await callback.message.edit_text("❌ Не удалось получить фото профиля. Пожалуйста, загрузите фото вручную:")
+                    await callback.message.edit_text(t("registration.photo_error", language))
                     return
             else:
-                await callback.message.edit_text("❌ Фото профиля отсутствует. Пожалуйста, загрузите фото вручную:")
+                await callback.message.edit_text(t("registration.photo_missing", language))
                 return
         except Exception:
-            await callback.message.edit_text("❌ Не удалось получить фото профиля. Пожалуйста, загрузите фото вручную:")
+            await callback.message.edit_text(t("registration.photo_error", language))
             return
     elif choice == "none":
         await state.update_data(photo="none", photo_path=None)
@@ -1323,13 +1430,16 @@ async def process_photo_upload(message: types.Message, state: FSMContext):
     ts = int(datetime.now().timestamp())
     filename = f"{message.chat.id}_{ts}.jpg"
     dest_path = PHOTOS_DIR / filename
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    
     ok = await download_photo_to_path(message.bot, photo_id, dest_path)
     if ok:
         rel_path = dest_path.relative_to(BASE_DIR).as_posix()
         await state.update_data(photo="uploaded", photo_path=rel_path)
         await ask_for_next_step_after_photo(message, state)
     else:
-        await message.answer("❌ Не удалось сохранить фото. Попробуйте отправить ещё раз или выберите вариант без фото.")
+        await message.answer(t("registration.photo_save_error", language))
     await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_next_step_after_photo(message: types.Message, state: FSMContext):
@@ -1353,10 +1463,12 @@ async def process_vacation_tennis(callback: types.CallbackQuery, state: FSMConte
         buttons = []
         for country in countries[:5]:
             buttons.append([InlineKeyboardButton(text=f"{country}", callback_data=f"vacation_country_{country}")])
-        buttons.append([InlineKeyboardButton(text="🌎 Другая страна", callback_data="vacation_other_country")])
+        user_data = await state.get_data()
+        language = user_data.get("language", "ru")
+        buttons.append([InlineKeyboardButton(text=t("registration.other_country", language), callback_data="vacation_other_country")])
 
         await callback.message.edit_text(
-            "🌍 Выберите страну отдыха:",
+            t("registration.select_vacation_country", language),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
         await state.set_state(RegistrationStates.VACATION_COUNTRY)
@@ -1377,7 +1489,9 @@ async def process_vacation_country_selection(callback: types.CallbackQuery, stat
 
 @router.callback_query(RegistrationStates.VACATION_COUNTRY, F.data == "vacation_other_country")
 async def process_vacation_other_country(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("🌍 Введите название страны отдыха:", reply_markup=None)
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    await callback.message.edit_text(t("registration.enter_vacation_country", language), reply_markup=None)
     await state.set_state(RegistrationStates.VACATION_COUNTRY_INPUT)
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
@@ -1385,25 +1499,31 @@ async def process_vacation_other_country(callback: types.CallbackQuery, state: F
 @router.message(RegistrationStates.VACATION_COUNTRY_INPUT, F.text)
 async def process_vacation_country_input(message: Message, state: FSMContext):
     await state.update_data(vacation_country=message.text.strip())
-    await message.answer("🏙 Введите название города отдыха:")
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    await message.answer(t("registration.enter_vacation_city", language))
     await state.set_state(RegistrationStates.VACATION_CITY_INPUT)
     await storage.save_session(message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.VACATION_CITY_INPUT, F.text)
 async def process_vacation_city_input(message: Message, state: FSMContext):
     await state.update_data(vacation_city=message.text.strip())
-    await message.answer("✈️ Введите дату начала отдыха (ДД.ММ.ГГГГ):")
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    await message.answer(t("registration.enter_vacation_start", language))
     await state.set_state(RegistrationStates.VACATION_START)
     await storage.save_session(message.chat.id, await state.get_data())
 
 async def ask_for_vacation_city(message: types.Message, state: FSMContext, country: str):
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
     cities = cities_data.get(country, [])
     buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in cities]
-    buttons.append([InlineKeyboardButton(text="Другой город", callback_data="vacation_o ther_city")])
+    buttons.append([InlineKeyboardButton(text=t("registration.other_city", language), callback_data="vacation_o ther_city")])
 
     await show_current_data(
         message, state,
-        f"🏙 Выберите город отдыха в стране: {remove_country_flag(country)}",
+        t("registration.select_vacation_city", language, country=remove_country_flag(country)),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.VACATION_CITY)
@@ -1413,14 +1533,18 @@ async def ask_for_vacation_city(message: types.Message, state: FSMContext, count
 async def process_vacation_city_selection(callback: types.CallbackQuery, state: FSMContext):
     city = callback.data.split("_", maxsplit=2)[2]
     await state.update_data(vacation_city=city)
-    await callback.message.edit_text("✈️ Введите дату начала отдыха (ДД.ММ.ГГГГ):", reply_markup=None)
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    await callback.message.edit_text(t("registration.enter_vacation_start", language), reply_markup=None)
     await state.set_state(RegistrationStates.VACATION_START)
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
 
 @router.callback_query(RegistrationStates.VACATION_CITY, F.data == "vacation_other_city")
 async def process_vacation_other_city(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("🏙 Введите название города отдыха:", reply_markup=None)
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    await callback.message.edit_text(t("registration.enter_vacation_city", language), reply_markup=None)
     await state.set_state(RegistrationStates.VACATION_CITY_INPUT)
     await callback.answer()
     await storage.save_session(callback.message.chat.id, await state.get_data())
@@ -1428,35 +1552,40 @@ async def process_vacation_other_city(callback: types.CallbackQuery, state: FSMC
 @router.message(RegistrationStates.VACATION_START, F.text)
 async def process_vacation_start(message: Message, state: FSMContext):
     date_str = message.text.strip()
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    
     if not await validate_date(date_str):
-        await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
+        await message.answer(t("registration.invalid_date", language))
         return
     
     if not await validate_future_date(date_str):
-        await message.answer("❌ Дата начала отдыха должна быть в будущем. Пожалуйста, введите корректную дату:")
+        await message.answer(t("registration.invalid_vacation_start", language))
         return
     
     await state.update_data(vacation_start=date_str, vacation_tennis=True)
-    await message.answer("✈️ Введите дату завершения отдыха (ДД.ММ.ГГГГ):")
+    await message.answer(t("registration.enter_vacation_end", language))
     await state.set_state(RegistrationStates.VACATION_END)
     await storage.save_session(message.chat.id, await state.get_data())
 
 @router.message(RegistrationStates.VACATION_END, F.text)
 async def process_vacation_end(message: Message, state: FSMContext):
     date_str = message.text.strip()
+    user_data = await state.get_data()
+    language = user_data.get("language", "ru")
+    
     if not await validate_date(date_str):
-        await message.answer("❌ Неверный формат даты. Пожалуйста, введите дату в формате ДД.ММ.ГГГГ:")
+        await message.answer(t("registration.invalid_date", language))
         return
     
-    user_data = await state.get_data()
     start_date = user_data.get('vacation_start')
     
     if not await validate_date_range(start_date, date_str):
-        await message.answer("❌ Дата завершения должна быть после даты начала. Пожалуйста, введите корректную дату:")
+        await message.answer(t("registration.invalid_vacation_end", language))
         return
     
     await state.update_data(vacation_end=date_str)
-    await message.answer("💬 Добавьте комментарий к поездке (необязательно, или /skip для пропуска):")
+    await message.answer(t("registration.enter_vacation_comment", language))
     await state.set_state(RegistrationStates.VACATION_COMMENT)
     await storage.save_session(message.chat.id, await state.get_data())
 
@@ -1481,14 +1610,15 @@ async def ask_for_default_payment(message: types.Message, state: FSMContext):
         await complete_registration_without_profile(message, state)
         return
     
+    language = user_data.get("language", "ru")
     buttons = [
-        [InlineKeyboardButton(text="💰 Пополам", callback_data="defaultpay_Пополам")],
-        [InlineKeyboardButton(text="💳 Я оплачиваю", callback_data="defaultpay_Я оплачиваю")],
-        [InlineKeyboardButton(text="💵 Соперник оплачивает", callback_data="defaultpay_Соперник оплачивает")]
+        [InlineKeyboardButton(text=t("registration.payment_split", language), callback_data="defaultpay_Пополам")],
+        [InlineKeyboardButton(text=t("registration.payment_me", language), callback_data="defaultpay_Я оплачиваю")],
+        [InlineKeyboardButton(text=t("registration.payment_opponent", language), callback_data="defaultpay_Соперник оплачивает")]
     ]
     await show_current_data(
         message, state,
-        "💳 Как вы обычно оплачиваете корт?",
+        t("registration.select_payment", language),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.DEFAULT_PAYMENT)
@@ -1543,6 +1673,8 @@ async def complete_registration_without_profile(message: types.Message, state: F
     
     # Сохраняем пользователя
     await storage.save_user(user_id, profile)
+    # Дублируем язык в отдельное хранилище языка
+    await storage.set_user_language(str(user_id), profile.get("language", "ru"))
     await state.clear()
     await storage.delete_session(user_id)
     
@@ -1599,6 +1731,7 @@ async def create_user_profile(user_id: int, username: str, user_state: dict) -> 
         "profile_comment": user_state.get("profile_comment"),
         "referrals_invited": 0,
         "games": [],
+        "language": user_state.get("language", "ru"),  # Сохраняем язык
         "created_at": datetime.now().isoformat(timespec="seconds")
     }
     
@@ -1634,8 +1767,9 @@ async def process_main_menu_after_registration(callback: types.CallbackQuery):
     """Обрабатывает нажатие кнопки 'Главное меню' после регистрации"""
     user_id = callback.message.chat.id
     profile = await storage.get_user(user_id) or {}
+    language = await get_user_language_async(str(user_id))
     sport = profile.get('sport', '🎾Большой теннис')
-    keyboard = get_base_keyboard(sport)
+    keyboard = get_base_keyboard(sport, language=language)
     
     await callback.message.answer(
         "🏠 Главное меню",

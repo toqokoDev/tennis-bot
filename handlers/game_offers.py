@@ -13,10 +13,11 @@ from utils.admin import is_admin
 from utils.bot import show_current_data
 from utils.game import get_user_games, save_user_game
 from utils.utils import remove_country_flag
+from utils.translations import get_user_language_async, t
 
 from config.profile import (
     WEEKDAYS, create_sport_keyboard, moscow_districts, game_types, payment_types, base_keyboard, cities_data, countries,
-    get_sport_config, get_sport_texts, sport_type, DATING_GOALS, DATING_INTERESTS, DATING_ADDITIONAL_FIELDS
+    get_sport_config, get_sport_texts, sport_type, DATING_GOALS, DATING_INTERESTS, DATING_ADDITIONAL_FIELDS, get_sport_translation, get_base_keyboard
 )
 
 def get_next_game_step(sport: str, current_step: str) -> str:
@@ -90,7 +91,7 @@ def get_next_game_step(sport: str, current_step: str) -> str:
         else:
             return "done"
 
-def get_game_comment_prompt(sport: str) -> str:
+async def get_game_comment_prompt(sport: str, language: str = "ru") -> str:
     """
     Возвращает подходящий текст для комментария в зависимости от вида спорта
     """
@@ -99,17 +100,17 @@ def get_game_comment_prompt(sport: str) -> str:
     
     if category == "meeting":
         if sport == "☕️Бизнес-завтрак":
-            return "💬 Опишите, какие проекты вам интересны для обсуждения или ваше предложение по бизнесу:"
+            return t("game_offers.enter_meeting_comment", language)
         elif sport == "🍻По пиву":
-            return "💬 Опишите, чтобы вы хотели посмотреть или обсудить за пивом, возможно какое-то событие в мире спорта:"
+            return t("game_offers.enter_beer_comment", language)
     elif category == "dating":
-        return "💬 Дополнительная информация (или введите /skip для пропуска):"
+        return t("game_offers.enter_dating_comment", language)
     elif category == "outdoor_sport":
         # Получаем текст из конфигурации профиля
         about_me_text = config.get("about_me_text", "💬 О себе:")
         return about_me_text
     else:  # court_sport
-        return "💬 Добавьте комментарий к игре (или введите /skip для пропуска):"
+        return t("game_offers.enter_game_comment", language)
 from utils.validate import validate_time, validate_date
 
 router = Router()
@@ -122,7 +123,8 @@ async def my_offers_handler(callback: types.CallbackQuery, state: FSMContext):
     profile = await storage.get_user(user_id)
     
     if not profile:
-        await callback.answer("❌ Профиль не найден")
+        language = await get_user_language_async(str(user_id))
+        await callback.answer(t("game_offers.profile_not_found", language))
         return
     
     active_games = [game for game in profile.get('games', []) if game.get('active', True)]
@@ -131,8 +133,9 @@ async def my_offers_handler(callback: types.CallbackQuery, state: FSMContext):
         # Получаем тексты для вида спорта пользователя
         user_profile = await storage.get_user(user_id)
         sport = user_profile.get('sport', '🎾Большой теннис') if user_profile else '🎾Большой теннис'
-        texts = get_sport_texts(sport)
-        await callback.answer(f"❌ {texts['no_offers_text']}")
+        language = await get_user_language_async(str(user_id))
+        texts = get_sport_texts(sport, language)
+        await callback.answer(f"❌ {texts.get('no_offers_text', t('game_offers.no_offers', language))}")
         return
     
     # Сохраняем список активных игр в state для навигации
@@ -149,7 +152,8 @@ async def show_single_offer(callback: types.CallbackQuery, state: FSMContext):
     current_index = user_data.get('current_offer_index', 0)
     
     if not active_games:
-        await callback.answer("❌ Нет активных предложений")
+        language = await get_user_language_async(str(user_id))
+        await callback.answer(t("game_offers.no_offers", language))
         return
     
     # Получаем текущее предложение
@@ -157,11 +161,12 @@ async def show_single_offer(callback: types.CallbackQuery, state: FSMContext):
     
     # Получаем вид спорта
     sport = game.get('sport', '🎾Большой теннис')
+    language = await get_user_language_async(str(user_id))
     
     # Формируем сообщение с предложением
     response = [
         f"🎾 *Предложение #{game['id']}* ({current_index + 1}/{len(active_games)})\n",
-        f"🏆 *Вид спорта:* {sport}",
+        f"🏆 *Вид спорта:* {get_sport_translation(sport, language)}",
         f"🌍 *Страна:* {remove_country_flag(game.get('country', '—'))}",
         f"🏙 *Город:* {game.get('city', '—')}"+f" - {game.get('district', '')}" if game.get('district') else ''
     ]
@@ -316,7 +321,8 @@ async def delete_yes_handler(callback: types.CallbackQuery, state: FSMContext):
             await callback.message.delete()
         except:
             pass
-        await callback.message.answer("✅ Предложение успешно удалено! У вас больше нет активных предложений.")
+        language = await get_user_language_async(str(user_id))
+        await callback.message.answer(t("game_offers.offer_deleted", language))
         await state.update_data(active_games=None, current_offer_index=None)
         return
     
@@ -337,7 +343,8 @@ async def new_offer_handler(callback: types.CallbackQuery, state: FSMContext):
     users = await storage.load_users()
     
     if not profile:
-        await callback.answer("❌ Сначала завершите регистрацию")
+        language = await get_user_language_async(str(user_id))
+        await callback.answer(t("game_offers.finish_registration", language))
         return
 
     # Извлекаем вид спорта из callback_data, если он передан
@@ -395,9 +402,10 @@ async def new_offer_handler(callback: types.CallbackQuery, state: FSMContext):
         await process_game_sport(callback, state)
     else:
         # Если вид спорта не передан, показываем выбор
+        language = await get_user_language_async(str(callback.message.chat.id))
         await callback.message.answer(
             "🎾 Выберите вид спорта для игры:",
-            reply_markup=create_sport_keyboard(pref="gamesport_")
+            reply_markup=create_sport_keyboard(pref="gamesport_", language=language)
         )
         await state.set_state(GameOfferStates.GAME_SPORT)
     
@@ -430,7 +438,8 @@ async def process_game_country(callback: types.CallbackQuery, state: FSMContext)
     await state.update_data(game_country=country)
     
     if country == "other":
-        await callback.message.edit_text("🌍 Введите название страны:", reply_markup=None)
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.message.edit_text(t("game_offers.enter_country", language), reply_markup=None)
         await state.set_state(GameOfferStates.GAME_COUNTRY_INPUT)
     else:
         await ask_for_game_city(callback.message, state, country)
@@ -507,7 +516,8 @@ async def process_game_city(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(game_city=city)
     
     if city == "other":
-        await callback.message.edit_text("🏙 Введите название города:", reply_markup=None)
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.message.edit_text(t("game_offers.enter_city", language), reply_markup=None)
         await state.set_state(GameOfferStates.GAME_CITY_INPUT)
     elif city == "Москва":
         # Для Москвы показываем выбор округа
@@ -574,7 +584,9 @@ async def process_city_selected(message_or_callback, state: FSMContext):
         await state.set_state(GameOfferStates.GAME_DATE)
     elif next_step == "comment":
         # Для встреч и активных видов спорта - сразу к комментарию
-        comment_prompt = get_game_comment_prompt(sport)
+        user_id = message_or_callback.chat.id if hasattr(message_or_callback, 'chat') else message_or_callback.message.chat.id
+        language = await get_user_language_async(str(user_id))
+        comment_prompt = await get_game_comment_prompt(sport, language)
         await show_current_data(
             message_or_callback, state,
             comment_prompt
@@ -590,7 +602,8 @@ async def offer_game_command(message: types.Message, state: FSMContext):
     user_data = users.get(str(user_id), {})
     
     if not user_data:
-        await message.answer("❌ Сначала зарегистрируйтесь с помощью /start")
+        language = await get_user_language_async(str(message.chat.id))
+        await message.answer(t("game_offers.not_registered", language))
         return
     
     # Проверяем подписку и количество бесплатных предложений
@@ -679,9 +692,11 @@ async def process_game_date(callback: types.CallbackQuery, state: FSMContext):
 async def process_game_date_manual(message: types.Message, state: FSMContext):
     date_text = message.text.strip()
     
+    language = await get_user_language_async(str(message.chat.id))
+    
     # Валидация даты
     if not await validate_date(date_text):
-        await message.answer("❌ Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ (например, 25.12.2025):")
+        await message.answer(t("game_offers.invalid_date", language))
         return
     
     # Проверка, что дата не в прошлом
@@ -690,10 +705,10 @@ async def process_game_date_manual(message: types.Message, state: FSMContext):
         today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         
         if input_date < today:
-            await message.answer("❌ Неверный формат даты. Введите корректную дату:")
+            await message.answer(t("game_offers.invalid_date_format", language))
             return
     except ValueError:
-        await message.answer("❌ Неверный формат даты. Введите дату в формате ДД.ММ.ГГГГ (например, 25.12.2025):")
+        await message.answer(t("game_offers.invalid_date", language))
         return
     
     await state.update_data(game_date=date_text)
@@ -754,7 +769,8 @@ async def process_game_time(callback: types.CallbackQuery, state: FSMContext):
         await state.set_state(GameOfferStates.DATING_GOAL)
     elif next_step == "comment":
         # Для встреч и активных видов спорта - сразу к комментарию
-        comment_prompt = get_game_comment_prompt(sport)
+        language = await get_user_language_async(str(callback.message.chat.id))
+        comment_prompt = await get_game_comment_prompt(sport, language)
         await show_current_data(
             callback.message, state,
             comment_prompt
@@ -864,7 +880,8 @@ async def process_dating_additional(message: types.Message, state: FSMContext):
     next_step = get_next_game_step(sport, "dating_additional")
     
     if next_step == "comment":
-        comment_prompt = get_game_comment_prompt(sport)
+        language = await get_user_language_async(str(message.chat.id))
+        comment_prompt = await get_game_comment_prompt(sport, language)
         await show_current_data(
             message, state,
             comment_prompt
@@ -900,7 +917,8 @@ async def process_game_type(callback: types.CallbackQuery, state: FSMContext):
         await state.set_state(GameOfferStates.PAYMENT_TYPE)
     elif next_step == "comment":
         # Для встреч - сразу к комментарию
-        comment_prompt = get_game_comment_prompt(sport)
+        language = await get_user_language_async(str(callback.message.chat.id))
+        comment_prompt = await get_game_comment_prompt(sport, language)
         await show_current_data(
             callback.message, state,
             comment_prompt
@@ -940,7 +958,8 @@ async def process_payment_type(callback: types.CallbackQuery, state: FSMContext)
         await state.set_state(GameOfferStates.GAME_COMPETITIVE)
     elif next_step == "comment":
         # Для встреч - сразу к комментарию
-        comment_prompt = get_game_comment_prompt(sport)
+        language = await get_user_language_async(str(callback.message.chat.id))
+        comment_prompt = await get_game_comment_prompt(sport, language)
         await show_current_data(
             callback.message, state,
             comment_prompt
@@ -968,7 +987,8 @@ async def process_game_competitive(callback: types.CallbackQuery, state: FSMCont
     
     if next_step == "comment":
         # Для спортивных видов с кортами - к комментарию
-        comment_prompt = get_game_comment_prompt(sport)
+        language = await get_user_language_async(str(callback.message.chat.id))
+        comment_prompt = await get_game_comment_prompt(sport, language)
         await show_current_data(
             callback.message, state,
             comment_prompt
@@ -1047,7 +1067,8 @@ async def create_game_offer(message: types.Message, state: FSMContext):
     await storage.delete_session(message.chat.id)
     
     # Получаем тексты для вида спорта
-    texts = get_sport_texts(sport)
+    language = await get_user_language_async(str(message.chat.id))
+    texts = get_sport_texts(sport, language)
     
     # Формируем информационное сообщение о созданной игре
     response = [
@@ -1109,7 +1130,9 @@ async def create_game_offer(message: types.Message, state: FSMContext):
         response.append("💎 У вас активна подписка — создавайте игры без ограничений!")
     
     await send_game_offer_to_channel(message.bot, game_data, str(message.chat.id), user_data)
-    await message.answer("\n".join(response), reply_markup=base_keyboard, parse_mode="Markdown")
+    language = await get_user_language_async(str(message.chat.id))
+    sport = user_data.get("sport", "🎾Большой теннис")
+    await message.answer("\n".join(response), reply_markup=get_base_keyboard(sport, language=language), parse_mode="Markdown")
 
 @router.message(F.text == "📋 Мои предложения")
 async def list_my_games(message: types.Message, state: FSMContext):
@@ -1119,7 +1142,8 @@ async def list_my_games(message: types.Message, state: FSMContext):
     # Получаем тексты для вида спорта пользователя
     user_profile = await storage.get_user(user_id)
     sport = user_profile.get('sport', '🎾Большой теннис') if user_profile else '🎾Большой теннис'
-    texts = get_sport_texts(sport)
+    language = await get_user_language_async(str(user_id))
+    texts = get_sport_texts(sport, language)
     
     if not games:
         await message.answer(f"❌ {texts['no_offers_text']}.")
@@ -1137,13 +1161,15 @@ async def list_my_games(message: types.Message, state: FSMContext):
     # Показываем первое предложение
     game = active_games[0]
     sport = game.get('sport', '🎾Большой теннис')
+    language = await get_user_language_async(str(user_id))
     
     # Получаем тексты для вида спорта
-    texts = get_sport_texts(sport)
+    language = await get_user_language_async(str(user_id))
+    texts = get_sport_texts(sport, language)
     
     response = [
         f"🎾 *{texts['offer_prefix']} #{game['id']}* (1/{len(active_games)})\n",
-        f"🏆 *Вид спорта:* {sport}",
+        f"🏆 *Вид спорта:* {get_sport_translation(sport, language)}",
         f"🌍 *Страна:* {remove_country_flag(game.get('country', '—'))}",
         f"🏙 *Город:* {game.get('city', '—')}"+f" - {game.get('district', '')}" if game.get('district') else ''
     ]
@@ -1208,14 +1234,16 @@ async def delete_offer_handler(callback: types.CallbackQuery):
     user_id = callback.message.chat.id
     profile = await storage.get_user(user_id)
     
+    language = await get_user_language_async(str(user_id))
+    
     if not profile:
-        await callback.answer("❌ Профиль не найден")
+        await callback.answer(t("game_offers.profile_not_found", language))
         return
     
     active_games = [game for game in profile.get('games', []) if game.get('active', True)]
     
     if not active_games:
-        await callback.answer("❌ Нет активных предложений для удаления")
+        await callback.answer(t("game_offers.no_offers_to_delete", language))
         return
     
     # Создаем клавиатуру с кнопками для удаления каждого предложения
@@ -1253,8 +1281,10 @@ async def confirm_delete_handler(callback: types.CallbackQuery):
     users = await storage.load_users()
     user_data = users.get(str(user_id))
     
+    language = await get_user_language_async(str(user_id))
+    
     if not user_data:
-        await callback.answer("❌ Пользователь не найден")
+        await callback.answer(t("game_offers.user_not_found", language))
         return
     
     # Ищем игру для удаления
@@ -1265,7 +1295,7 @@ async def confirm_delete_handler(callback: types.CallbackQuery):
             break
     
     if not game_found:
-        await callback.answer("❌ Предложение не найдено")
+        await callback.answer(t("game_offers.offer_not_found", language))
         return
     
     # Клавиатура подтверждения удаления

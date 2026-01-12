@@ -1,6 +1,7 @@
 from aiogram import Bot
 from datetime import datetime
 from services.storage import storage
+from utils.translations import get_user_language_async, t
 
 async def send_subscription_reminders(bot: Bot):
     """Отправка напоминаний о скором истечении подписки"""
@@ -18,10 +19,10 @@ async def send_subscription_reminders(bot: Bot):
                     # Напоминание за 3 дня до истечения
                     if days_remaining == 3:
                         try:
+                            language = await get_user_language_async(user_id)
                             await bot.send_message(
                                 int(user_id),
-                                f"⚠️ Ваша подписка Tennis-Play PRO истекает через 3 дня ({until_date.strftime('%d.%m.%Y')}).\n\n"
-                                "Не забудьте продлить подписку для непрерывного доступа к PRO-функциям!"
+                                t("main.subscription_expires_soon", language, date=until_date.strftime('%d.%m.%Y'))
                             )
                         except Exception as e:
                             print(f"Не удалось отправить напоминание пользователю {user_id}: {e}")
@@ -29,10 +30,10 @@ async def send_subscription_reminders(bot: Bot):
                     # Напоминание за 1 день до истечения
                     elif days_remaining == 1:
                         try:
+                            language = await get_user_language_async(user_id)
                             await bot.send_message(
                                 int(user_id),
-                                f"🔔 Ваша подписка Tennis-Play PRO истекает завтра ({until_date.strftime('%d.%m.%Y')})!\n\n"
-                                "Продлите подписку сейчас, чтобы сохранить доступ ко всем функциям."
+                                t("main.subscription_expires_tomorrow", language, date=until_date.strftime('%d.%m.%Y'))
                             )
                         except Exception as e:
                             print(f"Не удалось отправить напоминание пользователю {user_id}: {e}")

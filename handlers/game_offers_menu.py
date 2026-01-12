@@ -8,20 +8,22 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE, SUBSCRIPTION_PRICE
-from config.profile import create_sport_keyboard, sport_type, get_sport_config
+from config.profile import create_sport_keyboard, sport_type, get_sport_config, get_sport_translation
 from services.storage import storage
 from utils.admin import is_admin
 from models.states import BrowseOffersStates, RespondToOfferStates
 from utils.utils import create_user_profile_link, get_sort_key, remove_country_flag
+from utils.translations import get_user_language_async, t
 
 router = Router()
 
-@router.message(F.text == "⏱ Предложение игр")
+@router.message(F.text.in_([t("menu.game_offers", "ru"), t("menu.game_offers", "en")]))
 async def browse_offers_start(message: types.Message, state: FSMContext):
     """Начало просмотра предложенных игр - выбор вида спорта"""
+    language = await get_user_language_async(str(message.chat.id))
     await message.answer(
-        "Выберите вид спорта:",
-        reply_markup=create_sport_keyboard(pref="offersport_")
+        t("game_offers_menu.select_sport", language),
+        reply_markup=create_sport_keyboard(pref="offersport_", language=language)
     )
     await state.set_state(BrowseOffersStates.SELECT_SPORT)
     await state.update_data(page=0)
@@ -31,6 +33,7 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
     """Обработка выбора вида спорта"""
     sport_type_selected = callback.data.split("_", maxsplit=1)[1]
     await state.update_data(selected_sport=sport_type_selected)
+    language = await get_user_language_async(str(callback.message.chat.id))
     
     users = await storage.load_users()
     current_user_id = str(callback.message.chat.id)
@@ -48,10 +51,10 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
     
     if not country_stats:
         await callback.message.edit_text(
-            f"❌ На данный момент нет активных предложений игр в {sport_type_selected} от других пользователей.",
+            t("game_offers_menu.no_offers", language, sport=get_sport_translation(sport_type_selected, language)),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="Предложить игру", callback_data=f"new_offer_{sport_type_selected}")],
-                [InlineKeyboardButton(text="🔙 Назад к выбору спорта", callback_data="back_to_sport_selection")]
+                [InlineKeyboardButton(text=t("game_offers_menu.offer_game", language), callback_data=f"new_offer_{sport_type_selected}")],
+                [InlineKeyboardButton(text=t("game_offers_menu.back_to_sport", language), callback_data="back_to_sport_selection")]
             ])
         )
         return
@@ -82,23 +85,23 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
     for country, count in final_countries:
         buttons.append([
             InlineKeyboardButton(
-                text=f"{country} ({count} предложений)",
+                text=t("game_offers_menu.country_item", language, country=country, count=count),
                 callback_data=f"offercountry_{country}"
             )
         ])
 
     buttons.append([
-        InlineKeyboardButton(text="Предложить игру", callback_data=f"new_offer_{sport_type_selected}")
+        InlineKeyboardButton(text=t("game_offers_menu.offer_game", language), callback_data=f"new_offer_{sport_type_selected}")
     ])
 
     buttons.append([
-        InlineKeyboardButton(text="🔙 Назад к выбору спорта", callback_data="back_to_sport_selection")
+        InlineKeyboardButton(text=t("game_offers_menu.back_to_sport", language), callback_data="back_to_sport_selection")
     ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     await callback.message.edit_text(
-        f"🌍 Выберите страну для просмотра предложений {sport_type_selected}:",
+        t("game_offers_menu.select_country", language, sport=get_sport_translation(sport_type_selected, language)),
         reply_markup=keyboard
     )
     await state.set_state(BrowseOffersStates.SELECT_COUNTRY)
@@ -110,6 +113,7 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
     country = callback.data.split("_", maxsplit=1)[1]
     state_data = await state.get_data()
     sport_type_selected = state_data.get('selected_sport')
+    language = await get_user_language_async(str(callback.message.chat.id))
     
     await state.update_data(selected_country=country)
     
@@ -129,9 +133,9 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
     
     if not city_stats:
         await callback.message.edit_text(
-            f"❌ В {country} нет активных предложений по {sport_type_selected}.",
+            t("game_offers_menu.no_offers_in_country", language, country=country, sport=get_sport_translation(sport_type_selected, language)),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Назад к выбору страны", callback_data="back_to_country_selection")]
+                [InlineKeyboardButton(text=t("game_offers_menu.back_to_country", language), callback_data="back_to_country_selection")]
             ])
         )
         return
@@ -141,23 +145,23 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
     for city, count in city_stats.items():
         buttons.append([
             InlineKeyboardButton(
-                text=f"{city} ({count} предложений)",
+                text=t("game_offers_menu.city_item", language, city=city, count=count),
                 callback_data=f"offercity_{city}"
             )
         ])
     
     buttons.append([
-        InlineKeyboardButton(text="Предложить игру", callback_data=f"new_offer_{sport_type_selected}")
+        InlineKeyboardButton(text=t("game_offers_menu.offer_game", language), callback_data=f"new_offer_{sport_type_selected}")
     ])
     # Добавляем кнопку возврата
     buttons.append([
-        InlineKeyboardButton(text="🔙 Назад к выбору страны", callback_data="back_to_country_selection")
+        InlineKeyboardButton(text=t("game_offers_menu.back_to_country", language), callback_data="back_to_country_selection")
     ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     await callback.message.edit_text(
-        f"🏙 Выберите город в {remove_country_flag(country)} для {sport_type_selected}:",
+        t("game_offers_menu.select_city", language, country=remove_country_flag(country), sport=get_sport_translation(sport_type_selected, language)),
         reply_markup=keyboard
     )
     await state.set_state(BrowseOffersStates.SELECT_CITY)
@@ -374,13 +378,15 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     
     # Получаем вид спорта из игры и конфигурацию
     sport = game.get('sport', '🎾Большой теннис')
+    language = await get_user_language_async(str(callback.message.chat.id))
     config = get_sport_config(sport)
     category = config.get("category", "court_sport")
+    sport_translated = get_sport_translation(sport, language)
     
     # Формируем текст в зависимости от категории вида спорта
     if category == "dating":
         text = (
-            f"{sport}\n"
+            f"{sport_translated}\n"
             f"👤 {user_name} {username_str}\n"
             f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
             f"📅 Дата: {game.get('date', '—')}\n"
@@ -396,7 +402,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     elif category == "meeting":
         if sport == "☕️Бизнес-завтрак":
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
@@ -404,7 +410,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         else:  # По пиву
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
@@ -413,7 +419,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     elif category == "outdoor_sport":
         if sport == "⛳Гольф":
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
@@ -423,7 +429,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🏃‍♂️‍➡️Бег":
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
@@ -431,7 +437,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🏋️‍♀️Фитнес":
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n" 
                 f"📅 Дата: {game.get('date', '—')}\n"
@@ -439,7 +445,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🚴Вело":
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
@@ -447,7 +453,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         else:
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
                 f"📅 Дата: {game.get('date', '—')}\n"
@@ -456,7 +462,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
     else:  # court_sport
         if sport == "🎾Большой теннис":
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
@@ -469,7 +475,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🏓Настольный теннис":
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
@@ -482,7 +488,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🏸Бадминтон":
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
@@ -495,7 +501,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🏖️Пляжный теннис":
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
@@ -508,7 +514,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             )
         elif sport == "🎾Падл-теннис":
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 Рейтинг {user_data.get('rating_points', '—')} (Лвл: {player_level})\n"
                 f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
@@ -752,9 +758,10 @@ async def process_respond_comment(message: types.Message, state: FSMContext):
 @router.callback_query(F.data == "back_to_sport_selection")
 async def back_to_sport_selection(callback: types.CallbackQuery, state: FSMContext):
     """Возврат к выбору вида спорта"""
+    language = await get_user_language_async(str(callback.message.chat.id))
     await callback.message.edit_text(
         "🎯 Выберите вид спорта для просмотра предложений игр:",
-        reply_markup=create_sport_keyboard(pref="offersport_")
+        reply_markup=create_sport_keyboard(pref="offersport_", language=language)
     )
     await state.set_state(BrowseOffersStates.SELECT_SPORT)
     await callback.answer()

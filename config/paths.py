@@ -5,6 +5,7 @@ DATA_DIR = BASE_DIR / "data"
 USERS_FILE = DATA_DIR / "users.json"
 GAMES_FILE = DATA_DIR / 'games.json'
 BANNED_USERS_FILE = DATA_DIR / 'banned_users.json'
+LANGUAGES_FILE = DATA_DIR / "languages.json"
 PHOTOS_DIR = DATA_DIR / "user_photos"
 SESSIONS_DIR = DATA_DIR / "sessions"
 GAMES_PHOTOS_DIR = DATA_DIR / "games_photo"

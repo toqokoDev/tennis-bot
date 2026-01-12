@@ -13,6 +13,7 @@ from utils.admin import get_confirmation_keyboard, is_admin
 from handlers.profile import calculate_level_from_points
 from models.states import AdminEditGameStates
 from services.channels import send_game_notification_to_channel
+from utils.translations import get_user_language_async, t
 
 admin_router = Router()
 logger = logging.getLogger(__name__)
@@ -54,53 +55,63 @@ async def safe_send_message(message: Message, text: str, reply_markup=None, pars
 # Меню просмотра заявок
 @admin_router.callback_query(F.data == "admin_view_applications")
 async def view_applications_menu(callback: CallbackQuery):
+    language = await get_user_language_async(str(callback.message.chat.id))
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        await callback.answer(t("admin.no_admin_rights", language))
         return
-    await safe_edit_message(callback, "📋 Система заявок отключена.")
+    await safe_edit_message(callback, t("admin.applications_disabled", language))
     await callback.answer()
 
 # Меню принятия заявки
 @admin_router.callback_query(F.data == "admin_accept_application_menu")
 async def accept_application_menu(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
-    await safe_edit_message(callback, "📋 Система заявок отключена.")
+    language = await get_user_language_async(str(callback.message.chat.id))
+    await safe_edit_message(callback, t("admin.applications_disabled", language))
     await callback.answer()
 
 # Обработчик принятия заявки
 @admin_router.callback_query(F.data.startswith("admin_accept_application:"))
 async def accept_application_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
-    await safe_edit_message(callback, "📋 Система заявок отключена.")
+    language = await get_user_language_async(str(callback.message.chat.id))
+    await safe_edit_message(callback, t("admin.applications_disabled", language))
     await callback.answer()
 
 # Меню отклонения заявки
 @admin_router.callback_query(F.data == "admin_reject_application_menu")
 async def reject_application_menu(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
-    await safe_edit_message(callback, "📋 Система заявок отключена.")
+    language = await get_user_language_async(str(callback.message.chat.id))
+    await safe_edit_message(callback, t("admin.applications_disabled", language))
     await callback.answer()
 
 # Обработчик отклонения заявки
 @admin_router.callback_query(F.data.startswith("admin_reject_application:"))
 async def reject_application_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
-    await safe_edit_message(callback, "📋 Система заявок отключена.")
+    language = await get_user_language_async(str(callback.message.chat.id))
+    await safe_edit_message(callback, t("admin.applications_disabled", language))
     await callback.answer()
 
 # Меню удаления турнира
 @admin_router.callback_query(F.data == "admin_delete_tournament_menu")
 async def delete_tournament_menu(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     # Начинаем с первой страницы
@@ -111,7 +122,8 @@ async def show_delete_tournaments_page(callback: CallbackQuery, page: int = 0):
     tournaments = await storage.load_tournaments()
     
     if not tournaments:
-        await callback.answer("📋 Нет активных турниров")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_tournaments", language))
         return
     
     import re
@@ -169,9 +181,10 @@ async def show_delete_tournaments_page(callback: CallbackQuery, page: int = 0):
     if nav_buttons:
         builder.row(*nav_buttons)
     
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back_to_tournaments"))
+    language = await get_user_language_async(str(callback.message.chat.id))
+    builder.row(InlineKeyboardButton(text=t("admin.back", language), callback_data="admin_back_to_tournaments"))
     
-    text = f"🗑️ Выберите турнир для удаления:\n\nСтраница {page + 1}/{total_pages} (всего: {total_tournaments})"
+    text = t("admin.select_tournament_to_delete", language, page=page + 1, total_pages=total_pages, total=total_tournaments)
     
     await safe_edit_message(callback, text, builder.as_markup())
     await callback.answer()
@@ -180,7 +193,8 @@ async def show_delete_tournaments_page(callback: CallbackQuery, page: int = 0):
 @admin_router.callback_query(F.data.startswith("admin_delete_tournaments_page:"))
 async def admin_delete_tournaments_page_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     page = int(callback.data.split(":", 1)[1])
@@ -190,14 +204,16 @@ async def admin_delete_tournaments_page_handler(callback: CallbackQuery):
 @admin_router.callback_query(F.data.startswith("admin_delete_tournament:"))
 async def delete_tournament_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     tournament_id = callback.data.split(':')[1]
     tournaments = await storage.load_tournaments()
     
     if tournament_id not in tournaments:
-        await callback.answer("❌ Турнир не найден")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.tournament_not_found", language))
         return
     
     tournament_data = tournaments[tournament_id]
@@ -240,14 +256,16 @@ async def delete_tournament_handler(callback: CallbackQuery):
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_tournament:"))
 async def confirm_delete_tournament(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     tournament_id = callback.data.split(':')[1]
     tournaments = await storage.load_tournaments()
     
     if tournament_id not in tournaments:
-        await callback.answer("❌ Турнир не найден")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.tournament_not_found", language))
         return
     
     tournament_data = tournaments[tournament_id]
@@ -289,13 +307,15 @@ async def confirm_delete_tournament(callback: CallbackQuery):
 @admin_router.callback_query(F.data == "admin_back_to_tournaments")
 async def back_to_tournaments(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     tournaments = await storage.load_tournaments()
     
     if not tournaments:
-        await safe_edit_message(callback, "📋 Список турниров пуст.")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await safe_edit_message(callback, t("admin.tournaments_list_empty", language))
         return
     
     import re
@@ -337,7 +357,8 @@ async def back_to_tournaments(callback: CallbackQuery):
 @admin_router.message(Command("banned_users"))
 async def banned_users_cmd(message: Message):
     if not await is_admin(message.from_user.id):
-        await safe_send_message(message, "❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(message.chat.id))
+        await safe_send_message(message, t("admin.no_admin_rights", language))
         return
     
     banned_users = await storage.load_banned_users()
@@ -366,7 +387,8 @@ async def banned_users_cmd(message: Message):
 @admin_router.message(Command("unban_user"))
 async def unban_user_cmd(message: Message):
     if not await is_admin(message.from_user.id):
-        await safe_send_message(message, "❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(message.chat.id))
+        await safe_send_message(message, t("admin.no_admin_rights", language))
         return
     
     await show_unban_menu(message)
@@ -395,7 +417,8 @@ async def show_unban_menu(message: Message):
 # Отмена действия
 @admin_router.callback_query(F.data == "admin_cancel")
 async def cancel_action(callback: CallbackQuery):
-    await safe_edit_message(callback, "❌ Действие отменено")
+    language = await get_user_language_async(str(callback.message.chat.id))
+    await safe_edit_message(callback, t("admin.action_cancelled", language))
     await callback.answer()
 
 # Клавиатура админской панели
@@ -412,7 +435,8 @@ def get_admin_keyboard():
 async def admin_create_tournament_handler(callback: CallbackQuery, state: FSMContext):
     """Обработчик кнопки создания турнира в админской панели"""
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     # Перенаправляем на обработчик создания турнира из tournament.py
@@ -423,13 +447,15 @@ async def admin_create_tournament_handler(callback: CallbackQuery, state: FSMCon
 @admin_router.callback_query(F.data == "admin_tournaments")
 async def tournaments_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     tournaments = await storage.load_tournaments()
     
     if not tournaments:
-        await safe_edit_message(callback, "📋 Список турниров пуст.")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await safe_edit_message(callback, t("admin.tournaments_list_empty", language))
         return
     
     import re
@@ -483,21 +509,23 @@ async def tournaments_handler(callback: CallbackQuery):
 @admin_router.message(Command("admin"))
 async def admin_panel(message: Message):
     if not await is_admin(message.from_user.id):
-        await safe_send_message(message, "❌ У вас нет прав администратора")
+        language = await get_user_language_async(str(message.chat.id))
+        await safe_send_message(message, t("admin.no_admin_rights", language))
         return
     
+    language = await get_user_language_async(str(message.chat.id))
     await safe_send_message(
         message,
-        "👨‍💼 Админская панель:\n\n"
-        "Доступные действия:",
-        get_admin_keyboard()
+        t("admin.admin_panel", language),
+        get_admin_keyboard(language)
     )
 
 # Обработчики кнопок админской панели - меню выбора
 @admin_router.callback_query(F.data == "admin_banned_list")
 async def banned_list_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     banned_users = await storage.load_banned_users()
@@ -527,7 +555,8 @@ async def banned_list_handler(callback: CallbackQuery):
 @admin_router.callback_query(F.data == "admin_unban_menu")
 async def unban_menu_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     banned_users = await storage.load_banned_users()
@@ -555,7 +584,8 @@ async def unban_menu_handler(callback: CallbackQuery):
 @admin_router.callback_query(F.data == "admin_edit_tournaments")
 async def edit_tournaments_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     # Начинаем с первой страницы
@@ -639,7 +669,8 @@ async def show_tournaments_page(callback: CallbackQuery, page: int = 0):
 @admin_router.callback_query(F.data.startswith("admin_tournaments_page:"))
 async def admin_tournaments_page_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     page = int(callback.data.split(":", 1)[1])
@@ -648,7 +679,8 @@ async def admin_tournaments_page_handler(callback: CallbackQuery):
 @admin_router.callback_query(F.data == "admin_clear_all_bans")
 async def clear_all_bans_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     keyboard = await get_confirmation_keyboard("clear_all_bans")
@@ -664,19 +696,22 @@ async def clear_all_bans_handler(callback: CallbackQuery):
 @admin_router.callback_query(F.data == "admin_confirm_clear_all_bans")
 async def confirm_clear_all_bans(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     # Очищаем список банов
     await storage.save_banned_users({})
     
-    await safe_edit_message(callback, "✅ Все баны успешно очищены!")
+    language = await get_user_language_async(str(callback.message.chat.id))
+    await safe_edit_message(callback, t("admin.clear_all_bans_success", language))
     await callback.answer()
 
 @admin_router.callback_query(F.data.startswith("admin_unban_user:"))
 async def unban_user_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     user_id = callback.data.split(':')[1]
@@ -704,7 +739,8 @@ async def unban_user_handler(callback: CallbackQuery):
 @admin_router.callback_query(F.data.startswith("admin_confirm_unban_user:"))
 async def confirm_unban_user(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     user_id = callback.data.split(':')[1]
@@ -839,8 +875,9 @@ async def delete_subscription_menu(callback: CallbackQuery):
                 'until': user_data['subscription'].get('until', 'Неизвестно')
             })
     
+    language = await get_user_language_async(str(callback.message.chat.id))
     if not sub_users:
-        await callback.answer("❌ Нет активных подписок")
+        await callback.answer(t("admin.no_subscriptions", language))
         return
     
     builder = InlineKeyboardBuilder()
@@ -848,10 +885,10 @@ async def delete_subscription_menu(callback: CallbackQuery):
         text = f"🔔 {user['user_name']} (до {user['until']})"
         builder.button(text=text, callback_data=f"admin_select_subscription:{user['user_id']}")
     
-    builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
+    builder.button(text=t("admin.back_to_main", language), callback_data="admin_back_to_main")
     builder.adjust(1)
     
-    await safe_edit_message(callback, "🔔 Выберите пользователя для удаления подписки:", builder.as_markup())
+    await safe_edit_message(callback, t("admin.select_subscription_to_delete", language), builder.as_markup())
     await callback.answer()
 
 # Обработка выбора конкретного элемента
@@ -861,7 +898,8 @@ async def select_user(callback: CallbackQuery):
     users = await storage.load_users()
     
     if user_id not in users:
-        await callback.answer("❌ Пользователь не найден")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.user_not_found", language))
         return
     
     user_data = users[user_id]
@@ -899,7 +937,8 @@ async def select_game(callback: CallbackQuery):
             break
     
     if not game_to_delete:
-        await callback.answer("❌ Игра не найдена")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.game_not_found", language))
         return
     
     player_names = []
@@ -930,7 +969,8 @@ async def select_vacation(callback: CallbackQuery):
     users = await storage.load_users()
     
     if user_id not in users:
-        await callback.answer("❌ Пользователь не найден")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.user_not_found", language))
         return
     
     user_data = users[user_id]
@@ -956,7 +996,8 @@ async def select_subscription(callback: CallbackQuery):
     users = await storage.load_users()
     
     if user_id not in users:
-        await callback.answer("❌ Пользователь не найден")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.user_not_found", language))
         return
     
     user_data = users[user_id]
@@ -983,13 +1024,15 @@ async def select_offer(callback: CallbackQuery):
         user_id = parts[1]
         offer_id = parts[2]
     except IndexError:
-        await callback.answer("❌ Ошибка формата ID")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.id_format_error", language))
         return
     
     users = await storage.load_users()
     
     if user_id not in users:
-        await callback.answer("❌ Пользователь не найден")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.user_not_found", language))
         return
     
     user_data = users[user_id]
@@ -1001,7 +1044,8 @@ async def select_offer(callback: CallbackQuery):
             break
     
     if not offer_to_delete:
-        await callback.answer("❌ Предложение не найдено")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.offer_not_found", language))
         return
     
     keyboard = await get_confirmation_keyboard("delete_offer", f"{user_id}:{offer_id}")
@@ -1023,11 +1067,11 @@ async def select_offer(callback: CallbackQuery):
 # Кнопка назад в главное меню
 @admin_router.callback_query(F.data == "admin_back_to_main")
 async def back_to_main(callback: CallbackQuery):
+    language = await get_user_language_async(str(callback.message.chat.id))
     await safe_edit_message(
         callback,
-        "👨‍💼 Админская панель:\n\n"
-        "Доступные действия:",
-        get_admin_keyboard()
+        t("admin.admin_panel", language),
+        get_admin_keyboard(language)
     )
     await callback.answer()
 
@@ -1035,15 +1079,17 @@ async def back_to_main(callback: CallbackQuery):
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_user:"))
 async def confirm_delete_user(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     user_id = callback.data.split(':')[1]
     users = await storage.load_users()
     games = await storage.load_games()
     
+    language = await get_user_language_async(str(callback.message.chat.id))
     if user_id not in users:
-        await callback.answer("❌ Пользователь не найден")
+        await callback.answer(t("admin.user_not_found_in_bans", language))
         return
     
     user_data = users[user_id]
@@ -1084,13 +1130,14 @@ async def confirm_delete_user(callback: CallbackQuery):
     await storage.save_users(users)
     await storage.save_games(new_games)
     
-    await safe_edit_message(callback, f"✅ Пользователь {user_id} успешно удален! Все связанные игры также удалены.")
+    await safe_edit_message(callback, t("admin.user_deleted", language, user_id=user_id))
     await callback.answer()
 
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_game:"))
 async def confirm_delete_game(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     game_id = callback.data.split(':')[1]
@@ -1106,7 +1153,8 @@ async def confirm_delete_game(callback: CallbackQuery):
             new_games.append(game)
     
     if not game_to_delete:
-        await callback.answer("❌ Игра не найдена")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.game_not_found", language))
         return
     
     # Откат рейтингов участников
@@ -1134,14 +1182,16 @@ async def confirm_delete_game(callback: CallbackQuery):
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_vacation:"))
 async def confirm_delete_vacation(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     user_id = callback.data.split(':')[1]
     users = await storage.load_users()
     
+    language = await get_user_language_async(str(callback.message.chat.id))
     if user_id not in users:
-        await callback.answer("❌ Пользователь не найден")
+        await callback.answer(t("admin.user_not_found_in_bans", language))
         return
     
     # Удаляем данные об отпуске
@@ -1152,20 +1202,22 @@ async def confirm_delete_vacation(callback: CallbackQuery):
     
     await storage.save_users(users)
     
-    await safe_edit_message(callback, f"✅ Отпуск пользователя {user_id} успешно удален!")
+    await safe_edit_message(callback, t("admin.vacation_deleted", language, user_id=user_id))
     await callback.answer()
 
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_subscription:"))
 async def confirm_delete_subscription(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     user_id = callback.data.split(':')[1]
     users = await storage.load_users()
     
+    language = await get_user_language_async(str(callback.message.chat.id))
     if user_id not in users:
-        await callback.answer("❌ Пользователь не найден")
+        await callback.answer(t("admin.user_not_found_in_bans", language))
         return
     
     # Удаляем подписку
@@ -1173,25 +1225,28 @@ async def confirm_delete_subscription(callback: CallbackQuery):
     
     await storage.save_users(users)
     
-    await safe_edit_message(callback, f"✅ Подписка пользователя {user_id} успешно удалена!")
+    await safe_edit_message(callback, t("admin.subscription_deleted", language, user_id=user_id))
     await callback.answer()
 
 @admin_router.callback_query(F.data.startswith("admin_confirm_delete_offer:"))
 async def confirm_delete_offer(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     try:
         user_id, offer_id = callback.data.split(':')[1], callback.data.split(':')[2]
     except:
-        await callback.answer("❌ Ошибка формата ID")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.id_format_error", language))
         return
     
     users = await storage.load_users()
     
     if user_id not in users:
-        await callback.answer("❌ Пользователь не найден")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.user_not_found", language))
         return
     
     # Удаляем предложение из списка игр пользователя
@@ -1207,14 +1262,16 @@ async def confirm_delete_offer(callback: CallbackQuery):
 @admin_router.callback_query(F.data.startswith("admin_ban_user:"))
 async def ban_user_handler(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     user_id = callback.data.split(':')[1]
     users = await storage.load_users()
     
     if user_id not in users:
-        await callback.answer("❌ Пользователь не найден")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.user_not_found", language))
         return
     
     user_data = users[user_id]
@@ -1282,7 +1339,8 @@ async def ban_user_handler(callback: CallbackQuery):
 async def admin_tournament_games_handler(callback: CallbackQuery, state: FSMContext):
     """Обработчик кнопки управления играми турнира"""
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     tournament_id = callback.data.split(":", 1)[1]
@@ -1416,7 +1474,8 @@ async def show_games_page(message: Message, page: int = 0, callback: CallbackQue
 async def admin_tournament_games_page_handler(callback: CallbackQuery, state: FSMContext):
     """Обработчик пагинации списка игр турнира"""
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     parts = callback.data.split(":")
@@ -1431,7 +1490,8 @@ async def admin_tournament_games_page_handler(callback: CallbackQuery, state: FS
 async def admin_games_page_handler(callback: CallbackQuery):
     """Обработчик пагинации списка игр"""
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     page = int(callback.data.split(":", 1)[1])
@@ -1443,7 +1503,8 @@ async def admin_games_page_handler(callback: CallbackQuery):
 async def admin_view_game_handler(callback: CallbackQuery):
     """Обработчик просмотра информации об игре"""
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     game_id = callback.data.split(":", 1)[1]
@@ -1458,7 +1519,8 @@ async def admin_view_game_handler(callback: CallbackQuery):
             break
     
     if not game:
-        await callback.answer("❌ Игра не найдена")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.game_not_found", language))
         return
     
     # Формируем информацию об игре
@@ -1552,7 +1614,8 @@ async def admin_view_game_handler(callback: CallbackQuery):
 async def admin_back_to_games_handler(callback: CallbackQuery, state: FSMContext):
     """Возврат к списку игр"""
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     # Проверяем, смотрим ли мы игры конкретного турнира
@@ -1572,7 +1635,8 @@ async def admin_back_to_games_handler(callback: CallbackQuery, state: FSMContext
 async def admin_edit_score_handler(callback: CallbackQuery, state: FSMContext):
     """Начало редактирования счета"""
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     game_id = callback.data.split(":", 1)[1]
@@ -1588,22 +1652,16 @@ async def admin_edit_score_handler(callback: CallbackQuery, state: FSMContext):
     
     current_score = game.get('score', 'Не указан') if game else 'Не указан'
     
+    language = await get_user_language_async(str(callback.message.chat.id))
     text = (
-        f"✏️ <b>Изменение счета игры</b>\n\n"
-        f"🆔 ID: <code>{game_id}</code>\n"
-        f"📊 Текущий счет: <b>{current_score}</b>\n\n"
-        f"Введите новый счет в формате:\n"
-        f"<code>6:4, 6:2</code> (для нескольких сетов)\n"
-        f"или\n"
-        f"<code>6:4</code> (для одного сета)\n\n"
-        f"Примеры:\n"
-        f"• <code>6:4, 6:2</code>\n"
-        f"• <code>7:5, 6:4, 6:2</code>\n"
-        f"• <code>6:0</code>"
+        t("admin.edit_score_title", language) +
+        t("admin.game_id", language, game_id=game_id) + "\n" +
+        t("admin.current_score", language, score=current_score) + "\n\n" +
+        t("admin.enter_new_score", language)
     )
     
     builder = InlineKeyboardBuilder()
-    builder.button(text="🔙 Назад", callback_data=f"admin_view_game:{game_id}")
+    builder.button(text=t("common.back", language), callback_data=f"admin_view_game:{game_id}")
     
     try:
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
@@ -1615,8 +1673,9 @@ async def admin_edit_score_handler(callback: CallbackQuery, state: FSMContext):
 @admin_router.message(AdminEditGameStates.EDIT_SCORE, F.text)
 async def admin_edit_score_input(message: Message, state: FSMContext):
     """Обработчик ввода нового счета"""
+    language = await get_user_language_async(str(message.from_user.id))
     if not await is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора", parse_mode="HTML")
+        await message.answer(t("admin.no_admin_rights", language), parse_mode="HTML")
         await state.clear()
         return
     
@@ -1826,7 +1885,8 @@ async def admin_edit_score_input(message: Message, state: FSMContext):
 async def admin_edit_media_handler(callback: CallbackQuery, state: FSMContext):
     """Начало редактирования медиа"""
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     game_id = callback.data.split(":", 1)[1]
@@ -1864,8 +1924,9 @@ async def admin_edit_media_handler(callback: CallbackQuery, state: FSMContext):
 @admin_router.message(AdminEditGameStates.EDIT_MEDIA)
 async def admin_edit_media_input(message: Message, state: FSMContext):
     """Обработчик изменения медиафайла"""
+    language = await get_user_language_async(str(message.from_user.id))
     if not await is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора", parse_mode="HTML")
+        await message.answer(t("admin.no_admin_rights", language), parse_mode="HTML")
         await state.clear()
         return
     
@@ -1981,7 +2042,8 @@ async def admin_edit_media_input(message: Message, state: FSMContext):
 async def admin_edit_winner_handler(callback: CallbackQuery):
     """Начало редактирования победителя"""
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     game_id = callback.data.split(":", 1)[1]
@@ -1998,7 +2060,8 @@ async def admin_edit_winner_handler(callback: CallbackQuery):
             break
     
     if not game:
-        await callback.answer("❌ Игра не найдена")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.game_not_found", language))
         return
     
     game_type = game.get('type', 'single')
@@ -2016,23 +2079,24 @@ async def admin_edit_winner_handler(callback: CallbackQuery):
     team1_name = get_team_names(team1)
     team2_name = get_team_names(team2)
     
+    language = await get_user_language_async(str(callback.message.chat.id))
     text = (
-        f"🏆 <b>Изменение победителя игры</b>\n\n"
-        f"🆔 ID: <code>{game_id}</code>\n"
-        f"📊 Текущий счет: <b>{game.get('score', 'Нет счета')}</b>\n\n"
-        f"Выберите нового победителя:"
+        t("admin.edit_winner_title", language) +
+        t("admin.game_id", language, game_id=game_id) + "\n" +
+        t("admin.game_score", language, score=game.get('score', t("common.not_specified", language))) + "\n\n" +
+        t("admin.select_winner", language)
     )
     
     builder = InlineKeyboardBuilder()
     
     if game_type == 'double':
-        builder.button(text=f"🥇 Команда 1: {team1_name}", callback_data=f"admin_set_winner:{game_id}:team1")
-        builder.button(text=f"🥇 Команда 2: {team2_name}", callback_data=f"admin_set_winner:{game_id}:team2")
+        builder.button(text=t("admin.team1_winner", language, name=team1_name), callback_data=f"admin_set_winner:{game_id}:team1")
+        builder.button(text=t("admin.team2_winner", language, name=team2_name), callback_data=f"admin_set_winner:{game_id}:team2")
     else:
-        builder.button(text=f"🥇 {team1_name}", callback_data=f"admin_set_winner:{game_id}:team1")
-        builder.button(text=f"🥇 {team2_name}", callback_data=f"admin_set_winner:{game_id}:team2")
+        builder.button(text=t("admin.player1_winner", language, name=team1_name), callback_data=f"admin_set_winner:{game_id}:team1")
+        builder.button(text=t("admin.player2_winner", language, name=team2_name), callback_data=f"admin_set_winner:{game_id}:team2")
     
-    builder.button(text="🔙 Назад", callback_data=f"admin_view_game:{game_id}")
+    builder.button(text=t("common.back", language), callback_data=f"admin_view_game:{game_id}")
     builder.adjust(1)
     
     try:
@@ -2047,7 +2111,8 @@ async def admin_edit_winner_handler(callback: CallbackQuery):
 async def admin_set_winner_handler(callback: CallbackQuery):
     """Установка нового победителя"""
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     parts = callback.data.split(":")
@@ -2068,7 +2133,8 @@ async def admin_set_winner_handler(callback: CallbackQuery):
             break
     
     if not game:
-        await callback.answer("❌ Игра не найдена")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.game_not_found", language))
         return
     
     # Устанавливаем нового победителя
@@ -2197,7 +2263,8 @@ async def admin_set_winner_handler(callback: CallbackQuery):
 async def admin_delete_game_handler(callback: CallbackQuery):
     """Подтверждение удаления игры"""
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     game_id = callback.data.split(":", 1)[1]
@@ -2226,7 +2293,8 @@ async def admin_delete_game_handler(callback: CallbackQuery):
 async def admin_confirm_delete_game_handler(callback: CallbackQuery):
     """Подтвержденное удаление игры"""
     if not await is_admin(callback.message.chat.id):
-        await callback.answer("❌ Нет прав администратора")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
         return
     
     game_id = callback.data.split(":", 1)[1]
@@ -2316,6 +2384,7 @@ async def admin_confirm_delete_game_handler(callback: CallbackQuery):
                 parse_mode="HTML"
             )
     else:
-        await callback.answer("❌ Игра не найдена")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.game_not_found", language))
     
     await callback.answer()

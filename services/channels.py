@@ -9,6 +9,8 @@ from config.paths import BASE_DIR
 from config.profile import channels_id, tour_channel_id
 from config.config import BOT_USERNAME
 from utils.utils import calculate_age, create_user_profile_link, escape_markdown, remove_country_flag
+from utils.translations import t
+from config.profile import get_sport_translation
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +53,14 @@ async def send_registration_notification(message: types.Message, profile: dict):
         category = config.get("category", "court_sport")
         
         # Вычисляем возраст из даты рождения
+        language = "ru"  # Каналы используют русский язык по умолчанию
         age_text = ""
         if profile.get('birth_date'):
             try:
                 birth_date = datetime.strptime(profile.get('birth_date'), "%d.%m.%Y")
                 today = datetime.now()
                 age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
-                age_text = f"{age} лет"
+                age_text = t('channels.years_old', language, age=age)
             except:
                 pass
         
@@ -66,99 +69,101 @@ async def send_registration_notification(message: types.Message, profile: dict):
         gender_emoji = "👨" if gender == "Мужской" else "👩" if gender == "Женский" else "👤"
 
         # Разное оформление для тренеров и игроков
+        language = "ru"  # Каналы используют русский язык по умолчанию
         if role == "Тренер":
             price = escape_markdown(str(profile.get('price', 0)))
             country = escape_markdown(remove_country_flag(profile.get('country', '')))
-            sport_escaped = escape_markdown(sport)
+            sport_translated = get_sport_translation(sport, language)
+            sport_escaped = escape_markdown(sport_translated)
             registration_text = (
-                "👨‍🏫 *Новый тренер присоединился к платформе!*\n\n"
-                f"🏆 *Тренер:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n"
-                f"📍 *Город:* {escape_markdown(city)} ({country})\n"
+                f"{t('channels.new_trainer', language)}\n\n"
+                f"🏆 {t('channels.trainer', language)} {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n"
+                f"📍 {t('channels.city', language)} {escape_markdown(city)} ({country})\n"
             )
             
             # Добавляем возраст и пол если есть
             if age_text and gender:
-                registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)}\n"
+                registration_text += f"{gender_emoji} {t('channels.age', language)} {escape_markdown(age_text)}\n"
             elif age_text:
-                registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)}\n"
+                registration_text += f"{gender_emoji} {t('channels.age', language)} {escape_markdown(age_text)}\n"
             elif gender:
-                registration_text += f"{gender_emoji} *Пол:* {escape_markdown(gender)}\n"
+                registration_text += f"{gender_emoji} {t('channels.gender', language)} {escape_markdown(gender)}\n"
             
             registration_text += (
-                f"🎯 *Вид спорта:* {sport_escaped}\n"
-                f"💰 *Стоимость:* {price} руб./тренировка\n"
+                f"🎯 {t('channels.sport', language)} {sport_escaped}\n"
+                f"💰 {t('channels.price', language)} {price} руб./тренировка\n"
             )
         
         else:
             country = escape_markdown(remove_country_flag(profile.get('country', '')))
             sport_escaped = escape_markdown(sport)
             registration_text = (
-                "🎾 *Новый игрок присоединился к сообществу!*\n\n"
-                f"👤 *Игрок:* {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n"
-                f"📍 *Город:* {escape_markdown(city)} ({country})\n"
+                f"{t('channels.new_player', language)}\n\n"
+                f"👤 {t('channels.player', language)} {await create_user_profile_link(profile, profile.get('telegram_id'), additional=False)}\n"
+                f"📍 {t('channels.city', language)} {escape_markdown(city)} ({country})\n"
             )
             
             # Добавляем возраст и пол если есть
             if age_text and gender:
-                registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)}\n"
+                registration_text += f"{gender_emoji} {t('channels.age', language)} {escape_markdown(age_text)}\n"
             elif age_text:
-                registration_text += f"{gender_emoji} *Возраст:* {escape_markdown(age_text)}\n"
+                registration_text += f"{gender_emoji} {t('channels.age', language)} {escape_markdown(age_text)}\n"
             
             # Добавляем вид спорта
-            registration_text += f"🎯 *Вид спорта:* {sport_escaped}\n"
+            registration_text += f"🎯 {t('channels.sport', language)} {sport_escaped}\n"
             
             # Добавляем уровень игры только если он указан
             if profile.get('player_level'):
                 player_level = escape_markdown(profile.get('player_level'))
-                registration_text += f"💪 *Уровень игры:* {player_level}\n"
+                registration_text += f"💪 {t('channels.level', language)} {player_level}\n"
             
             # Добавляем рейтинг если есть игры
             rating_points = profile.get('rating_points', 0)
             if rating_points and rating_points > 0:
-                registration_text += f"⭐ *Рейтинг:* {format_rating(rating_points)}\n"
+                registration_text += f"⭐ {t('channels.rating', language)} {format_rating(rating_points)}\n"
         
         # Добавляем дополнительные поля в зависимости от вида спорта
         if category == "dating":
             # Для знакомств
             if profile.get('dating_goal'):
                 dating_goal = escape_markdown(profile.get('dating_goal'))
-                registration_text += f"💕 *Цель знакомства:* {dating_goal}\n"
+                registration_text += f"💕 {t('channels.dating_goal', language)} {dating_goal}\n"
             
             if profile.get('dating_interests'):
                 interests = ', '.join(profile.get('dating_interests', []))
                 interests_escaped = escape_markdown(interests)
-                registration_text += f"🎯 *Интересы:* {interests_escaped}\n"
+                registration_text += f"🎯 {t('channels.interests', language)} {interests_escaped}\n"
             
             if profile.get('dating_additional'):
                 dating_additional = escape_markdown(profile.get('dating_additional'))
-                registration_text += f"📝 *О себе:* {dating_additional}"
+                registration_text += f"📝 {t('channels.about', language)} {dating_additional}"
             
         elif category == "meeting":
             # Для встреч
             if sport == "☕️Бизнес-завтрак":
                 if profile.get('meeting_time'):
                     meeting_time = escape_markdown(profile.get('meeting_time'))
-                    registration_text += f"☕️ *Время встречи:* {meeting_time}"
+                    registration_text += f"☕️ {t('channels.meeting_time', language)} {meeting_time}"
             else:  # По пиву
                 if profile.get('meeting_time'):
                     meeting_time = escape_markdown(profile.get('meeting_time'))
-                    registration_text += f"🍻 *Время встречи:* {meeting_time}"
+                    registration_text += f"🍻 {t('channels.meeting_time', language)} {meeting_time}"
                 
         elif category == "outdoor_sport":
             # Для активных видов спорта
             if profile.get('profile_comment'):
                 comment = escape_markdown(profile.get('profile_comment'))
-                registration_text += f"💬 *О себе:* {comment}"
+                registration_text += f"💬 {t('channels.about', language)} {comment}"
             
         else:  # court_sport
             # Добавляем способ оплаты корта
             if profile.get('default_payment'):
                 payment = escape_markdown(profile.get('default_payment'))
-                registration_text += f"\n💳 *Оплата корта:* {payment}\n"
+                registration_text += f"\n💳 {t('channels.court_payment', language)} {payment}\n"
             
             if profile.get('profile_comment'):
                 comment = escape_markdown(profile.get('profile_comment'))
-                registration_text += f"💬 *О себе:* {comment}"
+                registration_text += f"💬 {t('channels.about', language)} {comment}"
         
         # Отправляем во все целевые каналы
         for channel_id in target_channels:
@@ -230,21 +235,22 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             winner_name, loser_name = player2.get('first_name', ''), player1.get('first_name', '')
         
         score_escaped = escape_markdown(score)
+        language = "ru"  # Каналы используют русский язык по умолчанию
         
         # Получаем информацию о турнире
         tournament_id = data.get('tournament_id')
-        tournament_name = "Неизвестный турнир"
+        tournament_name = t('channels.unknown_tournament', language)
         if tournament_id:
             from services.storage import storage
             tournaments = await storage.load_tournaments()
             tournament_data = tournaments.get(tournament_id, {})
-            tournament_name = tournament_data.get('name', 'Неизвестный турнир')
+            tournament_name = tournament_data.get('name', t('channels.unknown_tournament', language))
         
         game_text = (
-            "🏆 *Завершена турнирная игра!*\n\n"
-            f"🏆 *Турнир:* {escape_markdown(tournament_name)}\n\n"
-            f"🥇 {winner_link} выиграл у {loser_link}\n\n"
-            f"📊 *Счет:* {score_escaped}"
+            f"{t('channels.tournament_game_completed', language)}\n\n"
+            f"🏆 {t('channels.tournament', language)} {escape_markdown(tournament_name)}\n\n"
+            f"🥇 {t('channels.winner_beats', language, winner=winner_link, loser=loser_link)}\n\n"
+            f"📊 {t('channels.score', language)} {score_escaped}"
         )
         
         # Собираем фото игроков
@@ -272,6 +278,7 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             winner_link, loser_link = player2_link, player1_link
         
         score_escaped = escape_markdown(score)
+        language = "ru"  # Каналы используют русский язык по умолчанию
         
         # Получаем изменения рейтинга
         rating_changes = data.get('rating_changes', {})
@@ -305,11 +312,11 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
         loser_change_str = f"+{format_rating(loser_change)}" if loser_change > 0 else f"{format_rating(loser_change)}"
         
         game_text = (
-            "🎾 *Завершена одиночная игра!*\n\n"
-            f"🥇 *Победитель:* {winner_link}\n"
-            f"🥈 *Проигравший:* {loser_link}\n\n"
-            f"📊 *Счет:* {score_escaped}\n\n"
-            f"📈 *Изменение рейтинга:*\n"
+            f"{t('channels.single_game_completed', language)}\n\n"
+            f"🥇 {t('channels.winner', language)} {winner_link}\n"
+            f"🥈 {t('channels.loser', language)} {loser_link}\n\n"
+            f"📊 {t('channels.score', language)} {score_escaped}\n\n"
+            f"📈 {t('channels.rating_change', language)}\n"
             f"• {winner_name}: {format_rating(winner_old)} → {format_rating(winner_new)} ({winner_change_str})\n"
             f"• {loser_name}: {format_rating(loser_old)} → {format_rating(loser_new)} ({loser_change_str})"
         )
@@ -341,6 +348,7 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
         winner_side = data.get('winner_side')
         
         score_escaped = escape_markdown(score)
+        language = "ru"  # Каналы используют русский язык по умолчанию
         
         # Получаем изменения рейтинга для всех игроков
         rating_changes = data.get('rating_changes', {})
@@ -369,7 +377,7 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             loser_ids = [team1_player1_id, team1_player2_id]
         
         # Формируем строки изменений рейтинга
-        rating_changes_text = "📈 *Изменение рейтинга:*\n"
+        rating_changes_text = f"📈 {t('channels.rating_change', language)}\n"
         
         # Добавляем изменения для победившей команды
         for player, player_id in zip(winner_players, winner_ids):
@@ -390,10 +398,10 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             rating_changes_text += f"• {player_name}: {format_rating(old_rating)} → {format_rating(new_rating)} ({change_str})\n"
         
         game_text = (
-            "🎾 *Завершена парная игра!*\n\n"
-            f"🥇 *Победившая команда:* {winner_links[0]} и {winner_links[1]}\n"
-            f"🥈 *Проигравшая команда:* {loser_links[0]} и {loser_links[1]}\n\n"
-            f"📊 *Счет:* {score_escaped}\n\n"
+            f"{t('channels.double_game_completed', language)}\n\n"
+            f"🥇 {t('channels.winning_team', language)} {winner_links[0]} и {winner_links[1]}\n"
+            f"🥈 {t('channels.losing_team', language)} {loser_links[0]} и {loser_links[1]}\n\n"
+            f"📊 {t('channels.score', language)} {score_escaped}\n\n"
             f"{rating_changes_text}"
         )
 
@@ -406,11 +414,12 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
 
     # --- Отправка в канал ---
     # Создаем кнопку для турнирной игры
+    language = "ru"  # Каналы используют русский язык по умолчанию
     reply_markup = None
     if game_type == 'tournament' and tournament_id:
         builder = InlineKeyboardBuilder()
         deep_link = f"https://t.me/{BOT_USERNAME}?start=view_tournament_{tournament_id}"
-        builder.row(InlineKeyboardButton(text="👀 Смотреть турнир", url=deep_link))
+        builder.row(InlineKeyboardButton(text=t('channels.view_tournament', language), url=deep_link))
         reply_markup = builder.as_markup()
     
     # Отправляем во все целевые каналы
@@ -438,9 +447,10 @@ async def send_game_notification_to_channel(bot: Bot, data: Dict[str, Any], user
             await bot.send_media_group(chat_id=channel_id, media=media_group)
             # Для media_group отправляем кнопку отдельным сообщением (если есть)
             if reply_markup:
+                language = "ru"  # Каналы используют русский язык по умолчанию
                 await bot.send_message(
                     chat_id=channel_id,
-                    text="🏆 *Информация о турнире:*",
+                    text=t('channels.tournament_info', language),
                     parse_mode="Markdown",
                     reply_markup=reply_markup
                 )
@@ -459,12 +469,13 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
         from config.profile import get_sport_config
         
         profile_link = await create_user_profile_link(user_data, user_id, additional=False)
+        language = "ru"  # Каналы используют русский язык по умолчанию
 
         if user_data.get('birth_date'):
             age = await calculate_age(user_data['birth_date'])
 
         if age > 0:
-            profile_link += f"\n*Возвраст: {age}"
+            profile_link += f"\n*{t('channels.age', language)} {age}"
             
         sport = game_data.get('sport', user_data.get('sport', 'Не указан'))
         
@@ -473,6 +484,7 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
         category = config.get("category", "court_sport")
         
         # Формируем текст в зависимости от категории
+        language = "ru"  # Каналы используют русский язык по умолчанию
         if category == "dating":
             # Для знакомств
             city = game_data.get('city', '—')
@@ -489,25 +501,25 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
             date_escaped = escape_markdown(game_data.get('date', '—'))
             time_escaped = escape_markdown(game_data.get('time', '—'))
             offer_text = (
-                f"💕 *Анкета для знакомств*\n\n"
+                f"{t('channels.dating_profile', language)}\n\n"
                 f"👤 {profile_link}\n"
-                f"📍 *Город:* {location_escaped}\n"
-                f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
+                f"📍 {t('channels.city', language)} {location_escaped}\n"
+                f"📅 {t('channels.date_time', language)} {date_escaped} в {time_escaped}\n"
             )
             
             # Добавляем поля знакомств
             if game_data.get('dating_goal'):
                 dating_goal = escape_markdown(game_data.get('dating_goal'))
-                offer_text += f"💕 *Цель знакомства:* {dating_goal}\n"
+                offer_text += f"💕 {t('channels.dating_goal', language)} {dating_goal}\n"
             
             if game_data.get('dating_interests'):
                 interests = ', '.join(game_data.get('dating_interests', []))
                 interests_escaped = escape_markdown(interests)
-                offer_text += f"🎯 *Интересы:* {interests_escaped}\n"
+                offer_text += f"🎯 {t('channels.interests', language)} {interests_escaped}\n"
             
             if game_data.get('dating_additional'):
                 dating_additional = escape_markdown(game_data.get('dating_additional'))
-                offer_text += f"📝 *О себе:* {dating_additional}\n"
+                offer_text += f"📝 {t('channels.about', language)} {dating_additional}\n"
         elif category == "meeting":
             # Для встреч
             if sport == "☕️Бизнес-завтрак":
@@ -525,10 +537,10 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
                 time_escaped = escape_markdown(game_data.get('time', '—'))
                 
                 offer_text = (
-                    f"☕️ *Предложение бизнес-завтрака*\n\n"
+                    f"{t('channels.business_breakfast_offer', language)}\n\n"
                     f"👤 {profile_link}\n"
-                    f"📍 *Город:* {location_escaped}\n"
-                    f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
+                    f"📍 {t('channels.city', language)} {location_escaped}\n"
+                    f"📅 {t('channels.date_time', language)} {date_escaped} в {time_escaped}\n"
                 )
             else:  # По пиву
                 city = game_data.get('city', '—')
@@ -545,10 +557,10 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
                 time_escaped = escape_markdown(game_data.get('time', '—'))
                 
                 offer_text = (
-                    f"🍻 *Предложение встречи за пивом*\n\n"
+                    f"{t('channels.beer_meeting_offer', language)}\n\n"
                     f"👤 {profile_link}\n"
-                    f"📍 *Город:* {location_escaped}\n"
-                    f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
+                    f"📍 {t('channels.city', language)} {location_escaped}\n"
+                    f"📅 {t('channels.date_time', language)} {date_escaped} в {time_escaped}\n"
                 )
         elif category == "outdoor_sport":
             # Для активных видов спорта
@@ -564,14 +576,15 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
             location_escaped = escape_markdown(location)
             date_escaped = escape_markdown(game_data.get('date', '—'))
             time_escaped = escape_markdown(game_data.get('time', '—'))
-            sport_escaped = escape_markdown(sport)
+            sport_translated = get_sport_translation(sport, language)
+            sport_escaped = escape_markdown(sport_translated)
             
             offer_text = (
-                f"🏃 *Предложение активности*\n\n"
+                f"{t('channels.activity_offer', language)}\n\n"
                 f"👤 {profile_link}\n"
-                f"📍 *Город:* {location_escaped}\n"
-                f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
-                f"🎯 *Вид спорта:* {sport_escaped}\n"
+                f"📍 {t('channels.city', language)} {location_escaped}\n"
+                f"📅 {t('channels.date_time', language)} {date_escaped} в {time_escaped}\n"
+                f"🎯 {t('channels.sport', language)} {sport_escaped}\n"
             )
         else:  # court_sport
             # Для спортивных видов с кортами
@@ -587,33 +600,34 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
             location_escaped = escape_markdown(location)
             date_escaped = escape_markdown(game_data.get('date', '—'))
             time_escaped = escape_markdown(game_data.get('time', '—'))
-            sport_escaped = escape_markdown(sport)
+            sport_translated = get_sport_translation(sport, language)
+            sport_escaped = escape_markdown(sport_translated)
             game_type_escaped = escape_markdown(game_data.get('type', '—'))
             payment_type_escaped = escape_markdown(game_data.get('payment_type', '—'))
             
             if sport == "🏓Настольный теннис":
-                level_text = f"🏓 Рейтинг: {user_data.get('player_level')}"
+                level_text = t('channels.table_tennis_rating', language, rating=user_data.get('player_level'))
             else:
-                level_text = f"🏆 Уровень: {user_data.get('player_level')} ({user_data.get('rating_points', 0)} очков)"
+                level_text = f"🏆 {t('channels.level', language)} {user_data.get('player_level')} {t('channels.rating_points', language, points=user_data.get('rating_points', 0))}"
             
             offer_text = (
-                f"🎾 *Предложение игры*\n\n"
+                f"{t('channels.game_offer', language)}\n\n"
                 f"👤 {profile_link}\n"
                 f"{level_text}\n"
-                f"📍 *Город:* {location_escaped}\n"
-                f"📅 *Дата и время:* {date_escaped} в {time_escaped}\n"
-                f"🎯 *Вид спорта:* {sport_escaped}\n"
-                f"🔍 *Тип игры:* {game_type_escaped}\n"
-                f"💳 *Оплата:* {payment_type_escaped}"
+                f"📍 {t('channels.city', language)} {location_escaped}\n"
+                f"📅 {t('channels.date_time', language)} {date_escaped} в {time_escaped}\n"
+                f"🎯 {t('channels.sport', language)} {sport_escaped}\n"
+                f"🔍 {t('channels.game_type', language)} {game_type_escaped}\n"
+                f"💳 {t('channels.payment', language)} {payment_type_escaped}"
             )
             
             if game_data.get('competitive'):
-                offer_text += f"\n🏆 *Тип игры:* На счет"
+                offer_text += f"\n{t('channels.competitive_game', language)}"
         
         # Добавляем комментарий
         if game_data.get('comment'):
             comment_escaped = escape_markdown(game_data['comment'])
-            offer_text += f"\n💬 *Комментарий:* {comment_escaped}"
+            offer_text += f"\n💬 {t('channels.comment', language)} {comment_escaped}"
             
         # Получаем каналы для вида спорта
         channels = channels_id.get(sport, channels_id.get("🎾Большой теннис"))
@@ -672,9 +686,11 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         
         profile_link = await create_user_profile_link(user_data, user_id, additional=False)
         sport = user_data.get('sport', '🎾Большой теннис')
+        language = "ru"  # Каналы используют русский язык по умолчанию
         
         # Формируем текст тура
-        sport_escaped = escape_markdown(sport)
+        sport_translated = get_sport_translation(sport, language)
+        sport_escaped = escape_markdown(sport_translated)
         vacation_city = user_data.get('vacation_city', '—')
         vacation_district = user_data.get('vacation_district', '')
         vacation_country = user_data.get('vacation_country', '—')
@@ -688,16 +704,17 @@ async def send_tour_to_channel(bot: Bot, user_id: str, user_data: Dict[str, Any]
         vacation_start = escape_markdown(user_data.get('vacation_start', ''))
         vacation_end = escape_markdown(user_data.get('vacation_end', ''))
         
+        language = "ru"  # Каналы используют русский язык по умолчанию
         tour_text = (
-            f"✈️ *Тур по {sport_escaped}*\n\n"
+            f"{t('channels.tour_title', language, sport=sport_escaped)}\n\n"
             f"👤 {profile_link}\n"
-            f"🌍 *Направление:* {vacation_city_escaped}, {vacation_country_escaped}\n"
-            f"📅 *Даты:* {vacation_start} - {vacation_end}"
+            f"🌍 {t('channels.destination', language)} {vacation_city_escaped}, {vacation_country_escaped}\n"
+            f"📅 {t('channels.dates', language)} {vacation_start} - {vacation_end}"
         )
         
         if user_data.get('vacation_comment'):
             vacation_comment = escape_markdown(user_data['vacation_comment'])
-            tour_text += f"\n💬 *Комментарий:* {vacation_comment}"
+            tour_text += f"\n💬 {t('channels.comment', language)} {vacation_comment}"
             
         photo_path = user_data.get("photo_path")
 
@@ -765,23 +782,24 @@ async def send_tournament_created_to_channel(bot: Bot, tournament_id: str, tourn
         comment = tournament_data.get('comment')
         comment_escaped = escape_markdown(comment) if comment else None
 
+        language = "ru"  # Каналы используют русский язык по умолчанию
         text = (
-            f"🏆 *{name}*\n\n"
-            f"🌍 *Город:* {escape_markdown(city)}, {escape_markdown(remove_country_flag(country))}\n"
-            f"🎯 *Тип:* {type_text} • {gender}\n"
-            f"🏅 *Категория:* {category}\n"
-            f"🧩 *Уровень:* {level}\n"
-            f"👶 *Возраст:* {age_group}\n"
-            f"⏱ *Продолжительность:* {duration}\n"
-            f"👥 *Участников:* {participants_count}\n"
+            f"🏆 {t('channels.tournament_name', language, name=name)}\n\n"
+            f"🌍 {t('channels.city', language)} {escape_markdown(city)}, {escape_markdown(remove_country_flag(country))}\n"
+            f"🎯 {t('channels.tournament_type', language)} {type_text} • {gender}\n"
+            f"🏅 {t('channels.category', language)} {category}\n"
+            f"🧩 {t('channels.tournament_level', language)} {level}\n"
+            f"👶 {t('channels.age_group', language)} {age_group}\n"
+            f"⏱ {t('channels.duration', language)} {duration}\n"
+            f"👥 {t('channels.participants', language)} {participants_count}\n"
         )
         if comment_escaped:
-            text += f"\n💬 *Описание:* {comment_escaped}"
+            text += f"\n💬 {t('channels.description', language)} {comment_escaped}"
 
         # Кнопка "Участвовать" как ссылка с deep-link
         builder = InlineKeyboardBuilder()
         deep_link = f"https://t.me/{BOT_USERNAME}?start=join_tournament_{tournament_id}"
-        builder.row(InlineKeyboardButton(text="✅ Участвовать", url=deep_link))
+        builder.row(InlineKeyboardButton(text=t('channels.join', language), url=deep_link))
 
         # Отправляем во все целевые каналы
         for channel_id in target_channels:
@@ -829,17 +847,18 @@ async def send_tournament_application_to_channel(
         total = tournament_data.get('participants_count', '—')
         total_text = escape_markdown(str(total))
 
+        language = "ru"  # Каналы используют русский язык по умолчанию
         text = (
-            "🎉 *Новый участник в турнире!*\n\n"
-            f"🏆 *Турнир:* {name}\n"
-            f"👤 *Игрок:* {user_link}\n"
-            f"👥 *Участников:* {current}/{total_text}\n\n"
-            "Присоединяйтесь и участвуйте!"
+            f"{t('channels.new_participant', language)}\n\n"
+            f"🏆 {t('channels.tournament', language)} {name}\n"
+            f"👤 {t('channels.player', language)} {user_link}\n"
+            f"👥 {t('channels.participants', language)} {current}/{total_text}\n\n"
+            f"{t('channels.join_and_participate', language)}"
         )
 
         builder = InlineKeyboardBuilder()
         deep_link = f"https://t.me/{BOT_USERNAME}?start=join_tournament_{tournament_id}"
-        builder.row(InlineKeyboardButton(text="✅ Участвовать", url=deep_link))
+        builder.row(InlineKeyboardButton(text=t('channels.join', language), url=deep_link))
 
         # Проверяем, есть ли фото анкеты у участника
         photo_path = user_data.get('photo_path')
@@ -933,20 +952,21 @@ async def send_tournament_started_to_channel(
         level = escape_markdown(tournament_data.get('level', 'Не указан'))
         participants_count = len(tournament_data.get('participants', {}))
         
+        language = "ru"  # Каналы используют русский язык по умолчанию
         text = (
-            f"🏁 *Турнир начался!*\n\n"
-            f"🏆 *{name}*\n\n"
-            f"🌍 *Город:* {escape_markdown(city)}, {escape_markdown(remove_country_flag(country))}\n"
-            f"🎯 *Тип:* {type_text} • {gender}\n"
-            f"🏅 *Категория:* {category}\n"
-            f"🧩 *Уровень:* {level}\n"
-            f"👥 *Участников:* {participants_count}\n\n"
-            f"Турнир запущен! Следите за результатами!"
+            f"{t('channels.tournament_started', language)}\n\n"
+            f"🏆 {t('channels.tournament_name', language, name=name)}\n\n"
+            f"🌍 {t('channels.city', language)} {escape_markdown(city)}, {escape_markdown(remove_country_flag(country))}\n"
+            f"🎯 {t('channels.tournament_type', language)} {type_text} • {gender}\n"
+            f"🏅 {t('channels.category', language)} {category}\n"
+            f"🧩 {t('channels.tournament_level', language)} {level}\n"
+            f"👥 {t('channels.participants', language)} {participants_count}\n\n"
+            f"{t('channels.tournament_follow', language)}"
         )
 
         builder = InlineKeyboardBuilder()
         deep_link = f"https://t.me/{BOT_USERNAME}?start=view_tournament_{tournament_id}"
-        builder.row(InlineKeyboardButton(text="👀 Смотреть турнир", url=deep_link))
+        builder.row(InlineKeyboardButton(text=t('channels.view_tournament', language), url=deep_link))
 
         # Отправляем во все целевые каналы
         for channel_id in target_channels:
@@ -1013,23 +1033,24 @@ async def send_tournament_finished_to_channel(
         level = escape_markdown(tournament_data.get('level', 'Не указан'))
         participants_count = len(tournament_data.get('participants', {}))
         
+        language = "ru"  # Каналы используют русский язык по умолчанию
         text = (
-            f"🏁 *Турнир завершён!*\n\n"
-            f"🏆 *{name}*\n\n"
-            f"🌍 *Город:* {escape_markdown(city)}, {escape_markdown(remove_country_flag(country))}\n"
-            f"🧩 *Уровень:* {level}\n"
-            f"👥 *Участников:* {participants_count}\n\n"
+            f"{t('channels.tournament_finished', language)}\n\n"
+            f"🏆 {t('channels.tournament_name', language, name=name)}\n\n"
+            f"🌍 {t('channels.city', language)} {escape_markdown(city)}, {escape_markdown(remove_country_flag(country))}\n"
+            f"🧩 {t('channels.tournament_level', language)} {level}\n"
+            f"👥 {t('channels.participants', language)} {participants_count}\n\n"
         )
         
         if summary_text:
             # Summary уже содержит эмодзи, не экранируем его
-            text += f"*Итоги:*\n{summary_text}\n\n"
+            text += f"{t('channels.summary', language)}\n{summary_text}\n\n"
         
-        text += f"🎉 Поздравляем победителей!"
+        text += t('channels.congratulations', language)
 
         builder = InlineKeyboardBuilder()
         deep_link = f"https://t.me/{BOT_USERNAME}?start=view_tournament_{tournament_id}"
-        builder.row(InlineKeyboardButton(text="🏆 Смотреть турнир", url=deep_link))
+        builder.row(InlineKeyboardButton(text=t('channels.view_tournament_button', language), url=deep_link))
 
         # Отправляем во все целевые каналы
         for channel_id in target_channels:

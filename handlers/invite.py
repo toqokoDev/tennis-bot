@@ -5,16 +5,19 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
+from utils.translations import get_user_language_async, t
 
 router = Router()
 
-@router.message(F.text == "🔗 Пригласить друга")
+@router.message(F.text.in_([t("menu.invite", "ru"), t("menu.invite", "en")]))
 async def invite_friend(message: types.Message):
     """Обработчик inline кнопки 'Пригласить друга'"""
     user_id = str(message.chat.id)
     
+    language = await get_user_language_async(user_id)
+    
     if not await storage.is_user_registered(user_id):
-        await message.answer("❌ Вы еще не зарегистрированы. Введите /start для регистрации.")
+        await message.answer(t("main.not_registered", language))
         return
     
     # Получаем информацию о пользователе
@@ -22,25 +25,13 @@ async def invite_friend(message: types.Message):
     referral_count = user_data.get('referrals_invited', 0)
     referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{user_id}"
     
-    text = (
-        f"👥 <b>Получите бесплатную подписку на 1 месяц за каждых 5 друзей!</b>\n\n"
-        f"📊 <b>Ваша статистика:</b>\n"
-        f"• Приглашено друзей: <b>{referral_count}/5</b>\n\n"
-        f"🎁 <b>Как это работает:</b>\n"
-        f"• Пригласите 5 друзей в бот\n"
-        f"• Каждый друг должен пройти регистрацию\n"
-        f"• Получите бесплатную подписку на 1 месяц\n\n"
-        f"📎 <b>Ваша реферальная ссылка:</b>\n"
-        f"<code>{referral_link}</code>\n\n"
-        f"📤 <b>Как делиться:</b>\n"
-        f"1. Скопируйте ссылку выше\n"
-        f"2. Отправьте друзьям\n"
-        f"3. Следите за прогрессом в этом разделе"
-    )
+    text = t("invite.referral_info", language, 
+             referral_count=referral_count,
+             referral_link=referral_link)
     
     buttons = [
-        [InlineKeyboardButton(text="📤 Поделиться ссылкой", switch_inline_query=f"Присоединяйся к сообществу по теннису и другим видам спорта!\n\n{referral_link}")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]
+        [InlineKeyboardButton(text=t("invite.share_button", language), switch_inline_query=f"Присоединяйся к сообществу по теннису и другим видам спорта!\n\n{referral_link}")],
+        [InlineKeyboardButton(text=t("invite.back_button", language), callback_data="back_to_main")]
     ]
     
     try:

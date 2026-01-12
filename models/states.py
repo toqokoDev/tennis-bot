@@ -1,6 +1,7 @@
 from aiogram.fsm.state import State, StatesGroup
 
 class RegistrationStates(StatesGroup):
+    LANGUAGE = State()
     REGISTRATION_START = State()
     PHONE = State()
     FIRST_NAME = State()

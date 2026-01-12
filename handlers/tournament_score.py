@@ -11,6 +11,7 @@ from models.states import AddScoreState
 from services.storage import storage
 from utils.tournament_manager import tournament_manager
 from utils.utils import create_user_profile_link, escape_markdown
+from utils.translations import get_user_language_async, t
 from handlers.enter_invoice import (
     save_message_id,
     format_rating
@@ -112,7 +113,7 @@ async def create_tournament_keyboard(current_user_id: str) -> InlineKeyboardMark
             builder.button(text=f"🏆 {name} ({city}) - {participants_count} участников", 
                           callback_data=f"tournament_score:select:{tournament_id}")
     
-    builder.button(text="🔙 Назад", callback_data="tournament_score:back")
+    builder.button(text=t("common.back", language), callback_data="tournament_score:back")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -121,12 +122,14 @@ async def create_tournament_opponents_keyboard(tournament_id: str, current_user_
     """Создает клавиатуру для выбора соперника из доступных в турнире"""
     builder = InlineKeyboardBuilder()
     
+    language = await get_user_language_async(current_user_id)
+    
     # Запрещаем выбор соперника, если турнир не запущен
     tournaments = await storage.load_tournaments()
-    t = tournaments.get(tournament_id, {})
-    if t.get('status') != 'started':
-        builder.button(text="⏳ Турнир еще не запущен админом", callback_data="tournament_score:no_participants")
-        builder.button(text="🔙 Назад", callback_data="tournament_score:back_to_list")
+    tournament = tournaments.get(tournament_id, {})
+    if tournament.get('status') != 'started':
+        builder.button(text=t("tournament_score.tournament_not_started", language), callback_data="tournament_score:no_participants")
+        builder.button(text=t("common.back", language), callback_data="tournament_score:back_to_list")
         builder.adjust(1)
         return builder.as_markup()
 
@@ -142,7 +145,7 @@ async def create_tournament_opponents_keyboard(tournament_id: str, current_user_
     available_opponents = filtered
     
     if not available_opponents:
-        builder.button(text="❌ Нет доступных соперников", callback_data="tournament_score:no_participants")
+        builder.button(text=t("tournament_score.no_opponents", language), callback_data="tournament_score:no_participants")
     else:
         for i, opponent in enumerate(available_opponents):
             name = opponent.get('name', 'Неизвестно')
@@ -150,7 +153,7 @@ async def create_tournament_opponents_keyboard(tournament_id: str, current_user_
             builder.button(text=f"👤 {name} (Матч {match_number + 1})", 
                          callback_data=f"tournament_score:opponent:{tournament_id}:{i}")
     
-    builder.button(text="🔙 Назад", callback_data="tournament_score:back")
+    builder.button(text=t("common.back", language), callback_data="tournament_score:back")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -169,15 +172,16 @@ async def handle_tournament_selection(callback: types.CallbackQuery, state: FSMC
     participants = tournament_data.get('participants', {})
     current_user_id = str(callback.message.chat.id)
     
+    language = await get_user_language_async(current_user_id)
+    
     if current_user_id not in participants:
         await callback.message.edit_text(
-            "❌ Вы не являетесь участником этого турнира.\n\n"
-            "Для участия в турнире необходимо сначала подать заявку.",
+            t("tournament_score.not_participant", language),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="tournament_score:back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language), callback_data="tournament_score:back")]]
             )
         )
-        await callback.answer("Вы не участник турнира")
+        await callback.answer(t("tournament_score.not_participant", language))
         return
     
     # Разрешаем вносить счет до старта, если есть участники (>=2) и есть с кем играть
@@ -191,12 +195,12 @@ async def handle_tournament_selection(callback: types.CallbackQuery, state: FSMC
     
     if current_participants < 2:
         await callback.message.edit_text(
-            f"❌ Недостаточно участников для внесения игр!\n\n"
-            f"🏆 Турнир: {tournament_data.get('name', 'Без названия')}\n"
-            f"👥 Текущих участников: {current_participants}\n"
-            f"📊 Требуется минимум: 2", 
+            t("tournament_score.not_enough_participants", language,
+              tournament_name=tournament_data.get('name', 'Без названия'),
+              current_count=current_participants,
+              min_count=2), 
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="tournament_score:back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language), callback_data="tournament_score:back")]]
             )
         )
         await callback.answer()
@@ -205,7 +209,7 @@ async def handle_tournament_selection(callback: types.CallbackQuery, state: FSMC
     await state.set_state(AddScoreState.selecting_tournament_opponent)
     keyboard = await create_tournament_opponents_keyboard(tournament_id, current_user_id)
     await callback.message.edit_text(
-        "👥 Выберите соперника из участников турнира:",
+        t("tournament_score.select_opponent", language),
         reply_markup=keyboard
     )
     await callback.answer()
@@ -228,9 +232,11 @@ async def handle_tournament_opponent_selection(callback: types.CallbackQuery, st
     print(f"[TOURNAMENT_SCORE] available_opponents count={len(available_opponents)}")
     print(f"[TOURNAMENT_SCORE] available_opponents={available_opponents}")
     
+    language = await get_user_language_async(current_user_id)
+    
     # Проверяем корректность индекса
     if opponent_index >= len(available_opponents):
-        await callback.answer("Соперник не найден")
+        await callback.answer(t("tournament_score.opponent_not_found", language))
         return
     
     selected_opponent_data = available_opponents[opponent_index]
@@ -240,7 +246,7 @@ async def handle_tournament_opponent_selection(callback: types.CallbackQuery, st
     users = await storage.load_users()
     
     if opponent_id not in users:
-        await callback.answer("Пользователь не найден")
+        await callback.answer(t("tournament_score.user_not_found", language))
         return
     
     selected_opponent = users[opponent_id]
@@ -248,11 +254,11 @@ async def handle_tournament_opponent_selection(callback: types.CallbackQuery, st
     
     # Блокируем повторную игру в этом турнире
     if await _already_played_in_tournament(tournament_id, current_user_id, opponent_id):
-        await callback.answer("Этот матч уже сыгран в этом турнире", show_alert=True)
+        await callback.answer(t("tournament_score.match_already_played", language), show_alert=True)
         # Обновим список соперников
         keyboard = await create_tournament_opponents_keyboard(tournament_id, current_user_id)
         await callback.message.edit_text(
-            "👥 Выберите соперника из участников турнира:",
+            t("tournament_score.select_opponent", language),
             reply_markup=keyboard
         )
         return
@@ -270,13 +276,12 @@ async def handle_tournament_opponent_selection(callback: types.CallbackQuery, st
     username = selected_opponent.get('username', '')
     username_text_raw = f"@{username}" if username else "не указан"
     username_text = escape_markdown(username_text_raw)
+    opponent_link = await create_user_profile_link(selected_opponent, opponent_id, additional=False)
     
     await callback.message.edit_text( 
-        f"🏆 Турнирная игра\n\n"
-        f"Вы выбрали соперника:\n"
-        f"👤 {await create_user_profile_link(selected_opponent, opponent_id, additional=False)}\n"
-        f"📱 Username: {username_text}\n\n"
-        f"Выберите счет 1-го сета:",
+        t("tournament_score.tournament_game", language,
+          opponent_link=opponent_link,
+          username=username_text),
         reply_markup=keyboard, 
         parse_mode="Markdown"
     )
@@ -286,38 +291,38 @@ async def handle_tournament_opponent_selection(callback: types.CallbackQuery, st
 @router.callback_query(F.data == "tournament_score:no_tournaments")
 async def handle_no_tournaments(callback: types.CallbackQuery, state: FSMContext):
     """Обработчик отсутствия турниров"""
+    language = await get_user_language_async(str(callback.message.chat.id))
     await callback.message.edit_text(
-        "❌ Вы не участвуете ни в одном активном турнире.\n\n"
-        "Для участия в турнире необходимо подать заявку в разделе '🏆 Турниры'.\n\n"
-        "Попробуйте выбрать другой тип игры.",
+        t("tournament_score.no_tournaments", language),
         reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="tournament_score:back")]]
+            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language), callback_data="tournament_score:back")]]
         )
     )
-    await callback.answer("Нет доступных турниров")
+    await callback.answer(t("tournament_score.no_tournaments_alert", language))
 
 
 @router.callback_query(F.data == "tournament_score:no_participants")
 async def handle_no_participants(callback: types.CallbackQuery, state: FSMContext):
     """Обработчик отсутствия участников в турнире"""
+    language = await get_user_language_async(str(callback.message.chat.id))
     await callback.message.edit_text(
-        "❌ В турнире недостаточно участников или нет доступных соперников.\n\n"
-        "Пожалуйста, подождите, пока другие игроки присоединятся к турниру.",
+        t("tournament_score.no_participants", language),
         reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="tournament_score:back")]]
+            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language), callback_data="tournament_score:back")]]
         )
     )
-    await callback.answer("Нет участников")
+    await callback.answer(t("tournament_score.no_participants_alert", language))
 
 
 @router.callback_query(F.data == "tournament_score:back_to_list")
 async def handle_back_to_tournament_list(callback: types.CallbackQuery, state: FSMContext):
     """Возврат к списку турниров"""
     current_user_id = str(callback.message.chat.id)
+    language = await get_user_language_async(current_user_id)
     await state.set_state(AddScoreState.selecting_tournament)
     keyboard = await create_tournament_keyboard(current_user_id)
     await callback.message.edit_text(
-        "🏆 Выберите турнир для внесения счета:",
+        t("tournament_score.select_tournament", language),
         reply_markup=keyboard
     )
     await callback.answer()
@@ -333,17 +338,19 @@ async def handle_tournament_back(callback: types.CallbackQuery, state: FSMContex
     if current_state == AddScoreState.selecting_tournament.state:
         # Возвращаемся к выбору типа игры
         from handlers.enter_invoice import create_game_type_keyboard
+        language = await get_user_language_async(current_user_id)
         await state.set_state(AddScoreState.selecting_game_type)
-        keyboard = create_game_type_keyboard()
-        await callback.message.edit_text("Выберите тип игры:", reply_markup=keyboard)
+        keyboard = await create_game_type_keyboard(language)
+        await callback.message.edit_text(t("tournament_score.select_game_type", language), reply_markup=keyboard)
     
     # Если находимся на выборе соперника
     elif current_state == AddScoreState.selecting_tournament_opponent.state:
         # Возвращаемся к списку турниров
+        language = await get_user_language_async(current_user_id)
         await state.set_state(AddScoreState.selecting_tournament)
         keyboard = await create_tournament_keyboard(current_user_id)
         await callback.message.edit_text(
-            "🏆 Выберите турнир для внесения счета:",
+            t("tournament_score.select_tournament", language),
             reply_markup=keyboard
         )
     

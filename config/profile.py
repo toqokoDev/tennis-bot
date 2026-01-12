@@ -1,5 +1,31 @@
 from aiogram.types import InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from utils.translations import t
+
+def get_tennis_levels(language: str = "ru") -> dict:
+    """Возвращает уровни тенниса с переведенными описаниями"""
+    base_levels = {
+        "1.0": {"points": 500},
+        "1.5": {"points": 700},
+        "2.0": {"points": 900},
+        "2.5": {"points": 1100},
+        "3.0": {"points": 1200},
+        "3.5": {"points": 1400},
+        "4.0": {"points": 1600},
+        "4.5": {"points": 1800},
+        "5.0": {"points": 2000},
+        "5.5": {"points": 2200},
+        "6.0": {"points": 2400},
+        "6.5": {"points": 2600},
+        "7.0": {"points": 2800}
+    }
+    result = {}
+    for level, data in base_levels.items():
+        result[level] = {
+            "desc": t(f"config.tennis_levels.{level}", language),
+            "points": data["points"]
+        }
+    return result
 
 # Уровни игроков с описаниями и рейтинговыми очками для большого тенниса
 tennis_levels = {
@@ -17,6 +43,31 @@ tennis_levels = {
     "6.5": {"desc": "Теннисист уровня 6.5 по мастерству игры близок к 7.0 и обладает опытом участия в играх-сателлитах", "points": 2600},
     "7.0": {"desc": "Спортсмен мирового класса, принимающий участие в различных турнирах по теннису международного уровня. Основным источником доходов для игрока высшего уровня служат денежные призы, разыгрываемые на соревнованиях", "points": 2800}
 }
+
+def get_table_tennis_levels(language: str = "ru") -> dict:
+    """Возвращает уровни настольного тенниса с переведенными описаниями"""
+    base_levels = {
+        "1.0": {"points": 500},
+        "1.5": {"points": 700},
+        "2.0": {"points": 900},
+        "2.5": {"points": 1100},
+        "3.0": {"points": 1200},
+        "3.5": {"points": 1400},
+        "4.0": {"points": 1600},
+        "4.5": {"points": 1800},
+        "5.0": {"points": 2000},
+        "5.5": {"points": 2200},
+        "6.0": {"points": 2400},
+        "6.5": {"points": 2600},
+        "7.0": {"points": 2800}
+    }
+    result = {}
+    for level, data in base_levels.items():
+        result[level] = {
+            "desc": t(f"config.table_tennis_levels.{level}", language),
+            "points": data["points"]
+        }
+    return result
 
 # Уровни для настольного тенниса (NTRP) - обновленные согласно https://tabletennis-play.com/ntrp/
 table_tennis_levels = {
@@ -44,10 +95,49 @@ moscow_districts = [
     "ЦАО", "ЮАО", "ЮВАО", "ЮЗАО"
 ]
 
+# Функции для получения переведенных значений
+def get_game_types(language: str = "ru") -> list:
+    """Возвращает типы игр с учетом языка"""
+    return [
+        t("config.game_types.single", language),
+        t("config.game_types.double", language),
+        t("config.game_types.mixed", language),
+        t("config.game_types.training", language)
+    ]
+
+def get_payment_types(language: str = "ru") -> list:
+    """Возвращает типы платежей с учетом языка"""
+    return [
+        t("config.payment_types.split", language),
+        t("config.payment_types.i_pay", language),
+        t("config.payment_types.opponent_pays", language),
+        t("config.payment_types.loser_pays", language)
+    ]
+
+def get_roles(language: str = "ru") -> list:
+    """Возвращает роли с учетом языка"""
+    return [
+        t("config.roles.player", language),
+        t("config.roles.trainer", language)
+    ]
+
+# Для обратной совместимости
 game_types = ["Одиночная", "Парная", "Микст", "Тренировка"]
 payment_types = ["💰 Пополам", "💳 Я оплачиваю", "💵 Соперник оплачивает", "🎾 Проигравший оплачивает"]
 roles = ["🎯 Игрок", "👨‍🏫 Тренер"]
 
+def get_price_ranges(language: str = "ru") -> list:
+    """Возвращает диапазоны цен с учетом языка"""
+    return [
+        {"min": 0, "max": 1000, "label": t("config.price_ranges.up_to_1000", language)},
+        {"min": 1000, "max": 2000, "label": t("config.price_ranges.1000_2000", language)},
+        {"min": 2000, "max": 3000, "label": t("config.price_ranges.2000_3000", language)},
+        {"min": 3000, "max": 5000, "label": t("config.price_ranges.3000_5000", language)},
+        {"min": 5000, "max": 10000, "label": t("config.price_ranges.5000_10000", language)},
+        {"min": 10000, "max": 10000000, "label": t("config.price_ranges.from_10000", language)}
+    ]
+
+# Для обратной совместимости
 PRICE_RANGES = [
     {"min": 0, "max": 1000, "label": "до 1000 руб."},
     {"min": 1000, "max": 2000, "label": "1000-2000 руб."},
@@ -57,6 +147,14 @@ PRICE_RANGES = [
     {"min": 10000, "max": 10000000, "label": "от 10000 руб."}
 ]
 
+def get_gender_types(language: str = "ru") -> list:
+    """Возвращает типы пола с учетом языка"""
+    return [
+        t("config.gender_types.male", language),
+        t("config.gender_types.female", language)
+    ]
+
+# Для обратной совместимости
 GENDER_TYPES=["Мужской", "Женский"]
 PLAYER_LEVELS=["0.0", "0.5", "2.0", "2.5", "3.0", "4.5", "5.0", "5.5", "6.0", "6.5", "7.0"]
 
@@ -81,6 +179,19 @@ cities_data = {
     ],
 }
 
+def get_weekdays(language: str = "ru") -> dict:
+    """Возвращает дни недели с учетом языка"""
+    return {
+        0: t("config.weekdays.0", language),
+        1: t("config.weekdays.1", language),
+        2: t("config.weekdays.2", language),
+        3: t("config.weekdays.3", language),
+        4: t("config.weekdays.4", language),
+        5: t("config.weekdays.5", language),
+        6: t("config.weekdays.6", language),
+    }
+
+# Для обратной совместимости
 WEEKDAYS = {
     0: "Пн",
     1: "Вт",
@@ -91,6 +202,58 @@ WEEKDAYS = {
     6: "Вс",
 }
 
+def get_sport_type(language: str = "ru") -> list:
+    """Возвращает список видов спорта с учетом языка"""
+    return [
+        t("config.sports.tennis", language),
+        t("config.sports.table_tennis", language),
+        t("config.sports.badminton", language),
+        t("config.sports.beach_tennis", language),
+        t("config.sports.padel", language),
+        t("config.sports.squash", language),
+        t("config.sports.pickleball", language),
+        t("config.sports.golf", language),
+        t("config.sports.running", language),
+        t("config.sports.fitness", language),
+        t("config.sports.cycling", language),
+        t("config.sports.beer", language),
+        t("config.sports.dating", language),
+        t("config.sports.business_breakfast", language)
+    ]
+
+def get_sport_translation(sport: str, language: str = "ru") -> str:
+    """Возвращает переведенное название вида спорта"""
+    # Маппинг русских названий на ключи переводов
+    sport_mapping = {
+        "🎾Большой теннис": "tennis",
+        "🏓Настольный теннис": "table_tennis",
+        "🏸Бадминтон": "badminton",
+        "🏖️Пляжный теннис": "beach_tennis",
+        "🎾Падл-теннис": "padel",
+        "🥎Сквош": "squash",
+        "🏆Пиклбол": "pickleball",
+        "⛳Гольф": "golf",
+        "🏃‍♂️‍➡️Бег": "running",
+        "🏋️‍♀️Фитнес": "fitness",
+        "🚴Вело": "cycling",
+        "🍻По пиву": "beer",
+        "🍒Знакомства": "dating",
+        "☕️Бизнес-завтрак": "business_breakfast"
+    }
+    
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return sport
+    
+    # Ищем ключ для перевода
+    sport_key = sport_mapping.get(sport)
+    if sport_key:
+        return t(f"config.sports.{sport_key}", language)
+    
+    # Если не нашли, возвращаем оригинал
+    return sport
+
+# Для обратной совместимости
 sport_type = [
     "🎾Большой теннис",
     "🏓Настольный теннис",
@@ -144,29 +307,46 @@ channels_usernames = {
 
 tour_channel_id = "-1002972370826"
 
-def create_sport_keyboard(pref: str = "partner_sport_", exclude_sports: list = None):
+def create_sport_keyboard(pref: str = "partner_sport_", exclude_sports: list = None, language: str = "ru"):
     """Создает клавиатуру с видами спорта в заданном формате
     
     Args:
         pref: Префикс для callback_data
         exclude_sports: Список видов спорта для исключения (например, ["🎾Большой теннис", "🏓Настольный теннис"])
+        language: Язык для отображения названий видов спорта
     """
     if exclude_sports is None:
         exclude_sports = []
     
     builder = InlineKeyboardBuilder()
     
+    # Получаем оригинальные названия для callback_data и переведенные для текста
+    tennis_ru = "🎾Большой теннис"
+    table_tennis_ru = "🏓Настольный теннис"
+    badminton_ru = "🏸Бадминтон"
+    beach_tennis_ru = "🏖️Пляжный теннис"
+    padel_ru = "🎾Падл-теннис"
+    squash_ru = "🥎Сквош"
+    pickleball_ru = "🏆Пиклбол"
+    golf_ru = "⛳Гольф"
+    running_ru = "🏃‍♂️‍➡️Бег"
+    fitness_ru = "🏋️‍♀️Фитнес"
+    cycling_ru = "🚴Вело"
+    beer_ru = "🍻По пиву"
+    dating_ru = "🍒Знакомства"
+    business_breakfast_ru = "☕️Бизнес-завтрак"
+    
     # Большой теннис, настольный теннис - 2 в ряд
     tennis_buttons = []
-    if "🎾Большой теннис" not in exclude_sports:
+    if tennis_ru not in exclude_sports:
         tennis_buttons.append(InlineKeyboardButton(
-            text="🎾Большой теннис",
-            callback_data=f"{pref}🎾Большой теннис"
+            text=get_sport_translation(tennis_ru, language),
+            callback_data=f"{pref}{tennis_ru}"
         ))
-    if "🏓Настольный теннис" not in exclude_sports:
+    if table_tennis_ru not in exclude_sports:
         tennis_buttons.append(InlineKeyboardButton(
-            text="🏓Настольный теннис",
-            callback_data=f"{pref}🏓Настольный теннис"
+            text=get_sport_translation(table_tennis_ru, language),
+            callback_data=f"{pref}{table_tennis_ru}"
         ))
     
     if tennis_buttons:
@@ -174,15 +354,15 @@ def create_sport_keyboard(pref: str = "partner_sport_", exclude_sports: list = N
     
     # Бадминтон, пляжный теннис - 2 в ряд
     racket_buttons = []
-    if "🏸Бадминтон" not in exclude_sports:
+    if badminton_ru not in exclude_sports:
         racket_buttons.append(InlineKeyboardButton(
-            text="🏸Бадминтон",
-            callback_data=f"{pref}🏸Бадминтон"
+            text=get_sport_translation(badminton_ru, language),
+            callback_data=f"{pref}{badminton_ru}"
         ))
-    if "🏖️Пляжный теннис" not in exclude_sports:
+    if beach_tennis_ru not in exclude_sports:
         racket_buttons.append(InlineKeyboardButton(
-            text="🏖️Пляжный теннис",
-            callback_data=f"{pref}🏖️Пляжный теннис"
+            text=get_sport_translation(beach_tennis_ru, language),
+            callback_data=f"{pref}{beach_tennis_ru}"
         ))
     
     if racket_buttons:
@@ -190,15 +370,15 @@ def create_sport_keyboard(pref: str = "partner_sport_", exclude_sports: list = N
     
     # Падл-теннис, сквош - 2 в ряд
     paddle_buttons = []
-    if "🎾Падл-теннис" not in exclude_sports:
+    if padel_ru not in exclude_sports:
         paddle_buttons.append(InlineKeyboardButton(
-            text="🎾Падл-теннис",
-            callback_data=f"{pref}🎾Падл-теннис"
+            text=get_sport_translation(padel_ru, language),
+            callback_data=f"{pref}{padel_ru}"
         ))
-    if "🥎Сквош" not in exclude_sports:
+    if squash_ru not in exclude_sports:
         paddle_buttons.append(InlineKeyboardButton(
-            text="🥎Сквош",
-            callback_data=f"{pref}🥎Сквош"
+            text=get_sport_translation(squash_ru, language),
+            callback_data=f"{pref}{squash_ru}"
         ))
     
     if paddle_buttons:
@@ -206,20 +386,20 @@ def create_sport_keyboard(pref: str = "partner_sport_", exclude_sports: list = N
     
     # Пиклбол, гольф, бег - 3 в ряд
     outdoor_buttons = []
-    if "🏆Пиклбол" not in exclude_sports:
+    if pickleball_ru not in exclude_sports:
         outdoor_buttons.append(InlineKeyboardButton(
-            text="🏆Пиклбол",
-            callback_data=f"{pref}🏆Пиклбол"
+            text=get_sport_translation(pickleball_ru, language),
+            callback_data=f"{pref}{pickleball_ru}"
         ))
-    if "⛳Гольф" not in exclude_sports:
+    if golf_ru not in exclude_sports:
         outdoor_buttons.append(InlineKeyboardButton(
-            text="⛳Гольф",
-            callback_data=f"{pref}⛳Гольф"
+            text=get_sport_translation(golf_ru, language),
+            callback_data=f"{pref}{golf_ru}"
         ))
-    if "🏃‍♂️‍➡️Бег" not in exclude_sports:
+    if running_ru not in exclude_sports:
         outdoor_buttons.append(InlineKeyboardButton(
-            text="🏃‍♂️‍➡️Бег",
-            callback_data=f"{pref}🏃‍♂️‍➡️Бег"
+            text=get_sport_translation(running_ru, language),
+            callback_data=f"{pref}{running_ru}"
         ))
     
     if outdoor_buttons:
@@ -227,20 +407,20 @@ def create_sport_keyboard(pref: str = "partner_sport_", exclude_sports: list = N
     
     # Фитнес, вело, по пиву - 3 в ряд
     fitness_buttons = []
-    if "🏋️‍♀️Фитнес" not in exclude_sports:
+    if fitness_ru not in exclude_sports:
         fitness_buttons.append(InlineKeyboardButton(
-            text="🏋️‍♀️Фитнес",
-            callback_data=f"{pref}🏋️‍♀️Фитнес"
+            text=get_sport_translation(fitness_ru, language),
+            callback_data=f"{pref}{fitness_ru}"
         ))
-    if "🚴Вело" not in exclude_sports:
+    if cycling_ru not in exclude_sports:
         fitness_buttons.append(InlineKeyboardButton(
-            text="🚴Вело",
-            callback_data=f"{pref}🚴Вело"
+            text=get_sport_translation(cycling_ru, language),
+            callback_data=f"{pref}{cycling_ru}"
         ))
-    if "🍻По пиву" not in exclude_sports:
+    if beer_ru not in exclude_sports:
         fitness_buttons.append(InlineKeyboardButton(
-            text="🍻По пиву",
-            callback_data=f"{pref}🍻По пиву"
+            text=get_sport_translation(beer_ru, language),
+            callback_data=f"{pref}{beer_ru}"
         ))
     
     if fitness_buttons:
@@ -248,15 +428,15 @@ def create_sport_keyboard(pref: str = "partner_sport_", exclude_sports: list = N
     
     # Знакомства, бизнес-завтрак - 2 в ряд
     social_buttons = []
-    if "🍒Знакомства" not in exclude_sports:
+    if dating_ru not in exclude_sports:
         social_buttons.append(InlineKeyboardButton(
-            text="🍒Знакомства",
-            callback_data=f"{pref}🍒Знакомства"
+            text=get_sport_translation(dating_ru, language),
+            callback_data=f"{pref}{dating_ru}"
         ))
-    if "☕️Бизнес-завтрак" not in exclude_sports:
+    if business_breakfast_ru not in exclude_sports:
         social_buttons.append(InlineKeyboardButton(
-            text="☕️Бизнес-завтрак",
-            callback_data=f"{pref}☕️Бизнес-завтрак"
+            text=get_sport_translation(business_breakfast_ru, language),
+            callback_data=f"{pref}{business_breakfast_ru}"
         ))
     
     if social_buttons:
@@ -445,6 +625,39 @@ SPORT_FIELD_CONFIG = {
     }
 }
 
+def get_dating_goals(language: str = "ru") -> list:
+    """Возвращает цели знакомств с учетом языка"""
+    return [
+        t("config.dating_goals.relationship", language),
+        t("config.dating_goals.communication", language),
+        t("config.dating_goals.friendship", language),
+        t("config.dating_goals.never_know", language)
+    ]
+
+def get_dating_interests(language: str = "ru") -> list:
+    """Возвращает интересы для знакомств с учетом языка"""
+    return [
+        t("config.dating_interests.travel", language),
+        t("config.dating_interests.music", language),
+        t("config.dating_interests.cinema", language),
+        t("config.dating_interests.coffee", language),
+        t("config.dating_interests.guitar", language),
+        t("config.dating_interests.skiing", language),
+        t("config.dating_interests.board_games", language),
+        t("config.dating_interests.quizzes", language)
+    ]
+
+def get_dating_additional_fields(language: str = "ru") -> list:
+    """Возвращает дополнительные поля для знакомств с учетом языка"""
+    return [
+        t("config.dating_additional.work", language),
+        t("config.dating_additional.education", language),
+        t("config.dating_additional.height", language),
+        t("config.dating_additional.zodiac", language),
+        t("config.dating_additional.habits", language)
+    ]
+
+# Для обратной совместимости
 # Цели знакомств
 DATING_GOALS = [
     "Отношения",
@@ -478,87 +691,87 @@ def get_sport_config(sport: str) -> dict:
     """Получает конфигурацию полей для выбранного вида спорта"""
     return SPORT_FIELD_CONFIG.get(sport, SPORT_FIELD_CONFIG["🎾Большой теннис"])
 
-def get_sport_texts(sport: str) -> dict:
-    """Получает тексты для выбранного вида спорта"""
+def get_sport_texts(sport: str, language: str = "ru") -> dict:
+    """Получает тексты для выбранного вида спорта (переведенные)"""
     config = get_sport_config(sport)
     category = config.get("category", "court_sport")
     
     if category == "dating":
         return {
-            "offer_button": "💕 Создать анкету",
-            "my_offers_button": "📋 Мои анкеты",
-            "offer_title": "Анкета для знакомств",
-            "my_offers_title": "Мои анкеты",
-            "no_offers_text": "У вас нет активных анкет",
-            "city_prompt": "Выберите город для анкеты:",
-            "offer_created": "Анкета успешно создана!",
-            "offer_prefix": "Анкета"
+            "offer_button": t("game_offers.dating.offer_button", language),
+            "my_offers_button": t("game_offers.dating.my_offers_button", language),
+            "offer_title": t("game_offers.dating.offer_title", language),
+            "my_offers_title": t("game_offers.dating.my_offers_title", language),
+            "no_offers_text": t("game_offers.dating.no_offers_text", language),
+            "city_prompt": t("game_offers.dating.city_prompt", language),
+            "offer_created": t("game_offers.dating.offer_created", language),
+            "offer_prefix": t("game_offers.dating.offer_prefix", language)
         }
     elif category == "meeting":
         if sport == "☕️Бизнес-завтрак":
             return {
-                "offer_button": "☕️ Предложить встречу",
-                "my_offers_button": "📋 Мои предложения встреч",
-                "offer_title": "Предложение бизнес-завтрака",
-                "my_offers_title": "Мои предложения встреч",
-                "no_offers_text": "У вас нет активных предложений встреч",
-                "city_prompt": "Выберите город для встречи:",
-                "offer_created": "Предложение встречи успешно создано!",
-                "offer_prefix": "Встреча"
+                "offer_button": t("game_offers.meeting.business.offer_button", language),
+                "my_offers_button": t("game_offers.meeting.business.my_offers_button", language),
+                "offer_title": t("game_offers.meeting.business.offer_title", language),
+                "my_offers_title": t("game_offers.meeting.business.my_offers_title", language),
+                "no_offers_text": t("game_offers.meeting.business.no_offers_text", language),
+                "city_prompt": t("game_offers.meeting.business.city_prompt", language),
+                "offer_created": t("game_offers.meeting.business.offer_created", language),
+                "offer_prefix": t("game_offers.meeting.business.offer_prefix", language)
             }
         else:  # По пиву
             return {
-                "offer_button": "🍻 Предложить встречу",
-                "my_offers_button": "📋 Мои предложения встреч",
-                "offer_title": "Предложение встречи за пивом",
-                "my_offers_title": "Мои предложения встреч",
-                "no_offers_text": "У вас нет активных предложений встреч",
-                "city_prompt": "Выберите город для встречи:",
-                "offer_created": "Предложение встречи успешно создано!",
-                "offer_prefix": "Встреча"
+                "offer_button": t("game_offers.meeting.beer.offer_button", language),
+                "my_offers_button": t("game_offers.meeting.beer.my_offers_button", language),
+                "offer_title": t("game_offers.meeting.beer.offer_title", language),
+                "my_offers_title": t("game_offers.meeting.beer.my_offers_title", language),
+                "no_offers_text": t("game_offers.meeting.beer.no_offers_text", language),
+                "city_prompt": t("game_offers.meeting.beer.city_prompt", language),
+                "offer_created": t("game_offers.meeting.beer.offer_created", language),
+                "offer_prefix": t("game_offers.meeting.beer.offer_prefix", language)
             }
     elif category == "outdoor_sport":
         return {
-            "offer_button": "🏃 Предложить активность",
-            "my_offers_button": "📋 Мои предложения активности",
-            "offer_title": "Предложение активности",
-            "my_offers_title": "Мои предложения активности",
-            "no_offers_text": "У вас нет активных предложений активности",
-            "city_prompt": "Выберите город для активности:",
-            "offer_created": "Предложение активности успешно создано!",
-            "offer_prefix": "Активность"
+            "offer_button": t("game_offers.outdoor.offer_button", language),
+            "my_offers_button": t("game_offers.outdoor.my_offers_button", language),
+            "offer_title": t("game_offers.outdoor.offer_title", language),
+            "my_offers_title": t("game_offers.outdoor.my_offers_title", language),
+            "no_offers_text": t("game_offers.outdoor.no_offers_text", language),
+            "city_prompt": t("game_offers.outdoor.city_prompt", language),
+            "offer_created": t("game_offers.outdoor.offer_created", language),
+            "offer_prefix": t("game_offers.outdoor.offer_prefix", language)
         }
     else:  # court_sport
         return {
-            "offer_button": "🎾 Предложить игру",
-            "my_offers_button": "📋 Мои предложения игр",
-            "offer_title": "Предложение игры",
-            "my_offers_title": "Мои предложения игр",
-            "no_offers_text": "У вас нет активных предложений игр",
-            "city_prompt": "Выберите город для игры:",
-            "offer_created": "Предложение игры успешно создано!",
-            "offer_prefix": "Игра"
+            "offer_button": t("game_offers.court.offer_button", language),
+            "my_offers_button": t("game_offers.court.my_offers_button", language),
+            "offer_title": t("game_offers.court.offer_title", language),
+            "my_offers_title": t("game_offers.court.my_offers_title", language),
+            "no_offers_text": t("game_offers.court.no_offers_text", language),
+            "city_prompt": t("game_offers.court.city_prompt", language),
+            "offer_created": t("game_offers.court.offer_created", language),
+            "offer_prefix": t("game_offers.court.offer_prefix", language)
         }
 
-def get_base_keyboard(sport: str = "🎾Большой теннис") -> ReplyKeyboardMarkup:
-    """Возвращает базовую клавиатуру с текстами, адаптированными под вид спорта"""
+def get_base_keyboard(sport: str = "🎾Большой теннис", language: str = "ru") -> ReplyKeyboardMarkup:
+    """Возвращает базовую клавиатуру (переводится по language)"""
     
     return ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text="🎾 Поиск партнера"),
-                KeyboardButton(text="⏱ Предложение игр")
+                KeyboardButton(text=t("menu.search_partner", language)),
+                KeyboardButton(text=t("menu.game_offers", language))
             ],
             [
-                KeyboardButton(text="🏆 Турниры"),
-                KeyboardButton(text="📝 Внести счет")
+                KeyboardButton(text=t("menu.tournaments", language)),
+                KeyboardButton(text=t("menu.enter_score", language))
             ],
             [
-                KeyboardButton(text="🔗 Пригласить друга"),
-                KeyboardButton(text="💳 Платежи")
+                KeyboardButton(text=t("menu.invite", language)),
+                KeyboardButton(text=t("menu.payments", language))
             ],
             [
-                KeyboardButton(text="🔍 Еще")
+                KeyboardButton(text=t("menu.more", language))
             ]
         ],
         resize_keyboard=True,
@@ -566,4 +779,4 @@ def get_base_keyboard(sport: str = "🎾Большой теннис") -> ReplyKe
     )
 
 # Для обратной совместимости
-base_keyboard = get_base_keyboard()
+base_keyboard = get_base_keyboard(language="ru")

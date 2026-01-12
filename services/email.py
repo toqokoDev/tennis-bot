@@ -3,6 +3,7 @@
 """
 
 import logging
+import ssl
 from typing import Optional, List
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -94,10 +95,11 @@ class EmailService:
                 message['Cc'] = ', '.join(cc)
             
             # Добавляем тело письма
+            charset = 'utf-8'
             if html:
-                part = MIMEText(body, 'html', 'utf-8')
+                part = MIMEText(body, 'html', charset)
             else:
-                part = MIMEText(body, 'plain', 'utf-8')
+                part = MIMEText(body, 'plain', charset)
             message.attach(part)
             
             # Собираем всех получателей
@@ -107,17 +109,50 @@ class EmailService:
             if bcc:
                 recipients.extend(bcc)
             
-            # Отправляем через SMTP
-            # Для порта 465 используется SSL, для 587 - STARTTLS
-            # aiosmtplib автоматически обрабатывает это через параметр use_tls
-            smtp_client = aiosmtplib.SMTP(hostname=self.host, port=self.port, use_tls=self.use_tls)
+            # Определяем параметры подключения
+            # Для порта 465 используем TLS с самого начала (use_tls=True)
+            # Для порта 587 используем STARTTLS (start_tls=True)
+            
+            if self.port == 465:
+                # SSL/TLS соединение с самого начала
+                smtp_client = aiosmtplib.SMTP(
+                    hostname=self.host,
+                    port=self.port,
+                    use_tls=True,  # SSL/TLS с самого начала
+                    tls_context=ssl.create_default_context(),
+                    start_tls=False
+                )
+            elif self.port == 587:
+                # STARTTLS (сначала обычное соединение, потом апгрейд)
+                smtp_client = aiosmtplib.SMTP(
+                    hostname=self.host,
+                    port=self.port,
+                    use_tls=False,  # Без TLS изначально
+                    start_tls=True  # Используем STARTTLS
+                )
+            else:
+                # Для других портов настройте по необходимости
+                smtp_client = aiosmtplib.SMTP(
+                    hostname=self.host,
+                    port=self.port
+                )
+            
             try:
                 await smtp_client.connect()
+                
+                # Для порта 587 нужно явно вызвать STARTTLS
+                if self.port == 587:
+                    await smtp_client.starttls()
                 
                 if self.username and self.password:
                     await smtp_client.login(self.username, self.password)
                 
-                await smtp_client.send_message(message)
+                # Отправляем всем получателям
+                await smtp_client.send_message(
+                    message, 
+                    sender=self.from_address,
+                    recipients=recipients
+                )
                 
             finally:
                 try:
@@ -132,7 +167,7 @@ class EmailService:
             logger.error(f"Ошибка SMTP при отправке email: {e}")
             return False
         except Exception as e:
-            logger.error(f"Ошибка отправки email на {to}: {e}")
+            logger.error(f"Ошибка отправки email на {to}: {e}", exc_info=True)
             return False
     
     async def send_html_email(

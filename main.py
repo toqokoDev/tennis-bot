@@ -9,6 +9,7 @@ from config.config import TOKEN
 from utils.admin import is_user_banned
 from utils.notifications import send_subscription_reminders
 from services.storage import storage
+from utils.translations import get_user_language_async, t
 
 class BannedUserFilter(Filter):
     async def __call__(self, message: Message) -> bool:
@@ -30,10 +31,9 @@ async def ban_check_handler(message: Message):
     
     # Дополнительная проверка на случай, если фильтр не сработал
     if await is_user_banned(user_id):
+        language = await get_user_language_async(user_id)
         await message.answer(
-            "🚫 Ваш аккаунт заблокирован.\n\n"
-            "Вы не можете использовать функции бота.\n"
-            "По вопросам разблокировки обратитесь к администратору."
+            t("main.banned", language)
         )
         return True
     return False
@@ -135,10 +135,10 @@ async def check_subscriptions(bot: Bot):
                                 
                                 # Отправляем уведомление пользователю
                                 try:
+                                    language = await get_user_language_async(user_id)
                                     await bot.send_message(
                                         int(user_id),
-                                        "❌ Ваша подписка Tennis-Play PRO истекла.\n\n"
-                                        "Для продолжения доступа к PRO-функциям продлите подписку в разделе '💳 Платежи'"
+                                        t("main.subscription_expired", language)
                                     )
                                 except Exception as e:
                                     print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
@@ -173,6 +173,8 @@ async def main():
 
     dp.message.register(non_private_chat_handler, PrivateChatFilter())
     dp.message.register(ban_check_handler, BannedUserFilter())
+    
+    users = await storage.load_users()
     
     # Подключаем роутеры       
     dp.include_router(admin.admin_router)

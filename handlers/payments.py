@@ -6,12 +6,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.filters import StateFilter
 
 from config.config import SECRET_KEY, SHOP_ID, SUBSCRIPTION_PRICE, BOT_USERNAME, EMAIL_ADMIN
-from config.profile import base_keyboard
+from config.profile import get_base_keyboard
 from models.states import PaymentStates
 from services.payments import create_payment
 from services.storage import storage
 from services.email import email_service
 from utils.utils import calculate_age, remove_country_flag
+from utils.translations import get_user_language_async, t
 import logging
 
 logger = logging.getLogger(__name__)
@@ -211,14 +212,14 @@ async def send_payment_notification_to_admin(
             html_body=html_body
         )
         
-        logger.info(f"Письмо администратору об оплате отправлено для пользователя {user_id}")
+        print(f"[{datetime.now()}] Письмо администратору об оплате отправлено для пользователя {user_id}")
         
     except Exception as e:
-        logger.error(f"Ошибка отправки письма администратору об оплате: {e}")
+        print(f"[{datetime.now()}] Ошибка отправки письма администратору об оплате: {e}")
 
 router = Router()
 
-@router.message(F.text == "💳 Платежи")
+@router.message(F.text.in_([t("menu.payments", "ru"), t("menu.payments", "en")]))
 async def handle_payments(message: types.Message, state: FSMContext):
     # Проверяем наличие активной подписки
     user_id = message.from_user.id
@@ -230,26 +231,17 @@ async def handle_payments(message: types.Message, state: FSMContext):
             try:
                 until_date = datetime.strptime(subscription_until, '%Y-%m-%d')
                 if until_date > datetime.now():
+                    language = await get_user_language_async(str(user_id))
                     await message.answer(
-                        f"✅ У вас уже есть активная подписка до {subscription_until}\n\n"
-                        "Все PRO-функции уже доступны!",
+                        t("payments.subscription_active", language, date=subscription_until),
                         parse_mode="HTML"
                     )
                     return
             except ValueError:
                 pass
 
-    text = (
-        "🌟 <b>Преимущества подписки Tennis-Play PRO:</b>\n\n"
-        "• Внесение результатов матча\n"
-        "• Просмотр анкет всех игроков\n"
-        "• Просмотр история игр игроков\n"
-        "• Безлимитные заявки на игры\n\n"
-        f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n\n"
-        "Также вы можете получить подписку бесплатно, пригласив 5 друзей.\n"
-        "Ваша персональная ссылка для приглашений доступна в разделе «🔗 Пригласить друга».\n\n"
-        "💡 <i>Для оформления чека потребуется ваш email</i>"
-    )
+    language = await get_user_language_async(str(user_id))
+    text = t("payments.subscription_benefits", language, price=SUBSCRIPTION_PRICE)
     
     builder = InlineKeyboardBuilder()
     builder.add(types.InlineKeyboardButton(
@@ -275,9 +267,9 @@ async def start_payment_process(callback: types.CallbackQuery, state: FSMContext
             try:
                 until_date = datetime.strptime(subscription_until, '%Y-%m-%d')
                 if until_date > datetime.now():
+                    language = await get_user_language_async(str(user_id))
                     await callback.message.answer(
-                        f"❌ У вас уже есть активная подписка до {subscription_until}\n\n"
-                        "Невозможно купить подписку повторно, пока текущая активна.",
+                        t("payments.subscription_active", language, date=subscription_until),
                         parse_mode="HTML"
                     )
                     await callback.answer()
@@ -286,9 +278,9 @@ async def start_payment_process(callback: types.CallbackQuery, state: FSMContext
                 pass
 
     # Запрашиваем email для чека
+    language = await get_user_language_async(str(user_id))
     await callback.message.answer(
-        "📧 Для оформления электронного чека укажите ваш email:\n\n"
-        "<i>На этот email будет отправлен чек об оплате</i>",
+        t("payments.enter_email", language),
         parse_mode="HTML"
     )
     
@@ -300,10 +292,10 @@ async def process_email_input(message: types.Message, state: FSMContext):
     email = message.text.strip()
     
     # Простая валидация email
+    language = await get_user_language_async(str(message.chat.id))
     if '@' not in email or '.' not in email:
         await message.answer(
-            "❌ Неверный формат email. Пожалуйста, введите корректный email:\n\n"
-            "Пример: example@mail.ru"
+            t("payments.invalid_email", language)
         )
         return
     
@@ -333,19 +325,18 @@ async def process_email_input(message: types.Message, state: FSMContext):
             callback_data="confirm_payment"
         ))
         
+        language = await get_user_language_async(str(message.chat.id))
         await message.answer(
-            f"💳 Для оплаты перейдите по ссылке:\n{payment_link}\n\n"
-            "После успешной оплаты нажмите 'Подтвердить оплату'\n\n"
-            f"📧 Чек будет отправлен на: {email}",
+            t("payments.payment_link", language, link=payment_link, email=email),
             reply_markup=builder.as_markup()
         )
         
         await state.set_state(PaymentStates.CONFIRM_PAYMENT)
         
     except Exception as e:
+        language = await get_user_language_async(str(message.chat.id))
         await message.answer(
-            f"❌ Ошибка при создании платежа: {str(e)}\n\n"
-            "Пожалуйста, попробуйте позже или обратитесь в поддержку."
+            t("payments.payment_created_error", language, error=str(e))
         )
         await state.clear()
 
@@ -375,10 +366,12 @@ async def confirm_payment(callback: types.CallbackQuery, state: FSMContext):
                     try:
                         until_date = datetime.strptime(subscription_until, '%Y-%m-%d')
                         if until_date > datetime.now():
+                            language = await get_user_language_async(str(user_id))
+                            profile = await storage.get_user(user_id) or {}
+                            sport = profile.get("sport", "🎾Большой теннис")
                             await callback.message.answer(
-                                f"❌ У вас уже есть активная подписка до {subscription_until}\n\n"
-                                "Деньги будут возвращены в течение 3-5 рабочих дней.",
-                                reply_markup=base_keyboard
+                                t("payments.subscription_active_refund", language, date=subscription_until),
+                                reply_markup=get_base_keyboard(sport, language=language)
                             )
                             await state.clear()
                             await callback.answer()
@@ -387,11 +380,12 @@ async def confirm_payment(callback: types.CallbackQuery, state: FSMContext):
                         pass
             
             # Активируем подписку
+            language = await get_user_language_async(str(user_id))
+            profile = await storage.get_user(user_id) or {}
+            sport = profile.get("sport", "🎾Большой теннис")
             await callback.message.answer(
-                f"🎉 Поздравляем! Подписка успешно активирована.\n\n"
-                f"Доступ к PRO-функциям открыт на 30 дней.\n"
-                f"📧 Чек отправлен на: {user_email}",
-                reply_markup=base_keyboard
+                t("payments.payment_success", language, email=user_email),
+                reply_markup=get_base_keyboard(sport, language=language)
             )
             
             # Сохраняем информацию о подписке в базе данных
@@ -416,18 +410,23 @@ async def confirm_payment(callback: types.CallbackQuery, state: FSMContext):
                 user_email=user_email,
                 payment_amount=SUBSCRIPTION_PRICE
             )
+
         else:
+            language = await get_user_language_async(str(callback.message.chat.id))
+            profile = await storage.get_user(callback.message.chat.id) or {}
+            sport = profile.get("sport", "🎾Большой теннис")
             await callback.message.answer(
-                "❌ Оплата не завершена или еще обрабатывается.\n\n"
-                "Пожалуйста, подождите несколько минут и попробуйте снова.",
-                reply_markup=base_keyboard
+                t("payments.payment_not_completed", language),
+                reply_markup=get_base_keyboard(sport, language=language)
             )
         
     except Exception as e:
+        language = await get_user_language_async(str(callback.message.chat.id))
+        profile = await storage.get_user(callback.message.chat.id) or {}
+        sport = profile.get("sport", "🎾Большой теннис")
         await callback.message.answer(
-            f"❌ Ошибка при проверке платежа: {str(e)}\n\n"
-            "Пожалуйста, попробуйте позже или обратитесь в поддержку.",
-            reply_markup=base_keyboard
+            t("payments.payment_check_error", language, error=str(e)),
+            reply_markup=get_base_keyboard(sport, language=language)
         )
     
     await state.clear()
@@ -436,9 +435,11 @@ async def confirm_payment(callback: types.CallbackQuery, state: FSMContext):
 # Обработка отмены ввода email
 @router.message(PaymentStates.WAITING_EMAIL, F.text == "/cancel")
 async def cancel_email_input(message: types.Message, state: FSMContext):
+    language = await get_user_language_async(str(message.chat.id))
+    profile = await storage.get_user(message.chat.id) or {}
+    sport = profile.get("sport", "🎾Большой теннис")
     await message.answer(
-        "❌ Ввод email отменен.\n\n"
-        "Вы можете вернуться к оплате позже.",
-        reply_markup=base_keyboard
+        t("payments.email_cancelled", language),
+        reply_markup=get_base_keyboard(sport, language=language)
     )
     await state.clear()

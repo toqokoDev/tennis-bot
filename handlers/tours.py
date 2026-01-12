@@ -15,36 +15,39 @@ from services.channels import send_tour_to_channel
 from utils.utils import create_user_profile_link, format_tour_date, remove_country_flag
 from utils.validate import validate_future_date, validate_date, validate_date_range
 from services.storage import storage
+from utils.translations import get_user_language_async, t
 
 router = Router()
 
-@router.message(F.text == "✈️ Туры")
+@router.message(F.text.in_([t("menu.tours", "ru"), t("menu.tours", "en")]))
 async def browse_tours_start(message: types.Message, state: FSMContext):
     """Начало просмотра туров - выбор спорта"""
     builder = InlineKeyboardBuilder()
 
+    language = await get_user_language_async(str(message.chat.id))
+    
     builder.row(InlineKeyboardButton(
-        text="Предложить тур",
+        text=t("tours.offer_tour", language),
         callback_data="create_tour_from_menu"
     ))
     
     builder.row(InlineKeyboardButton(
-        text="🎾 Любой вид спорта",
+        text=t("tours.any_sport", language),
         callback_data="toursport_any"
     ))
     
-    sport_keyboard = create_sport_keyboard(pref="toursport_")
+    sport_keyboard = create_sport_keyboard(pref="toursport_", language=language)
     for row in sport_keyboard.inline_keyboard:
         builder.row(*row)
 
     try:
         await message.edit_text(
-            "🎯 Выберите вид спорта для поиска туров:",
+            t("tours.select_sport", language),
             reply_markup=builder.as_markup()
         )
     except:
         await message.answer(
-            "🎯 Выберите вид спорта для поиска туров:",
+            t("tours.select_sport", language),
             reply_markup=builder.as_markup()
         )
     await state.set_state(BrowseToursStates.SELECT_SPORT)
@@ -55,28 +58,30 @@ async def browse_tours_start_callback(callback: types.CallbackQuery, state: FSMC
     """Начало просмотра туров - выбор спорта"""
     builder = InlineKeyboardBuilder()
 
+    language = await get_user_language_async(str(callback.message.chat.id))
+    
     builder.row(InlineKeyboardButton(
-        text="Предложить тур",
+        text=t("tours.offer_tour", language),
         callback_data="create_tour_from_menu"
     ))
 
     builder.row(InlineKeyboardButton(
-        text="Любой вид спорта",
+        text=t("tours.any_sport_short", language),
         callback_data="toursport_any"
     ))
     
-    sport_keyboard = create_sport_keyboard(pref="toursport_")
+    sport_keyboard = create_sport_keyboard(pref="toursport_", language=language)
     for row in sport_keyboard.inline_keyboard:
         builder.row(*row)
 
     try:
         await callback.message.edit_text(
-            "🎯 Выберите вид спорта для поиска туров:",
+            t("tours.select_sport", language),
             reply_markup=builder.as_markup()
         )
     except:
         await callback.message.answer(
-            "🎯 Выберите вид спорта для поиска туров:",
+            t("tours.select_sport", language),
             reply_markup=builder.as_markup()
         )
     await state.set_state(BrowseToursStates.SELECT_SPORT)
