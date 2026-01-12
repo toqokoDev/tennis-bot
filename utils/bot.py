@@ -211,10 +211,22 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
         my_offers_text = texts.get("my_offers_button", "")
         offer_text = texts.get("offer_button", "")
         
-        # Если тексты пустые или None, используем значения по умолчанию
-        if not my_offers_text or my_offers_text.strip() == "":
+        # Если тексты пустые, None, или это ключ перевода (содержит точки и начинается с "game_offers"), используем значения по умолчанию
+        # Ключ перевода обычно содержит точки и не содержит эмодзи в начале
+        def is_translation_key(text):
+            if not text or not isinstance(text, str):
+                return False
+            # Если текст содержит точки и начинается с известных префиксов ключей - это ключ
+            if "." in text and (text.startswith("game_offers.") or text.startswith("profile.") or text.startswith("config.")):
+                return True
+            # Если текст не содержит эмодзи и содержит только латиницу/кириллицу с точками - возможно ключ
+            if "." in text and len(text) > 20 and not any(ord(c) > 127 for c in text[:5]):
+                return True
+            return False
+        
+        if not my_offers_text or my_offers_text.strip() == "" or is_translation_key(my_offers_text):
             my_offers_text = "📋 Мои предложения" if language == "ru" else "📋 My offers"
-        if not offer_text or offer_text.strip() == "":
+        if not offer_text or offer_text.strip() == "" or is_translation_key(offer_text):
             offer_text = "🎾 Предложить игру" if language == "ru" else "🎾 Offer game"
         
         # Добавляем кнопки в зависимости от вида спорта
