@@ -176,6 +176,8 @@
     "profile_info": "👤 <b>Профиль</b>\n\n",
     "edit_profile": "✏️ Редактировать профиль",
     "view": {
+      "name": "👤 {first_name} {last_name}",
+      "name_with_username": "👤 {first_name} {last_name} (@{username})",
       "contact": "Связаться",
       "age": "🎂 Возраст: {age} лет",
       "role": "\n🔎 Роль: {role}",

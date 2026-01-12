@@ -49,9 +49,11 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
 
     # Если есть username — добавляем в скобках
     if username:
-        caption_lines.append(f"\n<b>👤 {first_name} {last_name}</b> (@{username})")
+        name_text = t("profile.view.name_with_username", language, first_name=first_name, last_name=last_name, username=username)
+        caption_lines.append(f"\n<b>{name_text}</b>")
     else:
-        caption_lines.append(f"\n<b>👤 {first_name} {last_name}</b> {network_link}")
+        name_text = t("profile.view.name", language, first_name=first_name, last_name=last_name)
+        caption_lines.append(f"\n<b>{name_text}</b> {network_link}")
     
     if profile.get('birth_date'):
         age = await calculate_age(profile['birth_date'])
@@ -211,15 +213,21 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
             if config.get("has_vacation", True):
                 keyboard_buttons.append([InlineKeyboardButton(text=t("profile.view.buttons.find_vacation_partner", language), callback_data="createTour")])
             
+            # Получаем тексты кнопок с проверкой
+            my_offers_text = texts.get("my_offers_button") or "📋 Мои предложения"
+            offer_text = texts.get("offer_button") or "🎾 Предложить игру"
+            
             keyboard_buttons.extend([
-                [InlineKeyboardButton(text=texts["my_offers_button"], callback_data="my_offers")],
-                [InlineKeyboardButton(text=texts["offer_button"], callback_data="new_offer")],
+                [InlineKeyboardButton(text=my_offers_text, callback_data="my_offers")],
+                [InlineKeyboardButton(text=offer_text, callback_data="new_offer")],
                 [InlineKeyboardButton(text=t("profile.view.buttons.my_game_history", language), callback_data=f"game_history:{message.chat.id}")]
             ])
         else:
             # Для неспортивных видов
-            keyboard_buttons.append([InlineKeyboardButton(text=texts["my_offers_button"], callback_data="my_offers")])
-            keyboard_buttons.append([InlineKeyboardButton(text=texts["offer_button"], callback_data="new_offer")])
+            my_offers_text = texts.get("my_offers_button") or "📋 Мои предложения"
+            offer_text = texts.get("offer_button") or "🎾 Предложить игру"
+            keyboard_buttons.append([InlineKeyboardButton(text=my_offers_text, callback_data="my_offers")])
+            keyboard_buttons.append([InlineKeyboardButton(text=offer_text, callback_data="new_offer")])
         
         keyboard_buttons.append([InlineKeyboardButton(text=t("profile.view.buttons.delete_profile", language), callback_data="1delete_profile")])
         keyboard_buttons.append([InlineKeyboardButton(text=t("profile.view.buttons.main_menu", language), callback_data="main_menu")])

@@ -124,6 +124,8 @@
     "profile_info": "👤 <b>Profile</b>\n\n",
     "edit_profile": "✏️ Edit profile",
     "view": {
+      "name": "👤 {first_name} {last_name}",
+      "name_with_username": "👤 {first_name} {last_name} (@{username})",
       "contact": "Contact",
       "age": "🎂 Age: {age}",
       "role": "\n🔎 Role: {role}",
