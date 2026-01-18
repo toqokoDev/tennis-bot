@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from utils.translations import t
+from utils.translations import t, load_translations
 
 def get_tennis_levels(language: str = "ru") -> dict:
     """Возвращает уровни тенниса с переведенными описаниями"""
@@ -19,10 +19,16 @@ def get_tennis_levels(language: str = "ru") -> dict:
         "6.5": {"points": 2600},
         "7.0": {"points": 2800}
     }
+    # Получаем переводы напрямую из словаря, чтобы избежать проблем с ключами типа "1.0"
+    translations = load_translations(language)
+    tennis_levels_dict = translations.get("config", {}).get("tennis_levels", {})
+    
     result = {}
     for level, data in base_levels.items():
+        # Берем перевод из словаря напрямую по ключу "1.0", "1.5" и т.д.
+        desc = tennis_levels_dict.get(level, f"config.tennis_levels.{level}")
         result[level] = {
-            "desc": t(f"config.tennis_levels.{level}", language),
+            "desc": desc,
             "points": data["points"]
         }
     return result
@@ -61,10 +67,16 @@ def get_table_tennis_levels(language: str = "ru") -> dict:
         "6.5": {"points": 2600},
         "7.0": {"points": 2800}
     }
+    # Получаем переводы напрямую из словаря, чтобы избежать проблем с ключами типа "1.0"
+    translations = load_translations(language)
+    table_tennis_levels_dict = translations.get("config", {}).get("table_tennis_levels", {})
+    
     result = {}
     for level, data in base_levels.items():
+        # Берем перевод из словаря напрямую по ключу "1.0", "1.5" и т.д.
+        desc = table_tennis_levels_dict.get(level, f"config.table_tennis_levels.{level}")
         result[level] = {
-            "desc": t(f"config.table_tennis_levels.{level}", language),
+            "desc": desc,
             "points": data["points"]
         }
     return result

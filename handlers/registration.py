@@ -18,6 +18,7 @@ from config.profile import (
     create_sport_keyboard,
     moscow_districts,
     player_levels,
+    table_tennis_levels,
     base_keyboard,
     cities_data,
     sport_type,
@@ -41,7 +42,7 @@ from utils.admin import is_user_banned
 from utils.media import download_photo_to_path
 from utils.bot import show_current_data, show_profile
 from utils.validate import validate_date, validate_date_range, validate_future_date, validate_price
-from utils.utils import calculate_age, remove_country_flag
+from utils.utils import calculate_age, remove_country_flag, escape_markdown
 from services.storage import storage
 from services.web_api import web_api_client
 from services.channels import send_tournament_application_to_channel
@@ -1065,14 +1066,17 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
     
     # Формируем текст с описанием текущих уровней
     sport_name = sport.replace("🎾", "").replace("🏓", "").replace("🏸", "").replace("🏖️", "").replace("🥎", "").replace("🏆", "")
-    levels_text = f"🏆 *Система уровней {sport_name.lower()}:*\n\n"
+    sport_name_escaped = escape_markdown(sport_name.lower())
+    levels_text = f"🏆 *Система уровней {sport_name_escaped}:*\n\n"
     
     for level in current_levels:
         description = levels_dict[level]["desc"]
-        levels_text += f"*{level}* - {description}\n\n"
+        level_escaped = escape_markdown(level)
+        description_escaped = escape_markdown(description)
+        levels_text += f"*{level_escaped}* - {description_escaped}\n\n"
     
     language = user_data.get("language", "ru")
-    levels_text += t("common.page", language, current=page + 1, total=total_pages) + "\n\n👇 *" + t("registration.select_level", language) + "*"
+    levels_text += t("common.page", language, page=page + 1, total=total_pages) + "\n\n👇 *" + t("registration.select_level", language) + "*"
     
     # Создаем кнопки для уровней
     buttons = []
