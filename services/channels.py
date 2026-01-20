@@ -471,11 +471,12 @@ async def send_game_offer_to_channel(bot: Bot, game_data: Dict[str, Any], user_i
         profile_link = await create_user_profile_link(user_data, user_id, additional=False)
         language = "ru"  # Каналы используют русский язык по умолчанию
 
+        age = 0
         if user_data.get('birth_date'):
             age = await calculate_age(user_data['birth_date'])
 
         if age > 0:
-            profile_link += f"\n*{t('channels.age', language)} {age}"
+            profile_link += f"\n*{t('channels.age', language)} {age}*"
             
         sport = game_data.get('sport', user_data.get('sport', 'Не указан'))
         
