@@ -107,6 +107,30 @@ moscow_districts = [
     "ЦАО", "ЮАО", "ЮВАО", "ЮЗАО"
 ]
 
+def get_moscow_districts(language: str = "ru") -> list:
+    """Возвращает округа Москвы с учетом языка
+    
+    Args:
+        language: Язык для перевода ("ru", "en", "es")
+    
+    Returns:
+        list: Список округов Москвы на указанном языке
+    """
+    # Список ключей для переводов
+    district_keys = [
+        "vao", "zao", "zela", 
+        "sao", "svao", "szao", 
+        "cao", "yao", "yvao", "yzao"
+    ]
+    
+    # Получаем переводы для каждого округа
+    result = []
+    for key in district_keys:
+        district = t(f"config.moscow_districts.{key}", language)
+        result.append(district)
+    
+    return result
+
 # Функции для получения переведенных значений
 def get_game_types(language: str = "ru") -> list:
     """Возвращает типы игр с учетом языка"""
@@ -458,184 +482,188 @@ def create_sport_keyboard(pref: str = "partner_sport_", exclude_sports: list = N
 
 countries = ["🇷🇺 Россия"] + [country for country in cities_data.keys() if country != "🇷🇺 Россия"]
 
-# Конфигурация полей для каждого вида спорта
-SPORT_FIELD_CONFIG = {
-    # === СПОРТИВНЫЕ ВИДЫ С КОРТАМИ И ОПЛАТОЙ ===
-    "🎾Большой теннис": {
-        "category": "court_sport",
-        "has_level": True,
-        "level_type": "tennis",
-        "has_role": True,
-        "has_payment": True,
-        "has_vacation": True,
-        "has_about_me": True,
-        "about_me_text": "💬 О себе:",
-        "comment_text": "• Комментарий:",
-        "level_text": "Уровень игры от 1.0 до 7.0"
-    },
-    "🏓Настольный теннис": {
-        "category": "court_sport",
-        "has_level": True,
-        "level_type": "table_tennis_rating",
-        "has_role": True,
-        "has_payment": True,
-        "has_vacation": True,
-        "has_about_me": True,
-        "about_me_text": "💬 О себе: Укажите сколько лет вы уже играете и как часто в среднем в неделю.",
-        "comment_text": "• Комментарий:",
-        "level_text": "Укажите ваш рейтинг (цифры):"
-    },
-    "🏸Бадминтон": {
-        "category": "court_sport",
-        "has_level": True,
-        "level_type": "tennis",
-        "has_role": True,
-        "has_payment": True,
-        "has_vacation": True,
-        "has_about_me": True,
-        "about_me_text": "💬 О себе: Укажите сколько лет вы уже играете и как часто в среднем в неделю.",
-        "comment_text": "• Комментарий:",
-        "level_text": "Уровень игры от 1.0 до 7.0"
-    },
-    "🏖️Пляжный теннис": {
-        "category": "court_sport",
-        "has_level": True,
-        "level_type": "tennis",
-        "has_role": True,
-        "has_payment": True,
-        "has_vacation": True,
-        "has_about_me": True,
-        "about_me_text": "💬 О себе: Укажите сколько лет вы уже играете и как часто в среднем в неделю.",
-        "comment_text": "• Комментарий:",
-        "level_text": "Уровень игры от 1.0 до 7.0"
-    },
-    "🎾Падл-теннис": {
-        "category": "court_sport",
-        "has_level": True,
-        "level_type": "tennis",
-        "has_role": True,
-        "has_payment": True,
-        "has_vacation": True,
-        "has_about_me": True,
-        "about_me_text": "💬 О себе: Укажите сколько лет вы уже играете и как часто в среднем в неделю.",
-        "comment_text": "• Комментарий:",
-        "level_text": "Уровень игры от 1.0 до 7.0"
-    },
-    "🥎Сквош": {
-        "category": "court_sport",
-        "has_level": True,
-        "level_type": "tennis",
-        "has_role": True,
-        "has_payment": True,
-        "has_vacation": True,
-        "has_about_me": True,
-        "about_me_text": "💬 О себе: Укажите сколько лет вы уже играете и как часто в среднем в неделю.",
-        "comment_text": "• Комментарий:",
-        "level_text": "Уровень игры от 1.0 до 7.0"
-    },
-    "🏆Пиклбол": {
-        "category": "court_sport",
-        "has_level": True,
-        "level_type": "tennis",
-        "has_role": True,
-        "has_payment": True,
-        "has_vacation": True,
-        "has_about_me": True,
-        "about_me_text": "💬 О себе: Укажите сколько лет вы уже играете и как часто в среднем в неделю.",
-        "comment_text": "• Комментарий:",
-        "level_text": "Уровень игры от 1.0 до 7.0"
-    },
-    
-    # === АКТИВНЫЕ ВИДЫ СПОРТА БЕЗ КОРТОВ ===
-    "⛳Гольф": {
-        "category": "outdoor_sport",
-        "has_level": False,
-        "has_role": False,
-        "has_payment": False,
-        "has_vacation": False,
-        "has_about_me": True,
-        "about_me_text": "💬 О себе: Укажите сколько лет вы уже играете в гольф и как часто в среднем в неделю.",
-        "comment_text": "• Комментарий:",
-        "level_text": None
-    },
-    "🏃‍♂️‍➡️Бег": {
-        "category": "outdoor_sport",
-        "has_level": False,
-        "has_role": False,
-        "has_payment": False,
-        "has_vacation": False,
-        "has_about_me": True,
-        "about_me_text": "💬 О себе: Укажите сколько лет вы уже занимаетесь бегом и как часто в среднем в неделю.",
-        "comment_text": "• Комментарий:",
-        "level_text": None
-    },
-    "🏋️‍♀️Фитнес": {
-        "category": "outdoor_sport",
-        "has_level": False,
-        "has_role": False,
-        "has_payment": False,
-        "has_vacation": False,
-        "has_about_me": True,
-        "about_me_text": "💬 О себе: Укажите сколько лет вы уже занимаетесь фитнесом и как часто в среднем в неделю.",
-        "comment_text": "• Комментарий:",
-        "level_text": None
-    },
-    "🚴Вело": {
-        "category": "outdoor_sport",
-        "has_level": False,
-        "has_role": False,
-        "has_payment": False,
-        "has_vacation": False,
-        "has_about_me": True,
-        "about_me_text": "💬 О себе: Укажите сколько лет вы уже занимаетесь велоспортом или просто катаетесь на велосипеде и как часто в среднем в неделю.",
-        "comment_text": "• Комментарий:",
-        "level_text": None
-    },
-    
-    # === ВСТРЕЧИ И ОБЩЕНИЕ ===
-    "☕️Бизнес-завтрак": {
-        "category": "meeting",
-        "has_level": False,
-        "has_role": False,
-        "has_payment": False,
-        "has_vacation": False,
-        "has_about_me": False,
-        "about_me_text": None,
-        "comment_text": "• Комментарий: Укажите какие проекты вам интересны для обсуждения или коротко опишите ваше предложение по бизнесу, которое вы хотите обсудить во время бизнес-завтрака.",
-        "level_text": None,
-        "has_meeting_time": True,
-        "meeting_time_text": "Напишите место, конкретный день и время или дни недели и временные промежутки, когда вам удобно встретиться."
-    },
-    "🍻По пиву": {
-        "category": "meeting",
-        "has_level": False,
-        "has_role": False,
-        "has_payment": False,
-        "has_vacation": False,
-        "has_about_me": False,
-        "about_me_text": None,
-        "comment_text": "• Комментарий: Укажите что бы вы хотели посмотреть или обсудить за пивом, возможно какое-то событие в мире спорта.",
-        "level_text": None,
-        "has_meeting_time": True,
-        "meeting_time_text": "Напишите место, конкретный день и время или дни недели и временные промежутки, когда вам удобно встретиться."
-    },
-    
-    # === ЗНАКОМСТВА ===
-    "🍒Знакомства": {
-        "category": "dating",
-        "has_level": False,
-        "has_role": False,
-        "has_payment": False,
-        "has_vacation": False,
-        "has_about_me": True,
-        "about_me_text": "💬 О себе:",
-        "comment_text": "• Комментарий:",
-        "level_text": None,
-        "has_dating_goals": True,
-        "has_interests": True,
-        "has_additional_fields": True
+def get_sport_field_config(language: str = "ru") -> dict:
+    """Возвращает конфигурацию полей для каждого вида спорта с учетом языка"""
+    return {
+        # === СПОРТИВНЫЕ ВИДЫ С КОРТАМИ И ОПЛАТОЙ ===
+        "🎾Большой теннис": {
+            "category": "court_sport",
+            "has_level": True,
+            "level_type": "tennis",
+            "has_role": True,
+            "has_payment": True,
+            "has_vacation": True,
+            "has_about_me": True,
+            "about_me_text": t("config.sport_fields.tennis.about_me", language),
+            "comment_text": t("config.sport_fields.common.comment", language),
+            "level_text": t("config.sport_fields.tennis.level", language)
+        },
+        "🏓Настольный теннис": {
+            "category": "court_sport",
+            "has_level": True,
+            "level_type": "table_tennis_rating",
+            "has_role": True,
+            "has_payment": True,
+            "has_vacation": True,
+            "has_about_me": True,
+            "about_me_text": t("config.sport_fields.table_tennis.about_me", language),
+            "comment_text": t("config.sport_fields.common.comment", language),
+            "level_text": t("config.sport_fields.table_tennis.level", language)
+        },
+        "🏸Бадминтон": {
+            "category": "court_sport",
+            "has_level": True,
+            "level_type": "tennis",
+            "has_role": True,
+            "has_payment": True,
+            "has_vacation": True,
+            "has_about_me": True,
+            "about_me_text": t("config.sport_fields.badminton.about_me", language),
+            "comment_text": t("config.sport_fields.common.comment", language),
+            "level_text": t("config.sport_fields.badminton.level", language)
+        },
+        "🏖️Пляжный теннис": {
+            "category": "court_sport",
+            "has_level": True,
+            "level_type": "tennis",
+            "has_role": True,
+            "has_payment": True,
+            "has_vacation": True,
+            "has_about_me": True,
+            "about_me_text": t("config.sport_fields.beach_tennis.about_me", language),
+            "comment_text": t("config.sport_fields.common.comment", language),
+            "level_text": t("config.sport_fields.beach_tennis.level", language)
+        },
+        "🎾Падл-теннис": {
+            "category": "court_sport",
+            "has_level": True,
+            "level_type": "tennis",
+            "has_role": True,
+            "has_payment": True,
+            "has_vacation": True,
+            "has_about_me": True,
+            "about_me_text": t("config.sport_fields.padel.about_me", language),
+            "comment_text": t("config.sport_fields.common.comment", language),
+            "level_text": t("config.sport_fields.padel.level", language)
+        },
+        "🥎Сквош": {
+            "category": "court_sport",
+            "has_level": True,
+            "level_type": "tennis",
+            "has_role": True,
+            "has_payment": True,
+            "has_vacation": True,
+            "has_about_me": True,
+            "about_me_text": t("config.sport_fields.squash.about_me", language),
+            "comment_text": t("config.sport_fields.common.comment", language),
+            "level_text": t("config.sport_fields.squash.level", language)
+        },
+        "🏆Пиклбол": {
+            "category": "court_sport",
+            "has_level": True,
+            "level_type": "tennis",
+            "has_role": True,
+            "has_payment": True,
+            "has_vacation": True,
+            "has_about_me": True,
+            "about_me_text": t("config.sport_fields.pickleball.about_me", language),
+            "comment_text": t("config.sport_fields.common.comment", language),
+            "level_text": t("config.sport_fields.pickleball.level", language)
+        },
+        
+        # === АКТИВНЫЕ ВИДЫ СПОРТА БЕЗ КОРТОВ ===
+        "⛳Гольф": {
+            "category": "outdoor_sport",
+            "has_level": False,
+            "has_role": False,
+            "has_payment": False,
+            "has_vacation": False,
+            "has_about_me": True,
+            "about_me_text": t("config.sport_fields.golf.about_me", language),
+            "comment_text": t("config.sport_fields.common.comment", language),
+            "level_text": None
+        },
+        "🏃‍♂️‍➡️Бег": {
+            "category": "outdoor_sport",
+            "has_level": False,
+            "has_role": False,
+            "has_payment": False,
+            "has_vacation": False,
+            "has_about_me": True,
+            "about_me_text": t("config.sport_fields.running.about_me", language),
+            "comment_text": t("config.sport_fields.common.comment", language),
+            "level_text": None
+        },
+        "🏋️‍♀️Фитнес": {
+            "category": "outdoor_sport",
+            "has_level": False,
+            "has_role": False,
+            "has_payment": False,
+            "has_vacation": False,
+            "has_about_me": True,
+            "about_me_text": t("config.sport_fields.fitness.about_me", language),
+            "comment_text": t("config.sport_fields.common.comment", language),
+            "level_text": None
+        },
+        "🚴Вело": {
+            "category": "outdoor_sport",
+            "has_level": False,
+            "has_role": False,
+            "has_payment": False,
+            "has_vacation": False,
+            "has_about_me": True,
+            "about_me_text": t("config.sport_fields.cycling.about_me", language),
+            "comment_text": t("config.sport_fields.common.comment", language),
+            "level_text": None
+        },
+        
+        # === ВСТРЕЧИ И ОБЩЕНИЕ ===
+        "☕️Бизнес-завтрак": {
+            "category": "meeting",
+            "has_level": False,
+            "has_role": False,
+            "has_payment": False,
+            "has_vacation": False,
+            "has_about_me": False,
+            "about_me_text": None,
+            "comment_text": t("config.sport_fields.business_breakfast.comment", language),
+            "level_text": None,
+            "has_meeting_time": True,
+            "meeting_time_text": t("config.sport_fields.business_breakfast.meeting_time", language)
+        },
+        "🍻По пиву": {
+            "category": "meeting",
+            "has_level": False,
+            "has_role": False,
+            "has_payment": False,
+            "has_vacation": False,
+            "has_about_me": False,
+            "about_me_text": None,
+            "comment_text": t("config.sport_fields.beer.comment", language),
+            "level_text": None,
+            "has_meeting_time": True,
+            "meeting_time_text": t("config.sport_fields.beer.meeting_time", language)
+        },
+        
+        # === ЗНАКОМСТВА ===
+        "🍒Знакомства": {
+            "category": "dating",
+            "has_level": False,
+            "has_role": False,
+            "has_payment": False,
+            "has_vacation": False,
+            "has_about_me": True,
+            "about_me_text": t("config.sport_fields.dating.about_me", language),
+            "comment_text": t("config.sport_fields.dating.comment", language),
+            "level_text": None,
+            "has_dating_goals": True,
+            "has_interests": True,
+            "has_additional_fields": True
+        }
     }
-}
+
+# Для обратной совместимости (русская версия по умолчанию)
+SPORT_FIELD_CONFIG = get_sport_field_config(language="ru")
 
 def get_dating_goals(language: str = "ru") -> list:
     """Возвращает цели знакомств с учетом языка"""
@@ -699,13 +727,14 @@ DATING_ADDITIONAL_FIELDS = [
     "Вредные привычки: Отношение к курению, алкоголю"
 ]
 
-def get_sport_config(sport: str) -> dict:
-    """Получает конфигурацию полей для выбранного вида спорта"""
-    return SPORT_FIELD_CONFIG.get(sport, SPORT_FIELD_CONFIG["🎾Большой теннис"])
+def get_sport_config(sport: str, language: str = "ru") -> dict:
+    """Получает конфигурацию полей для выбранного вида спорта с учетом языка"""
+    config = get_sport_field_config(language)
+    return config.get(sport, config["🎾Большой теннис"])
 
 def get_sport_texts(sport: str, language: str = "ru") -> dict:
     """Получает тексты для выбранного вида спорта (переведенные)"""
-    config = get_sport_config(sport)
+    config = get_sport_config(sport, language)
     category = config.get("category", "court_sport")
     
     if category == "dating":

@@ -18,7 +18,8 @@
     "select_role": "🎭 Select role:",
     "enter_trainer_price": "💵 Enter training cost (in rubles, numbers only):",
     "invalid_price": "❌ Please enter a valid training cost (numbers only, greater than 0):",
-    "select_level": "🏆 Select your level:",
+    "select_level": "Select your level:",
+    "level_system": "Level system:",
     "enter_table_tennis_rating": "🏓 Enter your table tennis rating (numbers):",
     "select_gender": "👫 Specify gender:",
     "enter_profile_comment": "📝 About yourself (or /skip to skip):",
@@ -56,6 +57,7 @@
     "offer_game_button": "🎾 Offer game",
     "create_tour_button": "✈️ Create tour",
     "main_menu_button": "🏠 Main menu",
+    "main_menu_text": "🏠 Main menu",
     "vacation_question": "✈️ Are you planning a trip to play tennis?",
     "select_vacation_country": "🌍 Select vacation country:",
     "enter_vacation_country": "🌍 Enter vacation country name:",
@@ -85,24 +87,58 @@
     "subscription_expires_tomorrow": "🔔 Your Tennis-Play PRO subscription expires tomorrow ({date})!\n\nRenew your subscription now to maintain access to all features."
   },
   "game_offers": {
+    "select_sport": "🎾 Choose sport type for the game:",
+    "select_country": "🌍 Choose country for {sport}:",
+    "select_city": "🏙 Choose city in {country}:",
+    "enter_country": "🌎 Enter country name:",
+    "enter_city": "🏙 Enter city name:",
+    "select_district": "🏘️ *Choose district in Moscow:*",
+    "select_date": "📅 Choose date:",
+    "enter_date_manual": "📝 Enter date manually",
+    "enter_date_prompt": "📅 Enter date in format DD.MM.YYYY (e.g., 25.12.2025):",
+    "invalid_date": "❌ Invalid date format. Use DD.MM.YYYY",
+    "invalid_date_format": "❌ Date cannot be in the past",
+    "select_time": "⏰ Choose time:",
+    "select_game_type": "🎾 Choose game type:",
+    "select_payment_type": "💳 Choose payment type:",
+    "select_competitive": "🏆 Competitive game?",
+    "yes": "✅ Yes",
+    "no": "❌ No",
+    "competitive_yes": "🏆 Competitive",
+    "competitive_no": "🎾 Non-competitive",
+    "select_dating_goal": "💕 What is your goal?",
+    "select_dating_interests": "🎯 Choose your interests (multiple choice):",
+    "next": "Next",
+    "enter_dating_additional": "📝 Tell about yourself (e.g., work, education, height, zodiac sign, attitude to bad habits):",
+    "enter_game_comment": "💬 Enter game comment (optional):",
+    "enter_meeting_comment": "💬 Enter meeting comment (optional):",
+    "enter_beer_comment": "💬 Enter comment for beer meeting (optional):",
+    "enter_dating_comment": "💬 Enter comment for dating (optional):",
+    "enter_outdoor_comment": "💬 About yourself:",
     "profile_not_found": "❌ Profile not found",
-    "no_offers": "❌ No active offers",
-    "no_offers_to_delete": "❌ No active offers to delete",
+    "no_offers": "❌ You have no active offers",
+    "no_offers_to_delete": "❌ No offers to delete",
     "user_not_found": "❌ User not found",
     "offer_not_found": "❌ Offer not found",
-    "offer_deleted": "✅ Offer successfully deleted! You have no more active offers.",
-    "finish_registration": "❌ Finish registration first",
-    "not_registered": "❌ Please register first using /start",
-    "enter_country": "🌍 Enter country name:",
-    "enter_city": "🏙 Enter city name:",
-    "invalid_date": "❌ Invalid date format. Enter date in DD.MM.YYYY format (e.g., 25.12.2025):",
-    "invalid_date_format": "❌ Invalid date format. Enter a valid date:",
-    "invalid_time": "❌ Invalid time format",
-    "delete_confirm": "❓ Are you sure you want to delete offer #{game_id}?",
-    "enter_game_comment": "💬 Add a comment to the game (or enter /skip to skip):",
-    "enter_meeting_comment": "💬 Describe what projects you are interested in discussing or your business proposal:",
-    "enter_beer_comment": "💬 Describe what you would like to watch or discuss over beer, perhaps some sports event:",
-    "enter_dating_comment": "💬 Additional information (or enter /skip to skip):"
+    "offer_deleted": "✅ Offer successfully deleted",
+    "finish_registration": "❌ Complete profile registration",
+    "not_registered": "❌ You are not registered",
+    "offer_created": "Offer created",
+    "offer_prefix": "Offer",
+    "subscription_required": "🔒 Access closed",
+    "free_offers_limit": "You have used all free game offers (maximum 1).",
+    "subscription_info": "Game offer feature is available only for users with active Tennis-Play PRO subscription.",
+    "subscription_price": "Price: {price} rub/month",
+    "invite_friends": "You can also get subscription for free by inviting 5 friends.",
+    "invite_link": "Your personal invitation link",
+    "invite_stats": "Invitation statistics available in «🔗 Invite friend» section.",
+    "go_to_payments": "Go to '💳 Payments' section to subscribe.",
+    "unlimited_female": "💎 For female gender in 'Dating' and 'Beer' categories — unlimited offer creation!",
+    "remaining_offers": "📊 Free offers remaining: {remaining}/1",
+    "subscribe_for_unlimited": "💳 Subscribe for unlimited offer creation!",
+    "subscription_active": "💎 You have active subscription — create games without limits!",
+    "confirm_delete": "❓ Are you sure you want to delete offer #{game_id}?",
+    "choose_to_delete": "❌ Choose offer to delete:"
   },
   "payments": {
     "subscription_active": "✅ You already have an active subscription until {date}\n\nAll PRO features are already available!",
@@ -169,11 +205,13 @@
   "invite": {
     "referral_info": "👥 <b>Get a free 1-month subscription for every 5 friends!</b>\n\n📊 <b>Your statistics:</b>\n• Friends invited: <b>{referral_count}/5</b>\n\n🎁 <b>How it works:</b>\n• Invite 5 friends to the bot\n• Each friend must complete registration\n• Get a free 1-month subscription\n\n📎 <b>Your referral link:</b>\n<code>{referral_link}</code>\n\n📤 <b>How to share:</b>\n1. Copy the link above\n2. Send to friends\n3. Track progress in this section",
     "share_button": "📤 Share link",
+    "share_text": "Join the tennis and sports community!",
+    "successfully": "🎉 Congratulations! You've invited 5 friends and received a free 1-month subscription!",
     "back_button": "⬅️ Back"
   },
   "more": {
     "additional_options": "Additional options:",
-    "about": "Tennis-Play is a platform for organizing tennis tournaments and matches.\n\nWe offer:\n- Convenient tournament registration system\n- Rating system\n- Organizing matches with players of your level\n- Statistics and match history\n\nLearn more on our website: https://tennis-play.com/contacts/",
+    "about": "Tennis-Play is a platform for organizing tennis tournaments and matches.\n\nWe offer:\n- Convenient tournament registration system\n- Rating system\n- Organizing matches with players of your level\n- Statistics and match history\n\nLearn more on our website: https://tennis-tournaments.com/contacts/",
     "contacts": "For all questions about the bot and suggestions, write to:\n📧 info@tennis-play.com",
     "all_players_locked": "🔒 <b>Access closed</b>\n\nThe function of viewing all players is available only for users with an active Tennis-Play PRO subscription.\n\nPrice: <b>{price} rub./month</b>\nGo to the '💳 Payments' section to subscribe.\n\nYou can also get a subscription for free by inviting 5 friends.\n\nYour personal invitation link <code>{referral_link}</code>\n\nInvitation statistics are available in the «🔗 Invite Friend» section.\n\n",
     "select_language": "🌐 Select language / Выберите язык:",
@@ -193,7 +231,7 @@
       "go_to_site": "Go to website"
     }
   },
-  "more.search": {
+  "more_search": {
     "players_select_sport": "🏆 Choose a sport to search players:",
     "coaches_select_sport": "🏆 Choose a sport:",
     "any_price": "💵 Any price",
@@ -222,6 +260,10 @@
   },
   "search_partner": {
     "select_sport": "🎾 Choose a sport to search for a partner:",
+    "users_country_not_found": "❌ No countries with users",
+    "users_top_country": "🌍 Top countries with users:",
+    "users_city_not_found": "❌ No cities with users",
+    "users_top_city": "🌍 Top cities with users in {country}:",
     "select_country": "🌍 Choose a country to search for a partner:",
     "select_city": "🏙 Choose a city to search for a partner in {country}:",
     "select_district": "🏘️ Choose a district in {city}:",
@@ -237,7 +279,8 @@
     "back_to_cities": "⬅️ Back to cities",
     "back_to_gender": "⬅️ Back to gender",
     "back_to_sport": "⬅️ Back to sport",
-    "no_results": "😕 No suitable partners found in {city} ({country}){sport}{gender}{level}."
+    "no_results": "😕 No suitable partners found in {city} ({country}){sport}{gender}{level}.",
+    "found_players": "🔍 {count} partners found in {city} ({country}){sport}{gender}{level}:\n\nPage {page} of {total_pages}\n\nSelect a profile to view:"
   },
   "profile_edit": {
     "profile_not_found": "❌ Profile not found",
@@ -307,39 +350,72 @@
     "role_updated_trainer_need_price": "✅ Role updated!\n\n💰 Now enter your training price:"
   },
   "tours": {
+    "sport_dont_supports": "❌ Tours are not available for the sport {sport}.\n\nTours are only available for sports where you can find a partner for the duration of your vacation.\n\nSupported sports:\n🎾 Tennis\n🏓 Table Tennis\n🏸 Badminton\n🏖️ Beach Tennis\n🎾 Paddle Tennis\n🥎 Squash\n🏆 Pickleball",
     "select_sport": "🎯 Choose a sport to search for tours:",
+    "select_country": "🌍 Select a country to view tours:",
+    "not_found_tour": "There are no active tours for the selected sport",
+    "not_tour": "Tour not found",
     "offer_tour": "Offer tour",
+    "find_tours": "Tours of {sport_text} in",
     "any_sport": "🎾 Any sport",
-    "any_sport_short": "Any sport"
+    "any_sport_short": "Any sport",
+    "comment":"💬 Comment:",
+    "tour_successfully_created": "✅ Your tour has been successfully created! Other users will now be able to see it in their tour list.\n\n"
   },
   "game_offers_menu": {
-    "select_sport": "Choose a sport:",
-    "no_offers": "❌ There are currently no active game offers in {sport} from other users.",
-    "offer_game": "Offer game",
+    "select_sport": "🎯 Choose sport type:",
+    "no_offers": "❌ Currently there are no active game offers in {sport} from other users.",
+    "offer_game": "➕ Offer a game",
     "back_to_sport": "🔙 Back to sport selection",
-    "select_country": "🌍 Select a country to view offers for {sport}:",
-    "select_city": "🏙 Select a city in {country} for {sport}:",
+    "select_country": "🌍 Choose country to view {sport} offers:",
+    "select_city": "🏙 Choose city in {country} for {sport}:",
     "country_item": "{country} ({count} offers)",
     "city_item": "{city} ({count} offers)",
-    "no_offers_in_country": "❌ No active offers in {country} for {sport}.",
-    "back_to_country": "🔙 Back to country selection"
+    "no_offers_in_country": "❌ No active offers for {sport} in {country}.",
+    "back_to_country": "🔙 Back to country selection",
+    "back_to_city": "🔙 Back to city selection"
   },
   "enter_invoice": {
-    "select_game_type": "Select game type:",
-    "single_game": "🎯 Single game",
-    "double_game": "👥 Doubles game",
-    "tournament_game": "🏆 Tournament game",
+    "enter_invoice_locked": "🔒 <b>Access locked</b>\n\nThe invoice feature is only available to users with an active Tennis-Play PRO subscription.\n\nCost: <b>{price} rubles/month</b>\nGo to the '💳 Payments' section to subscribe.\n\nYou can also get a free subscription by inviting 5 friends.\n\nYour personal invitation link <code>{referral_link}</code>\n\nInvitation statistics are available in the «🔗 Invite a Friend» section.\n\n",
+    "game_history_locked": "🔒 <b>Access locked</b>\n\nThe game history feature is only available to users with an active Tennis-Play PRO subscription.\n\nCost: <b>{price} Rubles/month</b>Go to the '💳 Payments' section to subscribe. You can also get a free subscription by inviting 5 friends. Your personal referral link <code>{referral_link}</code> Invitation statistics are available in the «🔗 Invite a Friend» section.\n\n",
+    "user_game_not_found": "📊 Game history for user {first_name} {last_name}\n\nNo games played yet.",
+    "select_game_type": "Select a game type:",
+    "single_game": "🎯 Singles",
+    "double_game": "👥 Doubles",
+    "tournament_game": "🏆 Tournament",
+    "super_tie_button": "⚡ Super Tie",
+    "previous_set_button": "⬅️ Previous Set",
+    "next_set_button": "➡️ Next Set",
+    "complete_entry_button": "✅ Complete Score Entry",
+    "add_another_set_button": "✅ Yes, add another set",
+    "complete_input_button": "❌ No, complete entry",
     "back": "🔙 Back",
-    "search_opponent_prompt": "Opponent search\nType opponent first name or last name:",
-    "search_partner_prompt": "Your doubles partner\nType partner first name or last name:",
-    "select_tournament": "🏆 Select tournament to enter score:",
+    "confirm_button": "✅ Confirm",
+    "edit_score_button": "✏️ Edit Score",
+    "attach_media_to_result": "Would you like to attach a photo or video to the result?",
+    "search_opponent_prompt": "Search for Opponent\nEnter your opponent's first or last name:",
+    "search_partner_prompt": "Your Doubles Partner\nEnter your partner's first or last name:",
+    "select_tournament": "🏆 Select a tournament to enter your score:",
     "users_not_found": "No users found. Try again:",
-    "select_opponent": "Select opponent from the list:",
-    "select_partner": "Select partner from the list:",
+    "select_opponent": "Select an opponent from the list:",
+    "select_opponent2": "Select a second opponent from the list:",
+    "select_partner": "Select a partner from the list:",
     "user_not_found": "User not found",
-    "sport_mismatch": "❌ You can't play with players of another sport!\n\nYour sport: {current}\nPartner sport: {other}\n\nChoose a partner with the same sport.",
+    "score_not_entered": "Score not entered",
+    "search_opponent": "You have selected an opponent: {opponent_link}\n\nYour rating: {user_score}\n\nSelect the score of the first set:",
+    "tournament_match_message": "🏆 Tournament match 🏆 Tournament: {tournament_name} {winner_name_link}\n🆚\n👤 {loser_name_link}\n\n📊 Score: {score}\n\n📈 Rating change:\n{winner_rating_line}\n{loser_rating_line}",
+    "single_match_message": "🎯 Singles\n\n👤 {winner_link}\n🆚\n👤 {loser_link}\n\n📊 Score: {score}\n\n📈 Rating change:\n{winner_rating_line}\n{loser_rating_line}",
+    "doubles_match_message": "👥 Doubles\n\nPair 1:\n• {current_user_link}\n• {partner_link}\n\nPair 2:\n• {opponent1_link}\n• {opponent2_link}\n\n📊 Score: {score}\n\n📈 Rating change:\n",
+    "sport_mismatch": "❌ You cannot play with players of a different sport!\n\nYour sport: {current}\nPartner's sport: {other}\n\nSelect a partner with the same sport.",
     "sports_not_match": "Sports do not match",
-    "search_opponent1_prompt": "First opponent search\nType first opponent name or last name:"
+    "opponent_not_found": "Opponent not found",
+    "search_opponent1_prompt": "Searching for first opponent\nEnter the first opponent's first or last name:",
+    "search_opponent2_prompt": "Searching for second opponent\nEnter the second opponent's first or last name:",
+    "current_score": "Current score:\n{score}\n\nAdd another set?",
+    "select_score": "Select the score of the {next_set_number}th set:",
+    "super_tiebreak": "🏆 Super Tiebreak - 3rd Set\n\nSelect the score of the super tiebreak:",
+    "pairs_formed": "Pairs formed:\n\nPair 1 (yours):\n• {team1_player1}\n• {team1_player2}\nAverage rating: {team1_avg}\n\nPair 2:\n• {team2_player1}\n• {team2_player2}\nAverage rating: {team2_avg}\n\nSelect the score of the 1st set:",
+    "invoice_cancelled": "❌ Score entry cancelled. All changes cancelled."
   },
   "beauty_contest": {
     "not_registered": "❌ Please register in the bot first!",
@@ -672,17 +748,29 @@
     "yes": "Yes",
     "no": "No",
     "skip": "Skip",
+    "contact_user": "✉️ Contact the user",
+    "add_photo": "Attach a photo",
+    "add_video": "Attach a video",
+    "send_photo": "Please send a photo",
+    "send_video": "Please send a video",
     "back": "Back",
-    "next": "Next",
+    "back_to_list": "Back to list",
+    "next": "Forward",
     "done": "Done",
     "cancel": "Cancel",
+    "to_profile": "To profile",
+    "back_to_regular": "🔙 To regular account",
+    "action_cancelled": "❌ Action canceled",
     "confirm": "Confirm",
     "error": "❌ Error",
-    "success": "✅ Success",
+    "success": "✅ Successful",
     "loading": "⏳ Loading...",
     "page": "Page {page} of {total}",
+    "user_not_found": "User not found",
+    "profile_not_found": "Profile not found.",
     "not_specified": "Not specified",
-    "select_profile": "Select profile to view:"
+    "select_profile": "Select a profile to view:",
+    "url_site": "https://tennis-play.com"
   },
   "channels": {
     "new_trainer": "👨‍🏫 *New trainer joined the platform!*",
@@ -906,6 +994,63 @@
       "beer": "🍻Beer",
       "dating": "🍒Dating",
       "business_breakfast": "☕️Business Breakfast"
+    },
+    "sport_fields": {
+      "common": {
+        "comment": "• Comment:"
+      },
+      "tennis": {
+        "about_me": "💬 About me:",
+        "level": "Playing level from 1.0 to 7.0"
+      },
+      "table_tennis": {
+        "about_me": "💬 About me: Indicate how many years you've been playing and how often on average per week.",
+        "level": "Indicate your rating (numbers):"
+      },
+      "badminton": {
+        "about_me": "💬 About me: Indicate how many years you've been playing and how often on average per week.",
+        "level": "Playing level from 1.0 to 7.0"
+      },
+      "beach_tennis": {
+        "about_me": "💬 About me: Indicate how many years you've been playing and how often on average per week.",
+        "level": "Playing level from 1.0 to 7.0"
+      },
+      "padel": {
+        "about_me": "💬 About me: Please indicate how many years you've been playing and how often you play on average per week.",
+        "level": "Playing level from 1.0 to 7.0"
+      },
+      "squash": {
+        "about_me": "💬 About me: Please indicate how many years you've been playing and how often you play on average per week.",
+        "level": "Playing level from 1.0 to 7.0"
+      },
+      "pickleball": {
+        "about_me": "💬 About me: Please indicate how many years you've been playing and how often you play on average per week.",
+        "level": "Playing level from 1.0 to 7.0"
+      },
+      "golf": {
+        "about_me": "💬 About me: Please indicate how many years you've been playing golf and how often on average per week."
+      },
+      "running": {
+        "about_me": "💬 About me: Please indicate how many years you've been running and how often on average per week."
+      },
+      "fitness": {
+        "about_me": "💬 About me: Please indicate how many years you've been involved in fitness and how often on average per week."
+      },
+      "cycling": {
+        "about_me": "💬 About me: Please indicate how many years you've been cycling or just riding a bike and how often on average per week."
+      },
+      "business_breakfast": {
+        "comment": "• Comment: Please indicate which projects you're interested in discussing or briefly describe your business proposal that you'd like to discuss during a business breakfast.",
+        "meeting_time": "Please indicate the location, specific day and time, or days of the week and time slots that are convenient for you to meet."
+      },
+      "beer": {
+        "comment": "• Comment: Specify what you'd like to watch or discuss over a beer, perhaps a sports event.",
+        "meeting_time": "Write the location, specific day and time, or days of the week and time slots when it's convenient for you to meet."
+      },
+      "dating": {
+        "about_me": "💬 About me:",
+        "comment": "• Comment:"
+      }
     }
   }
 }

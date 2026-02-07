@@ -585,8 +585,7 @@ async def apply_to_contest(callback: CallbackQuery, state: FSMContext):
         return
 
     # Проверяем наличие фото
-    photo_path = BASE_DIR / user_data['photo_path']
-    if not photo_path.exists():
+    if 'photo_path' not in user_data or not user_data['photo_path']:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=t("common.back", language), callback_data="beauty_contest"))
         try:
@@ -604,6 +603,8 @@ async def apply_to_contest(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     
+    photo_path = BASE_DIR / user_data['photo_path']
+
     # Показываем данные для подтверждения
     age = await calculate_age(user_data.get('birth_date', ''))
     country = remove_country_flag(user_data.get('country', '—'))

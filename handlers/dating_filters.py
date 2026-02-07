@@ -7,7 +7,6 @@ from models.states import SearchPartnerStates
 from utils.translations import get_user_language_async, t
 
 async def show_age_range_selection(message: Union[types.Message, types.CallbackQuery], state: FSMContext):
-    """Показывает выбор возрастного диапазона для знакомств"""
     if isinstance(message, types.CallbackQuery):
         message_obj = message.message
         user_id = str(message.from_user.id)
@@ -18,7 +17,6 @@ async def show_age_range_selection(message: Union[types.Message, types.CallbackQ
     language = await get_user_language_async(user_id)
     builder = InlineKeyboardBuilder()
     
-    # Возрастные диапазоны
     age_ranges = [
         ("18-25", t("dating_filters.age_18_25", language)),
         ("26-35", t("dating_filters.age_26_35", language)), 

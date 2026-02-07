@@ -1,10 +1,9 @@
 from aiogram import Bot, Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, BufferedInputFile
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from typing import Optional
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 import logging
 import os
 from datetime import datetime
@@ -18,15 +17,14 @@ from config.tournament_config import (
     TOURNAMENT_TYPES, GENDERS, CATEGORIES, AGE_GROUPS, 
     DURATIONS, YES_NO_OPTIONS, DISTRICTS_MOSCOW, MIN_PARTICIPANTS, CATEGORY_LEVELS
 )
-from utils.tournament_brackets import create_tournament_bracket, Player, format_bracket_text
+from utils.tournament_brackets import Player
 from utils.bracket_image_generator import (
-    create_bracket_image,
     build_tournament_bracket_image_bytes,
     create_simple_text_image_bytes,
 )
 from utils.round_robin_image_generator import build_round_robin_table
 from utils.tournament_manager import tournament_manager
-from utils.utils import calculate_age, level_to_points, calculate_new_ratings, remove_country_flag
+from utils.utils import calculate_new_ratings, remove_country_flag
 from handlers.profile import calculate_level_from_points
 from utils.tournament_notifications import TournamentNotifications
 from utils.translations import get_user_language_async, t

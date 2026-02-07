@@ -16,7 +16,7 @@ from aiogram.types import (
 from config.paths import BASE_DIR, PHOTOS_DIR
 from config.profile import (
     create_sport_keyboard,
-    moscow_districts,
+    get_moscow_districts,
     player_levels,
     table_tennis_levels,
     base_keyboard,
@@ -55,7 +55,7 @@ router = Router()
 
 def get_levels_for_sport(sport: str, language: str = "ru") -> dict:
     """Получает уровни для выбранного вида спорта"""
-    config = get_sport_config(sport)
+    config = get_sport_config(sport, language)
     level_type = config.get("level_type", "tennis")
     
     if level_type == "table_tennis":
@@ -65,12 +65,12 @@ def get_levels_for_sport(sport: str, language: str = "ru") -> dict:
     else:
         return get_tennis_levels(language)
 
-def check_profile_completeness(profile: dict, sport: str) -> tuple[bool, list]:
+def check_profile_completeness(profile: dict, sport: str, language: str) -> tuple[bool, list]:
     """
     Проверяет заполненность обязательных полей профиля для выбранного вида спорта
     Возвращает (is_complete, missing_fields)
     """
-    config = get_sport_config(sport)
+    config = get_sport_config(sport, language)
     missing_fields = []
     
     # Базовые поля (всегда обязательные)
@@ -132,7 +132,7 @@ async def show_registration_success(message: types.Message, profile: dict):
     language = await get_user_language_async(user_id)
     
     sport = profile.get("sport", "🎾Большой теннис")
-    config = get_sport_config(sport)
+    config = get_sport_config(sport, language)
     texts = get_sport_texts(sport, language)
     channel_username = channels_usernames.get(sport, "")
     
@@ -185,7 +185,7 @@ async def show_registration_success_with_transfer_info(message: types.Message, p
     language = await get_user_language_async(user_id)
     
     sport = profile.get("sport", "🎾Большой теннис")
-    config = get_sport_config(sport)
+    config = get_sport_config(sport, language)
     texts = get_sport_texts(sport, language)
     channel_username = channels_usernames.get(sport, "")
     
@@ -859,7 +859,7 @@ async def process_birth_date(message: Message, state: FSMContext):
 
     await show_current_data(
         message, state,
-        "🌍 Выберите Вашу страну:",
+        t("registration.select_country", language),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.COUNTRY)
@@ -922,6 +922,7 @@ async def process_city_selection(callback: types.CallbackQuery, state: FSMContex
     if city == "Москва":
         buttons = []
         row = []
+        moscow_districts = get_moscow_districts(language)
         for i, district in enumerate(moscow_districts):
             row.append(InlineKeyboardButton(text=district, callback_data=f"district_{district}"))
             if (i + 1) % 3 == 0 or i == len(moscow_districts) - 1:
@@ -960,7 +961,8 @@ async def process_other_city(callback: types.CallbackQuery, state: FSMContext):
 async def ask_for_role(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
     sport = user_data.get("sport")
-    config = get_sport_config(sport)
+    language = user_data.get("language", "ru")
+    config = get_sport_config(sport, language)
     
     if not config.get("has_role", True):
         # Если роль не нужна, переходим к следующему шагу
@@ -1018,7 +1020,8 @@ async def ask_for_level_or_gender(message: types.Message, state: FSMContext):
     """Определяет следующий шаг после выбора роли"""
     user_data = await state.get_data()
     sport = user_data.get("sport")
-    config = get_sport_config(sport)
+    language = user_data.get("language", "ru")
+    config = get_sport_config(sport, language)
     
     if config.get("has_level", True):
         # Показываем уровни
@@ -1047,8 +1050,8 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
     """Показывает страницу с уровнями игроков с возможностью пролистывания"""
     user_data = await state.get_data()
     sport = user_data.get("sport")
-    config = get_sport_config(sport)
     language = user_data.get("language", "ru")
+    config = get_sport_config(sport, language)
     levels_dict = get_levels_for_sport(sport, language)
     
     # Для настольного тенниса показываем специальный интерфейс
@@ -1067,7 +1070,9 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
     # Формируем текст с описанием текущих уровней
     sport_name = sport.replace("🎾", "").replace("🏓", "").replace("🏸", "").replace("🏖️", "").replace("🥎", "").replace("🏆", "")
     sport_name_escaped = escape_markdown(sport_name.lower())
-    levels_text = f"🏆 *Система уровней {sport_name_escaped}:*\n\n"
+    language = user_data.get("language", "ru")
+
+    levels_text = f"🏆 *{t('registration.level_system', language)} {sport_name_escaped}:*\n\n"
     
     for level in current_levels:
         description = levels_dict[level]["desc"]
@@ -1075,7 +1080,7 @@ async def show_levels_page(message: types.Message, state: FSMContext, page: int 
         description_escaped = escape_markdown(description)
         levels_text += f"*{level_escaped}* - {description_escaped}\n\n"
     
-    language = user_data.get("language", "ru")
+    
     levels_text += t("common.page", language, page=page + 1, total=total_pages) + "\n\n👇 *" + t("registration.select_level", language) + "*"
     
     # Создаем кнопки для уровней
@@ -1146,7 +1151,6 @@ async def process_player_level(callback: types.CallbackQuery, state: FSMContext)
     level = callback.data.split("_", maxsplit=1)[1]
     user_data = await state.get_data()
     sport = user_data.get("sport")
-    levels_dict = get_levels_for_sport(sport)
 
     await state.update_data(player_level=level)
     
@@ -1160,8 +1164,9 @@ async def process_gender_selection(callback: types.CallbackQuery, state: FSMCont
     await state.update_data(gender=gender)
     
     user_data = await state.get_data()
+    language = user_data.get("language", "ru")
     sport = user_data.get("sport")
-    config = get_sport_config(sport)
+    config = get_sport_config(sport, language)
     
     # Определяем следующий шаг в зависимости от вида спорта
     if sport == "🍒Знакомства":
@@ -1180,13 +1185,13 @@ async def ask_for_profile_comment(message: types.Message, state: FSMContext):
     """Спрашивает комментарий к профилю"""
     user_data = await state.get_data()
     sport = user_data.get("sport")
-    config = get_sport_config(sport)
+    language = user_data.get("language", "ru")
+
+    config = get_sport_config(sport, language)
     
     # Используем about_me_text если есть, иначе comment_text
     about_me_text = config.get("about_me_text")
-    comment_text = config.get("comment_text", "• Комментарий:")
     
-    language = user_data.get("language", "ru")
     skip_text = f" (или /skip для пропуска)" if language == "ru" else " (or /skip to skip)"
     
     if about_me_text:
@@ -1235,8 +1240,9 @@ async def process_profile_comment(message: types.Message, state: FSMContext):
         await state.update_data(profile_comment=message.text.strip())
     
     user_data = await state.get_data()
+    language = user_data.get("language", "ru")
     sport = user_data.get("sport")
-    config = get_sport_config(sport)
+    config = get_sport_config(sport, language)
     
     # Определяем следующий шаг в зависимости от вида спорта
     if config.get("has_meeting_time", False):
@@ -1365,7 +1371,8 @@ async def ask_for_meeting_time(message: types.Message, state: FSMContext):
     """Спрашивает время встречи для бизнес-завтрака и по пиву"""
     user_data = await state.get_data()
     sport = user_data.get("sport")
-    config = get_sport_config(sport)
+    language = user_data.get("language", "ru")
+    config = get_sport_config(sport, language)
     
     meeting_text = config.get("meeting_time_text", "Напишите место, конкретный день и время или дни недели и временные промежутки, когда вам удобно встретиться.")
     try:
@@ -1448,7 +1455,8 @@ async def ask_for_next_step_after_photo(message: types.Message, state: FSMContex
     """Определяет следующий шаг после выбора фото"""
     user_data = await state.get_data()
     sport = user_data.get("sport")
-    config = get_sport_config(sport)
+    language = user_data.get("language", "ru")
+    config = get_sport_config(sport, language)
     
     if config.get("has_payment", True) and sport not in ["☕️Бизнес-завтрак", "🍻По пиву", "🍒Знакомства"]:
         await ask_for_default_payment(message, state)
@@ -1606,13 +1614,14 @@ async def process_vacation_comment(message: Message, state: FSMContext):
 async def ask_for_default_payment(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
     sport = user_data.get("sport")
-    config = get_sport_config(sport)
+    language = user_data.get("language", "ru")
+
+    config = get_sport_config(sport, language)
     
     if not config.get("has_payment", True):
         await complete_registration_without_profile(message, state)
         return
     
-    language = user_data.get("language", "ru")
     buttons = [
         [InlineKeyboardButton(text=t("registration.payment_split", language), callback_data="defaultpay_Пополам")],
         [InlineKeyboardButton(text=t("registration.payment_me", language), callback_data="defaultpay_Я оплачиваю")],
@@ -1666,9 +1675,10 @@ async def complete_registration_without_profile(message: types.Message, state: F
             
             # Уведомляем реферера
             try:
+                language = await get_user_language_async(str(referral_id))
                 await message.bot.send_message(
                     referral_id,
-                    "🎉 Поздравляем! Вы пригласили 5 друзей и получили бесплатную подписку на 1 месяц!"
+                    t("invite.successfully", language)
                 )
             except:
                 pass
@@ -1690,7 +1700,8 @@ async def create_user_profile(user_id: int, username: str, user_state: dict) -> 
     """Создает профиль пользователя с учетом вида спорта"""
     # Определяем рейтинговые очки в зависимости от вида спорта
     sport = user_state.get("sport")
-    levels_dict = get_levels_for_sport(sport)
+    language = get_user_language_async(str(user_id))
+    levels_dict = get_levels_for_sport(sport, language)
     player_level = user_state.get("player_level")
     
     # Для настольного тенниса рейтинг может быть текстовым или числовым
@@ -1756,10 +1767,13 @@ async def create_user_profile(user_id: int, username: str, user_state: dict) -> 
 async def process_create_tour_after_registration(callback: types.CallbackQuery):
     """Обрабатывает нажатие кнопки 'Создать тур' после регистрации"""
     # Здесь можно добавить логику создания тура
+    user_id = callback.message.chat.id
+    language = await get_user_language_async(str(user_id))
+
     await callback.message.answer(
         "✈️ Функция создания тура будет доступна в главном меню.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")
+            InlineKeyboardButton(text=t("registration.main_menu_button", language), callback_data="main_menu")
         ]])
     )
     await callback.answer()
@@ -1774,7 +1788,7 @@ async def process_main_menu_after_registration(callback: types.CallbackQuery):
     keyboard = get_base_keyboard(sport, language=language)
     
     await callback.message.answer(
-        "🏠 Главное меню",
+        t("registration.main_menu_text", language),
         reply_markup=keyboard
     )
     await callback.answer()

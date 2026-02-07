@@ -245,7 +245,7 @@ async def handle_payments(message: types.Message, state: FSMContext):
     
     builder = InlineKeyboardBuilder()
     builder.add(types.InlineKeyboardButton(
-        text="💰 Купить подписку", 
+        text=t("payments.buy_subscription_button", language), 
         callback_data="buy_subscription"
     ))
     
@@ -317,11 +317,11 @@ async def process_email_input(message: types.Message, state: FSMContext):
         
         builder = InlineKeyboardBuilder()
         builder.add(types.InlineKeyboardButton(
-            text="🔗 Перейти к оплате", 
+            text=t("payments.go_to_payment_button", language), 
             url=payment_link
         ))
         builder.add(types.InlineKeyboardButton(
-            text="✅ Подтвердить оплату", 
+            text=t("payments.confirm_payment_button", language), 
             callback_data="confirm_payment"
         ))
         
