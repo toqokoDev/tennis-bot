@@ -17,6 +17,7 @@ from config.paths import BASE_DIR, PHOTOS_DIR
 from config.profile import (
     create_sport_keyboard,
     get_moscow_districts,
+    get_sport_translation,
     player_levels,
     table_tennis_levels,
     base_keyboard,
@@ -33,6 +34,11 @@ from config.profile import (
     get_tennis_levels,
     get_table_tennis_levels,
     channels_usernames,
+    get_country_translation,
+    get_city_translation,
+    get_dating_goal_translation,
+    get_dating_interest_translation,
+    moscow_districts as moscow_districts_ru,
 )
 
 from models.states import RegistrationStates
@@ -137,7 +143,7 @@ async def show_registration_success(message: types.Message, profile: dict):
     channel_username = channels_usernames.get(sport, "")
     
     # Формируем сообщение
-    success_text = t("registration.registration_complete", language, sport=sport)
+    success_text = t("registration.registration_complete", language, sport=get_sport_translation(sport))
     
     if channel_username:
         success_text += t("registration.channel_subscribe", language, channel=channel_username)
@@ -190,7 +196,7 @@ async def show_registration_success_with_transfer_info(message: types.Message, p
     channel_username = channels_usernames.get(sport, "")
     
     # Формируем сообщение
-    success_text = t("registration.registration_complete_with_transfer", language, sport=sport)
+    success_text = t("registration.registration_complete_with_transfer", language, sport=get_sport_translation(sport))
     
     # Добавляем информацию о перенесенных данных
     if tour_sent or games_sent > 0:
@@ -854,8 +860,8 @@ async def process_birth_date(message: Message, state: FSMContext):
     
     buttons = []
     for country in countries[:5]:
-        buttons.append([InlineKeyboardButton(text=f"{country}", callback_data=f"country_{country}")])
-    buttons.append([InlineKeyboardButton(text="🌎 Другая страна", callback_data="other_country")])
+        buttons.append([InlineKeyboardButton(text=get_country_translation(country, language), callback_data=f"country_{country}")])
+    buttons.append([InlineKeyboardButton(text="🌎 " + ("Другая страна" if language == "ru" else "Other country"), callback_data="other_country")])
 
     await show_current_data(
         message, state,
@@ -901,12 +907,12 @@ async def ask_for_city(message: types.Message, state: FSMContext, country: str):
     user_data = await state.get_data()
     language = user_data.get("language", "ru")
     cities = cities_data.get(country, [])
-    buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"city_{city}")] for city in cities]
+    buttons = [[InlineKeyboardButton(text=get_city_translation(city, language), callback_data=f"city_{city}")] for city in cities]
     buttons.append([InlineKeyboardButton(text=t("registration.other_city", language), callback_data="other_city")])
 
     await show_current_data(
         message, state,
-        t("registration.select_city", language, country=remove_country_flag(country)),
+        t("registration.select_city", language, country=get_country_translation(country, language)),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.CITY)
@@ -922,10 +928,10 @@ async def process_city_selection(callback: types.CallbackQuery, state: FSMContex
     if city == "Москва":
         buttons = []
         row = []
-        moscow_districts = get_moscow_districts(language)
-        for i, district in enumerate(moscow_districts):
-            row.append(InlineKeyboardButton(text=district, callback_data=f"district_{district}"))
-            if (i + 1) % 3 == 0 or i == len(moscow_districts) - 1:
+        moscow_districts_display = get_moscow_districts(language)
+        for i, (district_ru, district_display) in enumerate(zip(moscow_districts_ru, moscow_districts_display)):
+            row.append(InlineKeyboardButton(text=district_display, callback_data=f"district_{district_ru}"))
+            if (i + 1) % 3 == 0 or i == len(moscow_districts_display) - 1:
                 buttons.append(row)
                 row = []
         await show_current_data(
@@ -1208,7 +1214,7 @@ async def ask_for_dating_goals(message: types.Message, state: FSMContext):
     language = user_data.get("language", "ru")
     buttons = []
     for goal in DATING_GOALS:
-        buttons.append([InlineKeyboardButton(text=goal, callback_data=f"dating_goal_{goal}")])
+        buttons.append([InlineKeyboardButton(text=get_dating_goal_translation(goal, language), callback_data=f"dating_goal_{goal}")])
     
     await message.edit_text(
         t("registration.select_dating_goal", language),
@@ -1283,7 +1289,7 @@ async def ask_for_dating_interests(message: types.Message, state: FSMContext):
     language = user_data.get("language", "ru")
     buttons = []
     for interest in DATING_INTERESTS:
-        buttons.append([InlineKeyboardButton(text=interest, callback_data=f"dating_interest_{interest}")])
+        buttons.append([InlineKeyboardButton(text=get_dating_interest_translation(interest, language), callback_data=f"dating_interest_{interest}")])
     
     await message.edit_text(
         t("registration.select_dating_interests", language),
@@ -1313,14 +1319,14 @@ async def process_dating_interest(callback: types.CallbackQuery, state: FSMConte
     
     await state.update_data(dating_interests=selected_interests)
     
-    # Показываем обновленный список
-    interests_text = "🎯 Выбранные интересы:\n" + "\n".join([f"• {i}" for i in selected_interests])
+    # Показываем обновленный список (отображаем на языке пользователя, в БД сохраняем русский)
+    interests_text = "🎯 Выбранные интересы:\n" + "\n".join([f"• {get_dating_interest_translation(i, language)}" for i in selected_interests])
     interests_text += "\n\nВыберите еще или нажмите 'Готово' для продолжения:"
     
     buttons = []
     for interest in DATING_INTERESTS:
-        text = f"{'✅' if interest in selected_interests else '⬜'} {interest}"
-        buttons.append([InlineKeyboardButton(text=text, callback_data=f"dating_interest_{interest}")])
+        btn_text = f"{'✅' if interest in selected_interests else '⬜'} {get_dating_interest_translation(interest, language)}"
+        buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"dating_interest_{interest}")])
     buttons.append([InlineKeyboardButton(text="Готово", callback_data="dating_interests_done")])
     
     await callback.message.edit_text(
@@ -1528,12 +1534,12 @@ async def ask_for_vacation_city(message: types.Message, state: FSMContext, count
     user_data = await state.get_data()
     language = user_data.get("language", "ru")
     cities = cities_data.get(country, [])
-    buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"vacation_city_{city}")] for city in cities]
-    buttons.append([InlineKeyboardButton(text=t("registration.other_city", language), callback_data="vacation_o ther_city")])
+    buttons = [[InlineKeyboardButton(text=get_city_translation(city, language), callback_data=f"vacation_city_{city}")] for city in cities]
+    buttons.append([InlineKeyboardButton(text=t("registration.other_city", language), callback_data="vacation_other_city")])
 
     await show_current_data(
         message, state,
-        t("registration.select_vacation_city", language, country=remove_country_flag(country)),
+        t("registration.select_vacation_city", language, country=get_country_translation(country, language)),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(RegistrationStates.VACATION_CITY)

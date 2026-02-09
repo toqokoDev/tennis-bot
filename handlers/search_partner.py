@@ -9,7 +9,9 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config.profile import (
-    GENDER_TYPES, create_sport_keyboard, get_moscow_districts, player_levels, cities_data, countries
+    GENDER_TYPES, create_sport_keyboard, get_moscow_districts, player_levels, cities_data, countries,
+    get_country_translation, get_city_translation, get_gender_translation, get_sport_translation,
+    get_district_translation, moscow_districts as moscow_districts_ru,
 )
 from handlers.dating_filters import show_age_range_selection, show_dating_goal_selection, show_distance_selection
 from models.states import SearchPartnerStates
@@ -60,19 +62,18 @@ async def process_search_sport_partner(callback: types.CallbackQuery, state: FSM
     search_type = data.get('search_type')
     sport_type_val = data.get('sport_type')
     
+    language = await get_user_language_async(str(callback.message.chat.id))
     buttons = []
     for country in countries[:5]:
         count = await count_users_by_location(search_type, country, sport_type=sport_type_val)
         buttons.append([InlineKeyboardButton(
-            text=f"{country} ({count})", 
+            text=f"{get_country_translation(country, language)} ({count})", 
             callback_data=f"partner_search_country_{country}"
         )])
     
     # Получаем количество пользователей в других странах
     other_countries = await get_top_countries(search_type=search_type, sport_type=sport_type_val, exclude_countries=countries[:5])
     other_countries_count = sum(count for country, count in other_countries)
-    
-    language = await get_user_language_async(str(callback.message.chat.id))
     
     if other_countries_count > 0:
         buttons.append([InlineKeyboardButton(
@@ -121,7 +122,7 @@ async def process_search_country_partner(callback: types.CallbackQuery, state: F
         # Берем топ-5 городов
         for city, count in sorted_cities[:5]:
             buttons.append([InlineKeyboardButton(
-                text=f"{city} ({count})", 
+                text=f"{get_city_translation(city, language)} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
         
@@ -138,7 +139,7 @@ async def process_search_country_partner(callback: types.CallbackQuery, state: F
         for city in cities:
             count = await count_users_by_location(search_type, country, city, sport_type_val, )
             buttons.append([InlineKeyboardButton(
-                text=f"{city} ({count})", 
+                text=f"{get_city_translation(city, language)} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
     
@@ -149,7 +150,7 @@ async def process_search_country_partner(callback: types.CallbackQuery, state: F
     
     # Редактируем предыдущее сообщение
     await callback.message.edit_text(
-        t("search_partner.select_city", language, country=remove_country_flag(country)),
+        t("search_partner.select_city", language, country=get_country_translation(country, language)),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     
@@ -195,21 +196,19 @@ async def show_district_selection(message: Union[types.Message, types.CallbackQu
         callback_data="partner_district_any"
     ))
     
-    moscow_districts = get_moscow_districts(language)
+    moscow_districts_display = get_moscow_districts(language)
 
-    # Добавляем округа Москвы по 3 в ряд
-    for i, district in enumerate(moscow_districts):
+    # Добавляем округа Москвы по 3 в ряд (текст на языке пользователя, в callback — русский)
+    for i, (district_ru, district_display) in enumerate(zip(moscow_districts_ru, moscow_districts_display)):
         if i % 3 == 0:
-            # Начинаем новую строку каждые 3 кнопки
             builder.row(InlineKeyboardButton(
-                text=district,
-                callback_data=f"partner_district_{district}"
+                text=district_display,
+                callback_data=f"partner_district_{district_ru}"
             ))
         else:
-            # Добавляем кнопку в текущую строку
             builder.add(InlineKeyboardButton(
-                text=district,
-                callback_data=f"partner_district_{district}"
+                text=district_display,
+                callback_data=f"partner_district_{district_ru}"
             ))
     
     builder.row(InlineKeyboardButton(
@@ -218,7 +217,7 @@ async def show_district_selection(message: Union[types.Message, types.CallbackQu
     ))
     
     await message_obj.edit_text(
-        t("search_partner.select_district", language, city=city),
+        t("search_partner.select_district", language, city=get_city_translation(city, language)),
         reply_markup=builder.as_markup()
     )
     await state.set_state(SearchPartnerStates.SEARCH_DISTRICT)
@@ -258,7 +257,7 @@ async def partner_back_to_cities_from_district(callback: types.CallbackQuery, st
         # Берем топ-5 городов
         for city, count in sorted_cities[:5]:
             buttons.append([InlineKeyboardButton(
-                text=f"{city} ({count})", 
+                text=f"{get_city_translation(city, language)} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
         
@@ -275,7 +274,7 @@ async def partner_back_to_cities_from_district(callback: types.CallbackQuery, st
         for city in cities:
             count = await count_users_by_location(search_type, country, city, sport_type_val)
             buttons.append([InlineKeyboardButton(
-                text=f"{city} ({count})", 
+                text=f"{get_city_translation(city, language)} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
     
@@ -285,7 +284,7 @@ async def partner_back_to_cities_from_district(callback: types.CallbackQuery, st
     )])
     
     await callback.message.edit_text(
-        t("search_partner.select_city", language, country=remove_country_flag(country)),
+        t("search_partner.select_city", language, country=get_country_translation(country, language)),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(SearchPartnerStates.SEARCH_CITY)
@@ -307,12 +306,7 @@ async def show_gender_selection(message: Union[types.Message, types.CallbackQuer
 
     for gender in GENDER_TYPES:
         # отображаем перевод, но callback_data оставляем совместимым (Мужской/Женский)
-        if gender == "Мужской":
-            gender_text = t("config.gender_types.male", language)
-        elif gender == "Женский":
-            gender_text = t("config.gender_types.female", language)
-        else:
-            gender_text = gender
+        gender_text = get_gender_translation(gender, language)
         builder.add(InlineKeyboardButton(
             text=gender_text,
             callback_data=f"partner_gender_{gender}"
@@ -506,10 +500,10 @@ async def perform_partner_search(message: Union[types.Message, types.CallbackQue
             t(
                 "search_partner.no_results",
                 language,
-                city=city,
-                country=remove_country_flag(country),
-                sport=sport_type_val or "",
-                gender=gender or "",
+                city=get_city_translation(city, language),
+                country=get_country_translation(country, language),
+                sport=get_sport_translation(sport_type_val, language) if sport_type_val else "",
+                gender=get_gender_translation(gender, language) if gender else "",
                 level=level or "",
             ),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
@@ -605,7 +599,7 @@ async def partner_back_to_countries_from_city(callback: types.CallbackQuery, sta
     for country in countries[:5]:
         count = await count_users_by_location(search_type, country, sport_type=sport_type_val)
         buttons.append([InlineKeyboardButton(
-            text=f"{country} ({count})", 
+            text=f"{get_country_translation(country, language)} ({count})", 
             callback_data=f"partner_search_country_{country}"
         )])
     
@@ -655,7 +649,7 @@ async def partner_back_to_cities_from_gender(callback: types.CallbackQuery, stat
         # Берем топ-5 городов
         for city, count in sorted_cities[:5]:
             buttons.append([InlineKeyboardButton(
-                text=f"{city} ({count})", 
+                text=f"{get_city_translation(city, language)} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
         
@@ -672,7 +666,7 @@ async def partner_back_to_cities_from_gender(callback: types.CallbackQuery, stat
         for city in cities:
             count = await count_users_by_location(search_type, country, city, sport_type_val)
             buttons.append([InlineKeyboardButton(
-                text=f"{city} ({count})", 
+                text=f"{get_city_translation(city, language)} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
     
@@ -682,7 +676,7 @@ async def partner_back_to_cities_from_gender(callback: types.CallbackQuery, stat
     )])
     
     await callback.message.edit_text(
-        t("search_partner.select_city", language, country=remove_country_flag(country)),
+        t("search_partner.select_city", language, country=get_country_translation(country, language)),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(SearchPartnerStates.SEARCH_CITY)
@@ -724,7 +718,7 @@ async def process_search_other_country_partner(callback: types.CallbackQuery, st
     
     for country, count in top_countries:
         builder.add(InlineKeyboardButton(
-            text=f"{country} ({count})",
+            text=f"{get_country_translation(country, language)} ({count})",
             callback_data=f"partner_search_country_{country}"
         ))
     
@@ -770,7 +764,7 @@ async def process_other_country_selection(callback: types.CallbackQuery, state: 
         # Берем топ-5 городов
         for city, count in sorted_cities[:5]:
             buttons.append([InlineKeyboardButton(
-                text=f"{city} ({count})", 
+                text=f"{get_city_translation(city, language)} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
         
@@ -787,7 +781,7 @@ async def process_other_country_selection(callback: types.CallbackQuery, state: 
         for city in cities:
             count = await count_users_by_location(search_type, country, city, sport_type_val)
             buttons.append([InlineKeyboardButton(
-                text=f"{city} ({count})", 
+                text=f"{get_city_translation(city, language)} ({count})", 
                 callback_data=f"partner_search_city_{city}"
             )])
     
@@ -798,7 +792,7 @@ async def process_other_country_selection(callback: types.CallbackQuery, state: 
     
     # Редактируем предыдущее сообщение
     await callback.message.edit_text(
-        t("search_partner.select_city", language, country=remove_country_flag(country)),
+        t("search_partner.select_city", language, country=get_country_translation(country, language)),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     
@@ -868,7 +862,7 @@ async def process_search_other_city_partner(callback: types.CallbackQuery, state
     
     for city, count in top_cities:
         builder.add(InlineKeyboardButton(
-            text=f"{city} ({count})",
+            text=f"{get_city_translation(city, language)} ({count})",
             callback_data=f"partner_search_city_{city}"
         ))
     
@@ -880,7 +874,7 @@ async def process_search_other_city_partner(callback: types.CallbackQuery, state
     ))
     
     await callback.message.edit_text(
-        t("search_partner.users_top_city", language, country=remove_country_flag(country)),
+        t("search_partner.users_top_city", language, country=get_country_translation(country, language)),
         reply_markup=builder.as_markup()
     )
     await state.set_state(SearchPartnerStates.SEARCH_OTHER_CITIES)
@@ -911,7 +905,7 @@ async def back_to_cities_from_other(callback: types.CallbackQuery, state: FSMCon
     for city in cities[:5]:
         count = await count_users_by_location(search_type, country, city, sport_type_val)
         buttons.append([InlineKeyboardButton(
-            text=f"{city} ({count})", 
+            text=f"{get_city_translation(city, language)} ({count})", 
             callback_data=f"partner_search_city_{city}"
         )])
     
@@ -932,7 +926,7 @@ async def back_to_cities_from_other(callback: types.CallbackQuery, state: FSMCon
     )])
     
     await callback.message.edit_text(
-        t("search_partner.select_city", language, country=remove_country_flag(country)),
+        t("search_partner.select_city", language, country=get_country_translation(country, language)),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(SearchPartnerStates.SEARCH_CITY)
@@ -953,10 +947,10 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
         await message.edit_text(t(
             "search_partner.no_results",
             language,
-            city=city,
-            country=remove_country_flag(country),
-            sport=sport_type_val or "",
-            gender=gender or "",
+            city=get_city_translation(city, language),
+            country=get_country_translation(country, language),
+            sport=get_sport_translation(sport_type_val, language) if sport_type_val else "",
+            gender=get_gender_translation(gender, language) if gender else "",
             level=level or "",
         ))
         await state.clear()
@@ -985,10 +979,10 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
         rating_points = profile.get('rating_points', '')
         
         gender_icon = "👨" if gender_profile == 'Мужской' else "👩" if gender_profile == 'Женский' else '👤'
-        district_text = f"{user_district}" if user_district else ""
+        district_text = f" {get_district_translation(user_district, language)}" if user_district else ""
         
         # Формируем основную информацию
-        display_name = f"{gender_icon} {name} {district_text} {age} лет"
+        display_name = f"{gender_icon} {name}{district_text} {age} лет"
         
         # Добавляем уровень и рейтинг только если они есть
         if player_level and rating_points:
@@ -1027,11 +1021,11 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
         await message.edit_text(t(
             "search_partner.found_players",
             language,
-            city=city,
+            city=get_city_translation(city, language),
             count=len(results),
-            country=remove_country_flag(country),
-            sport=sport_type_val or "",
-            gender=gender or "",
+            country=get_country_translation(country, language),
+            sport=get_sport_translation(sport_type_val, language) if sport_type_val else "",
+            gender=get_gender_translation(gender, language) if gender else "",
             level=level or "",
             page=page+1,
             total_pages=total_pages
@@ -1044,11 +1038,11 @@ async def show_partner_results_list(message: types.Message, state: FSMContext, p
         await message.answer(t(
             "search_partner.found_players",
             language,
-            city=city,
+            city=get_city_translation(city, language),
             count=len(results),
-            country=remove_country_flag(country),
-            sport=sport_type_val or "",
-            gender=gender or "",
+            country=get_country_translation(country, language),
+            sport=get_sport_translation(sport_type_val, language) if sport_type_val else "",
+            gender=get_gender_translation(gender, language) if gender else "",
             level=level or "",
             page=page+1,
             total_pages=total_pages

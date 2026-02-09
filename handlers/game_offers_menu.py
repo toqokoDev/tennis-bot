@@ -8,7 +8,12 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE, SUBSCRIPTION_PRICE
-from config.profile import create_sport_keyboard, sport_type, get_sport_config, get_sport_translation
+from config.profile import (
+    create_sport_keyboard, sport_type, get_sport_config, get_sport_translation,
+    get_country_translation, get_city_translation, get_district_translation,
+    get_game_type_translation, get_payment_type_translation,
+    get_dating_goal_translation, get_dating_interest_translation,
+)
 from services.storage import storage
 from utils.admin import is_admin
 from models.states import BrowseOffersStates, RespondToOfferStates
@@ -85,7 +90,7 @@ async def select_offer_sport(callback: types.CallbackQuery, state: FSMContext):
     for country, count in final_countries:
         buttons.append([
             InlineKeyboardButton(
-                text=t("game_offers_menu.country_item", language, country=country, count=count),
+                text=t("game_offers_menu.country_item", language, country=get_country_translation(country, language), count=count),
                 callback_data=f"offercountry_{country}"
             )
         ])
@@ -133,7 +138,7 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
     
     if not city_stats:
         await callback.message.edit_text(
-            t("game_offers_menu.no_offers_in_country", language, country=country, sport=get_sport_translation(sport_type_selected, language)),
+            t("game_offers_menu.no_offers_in_country", language, country=get_country_translation(country, language), sport=get_sport_translation(sport_type_selected, language)),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=t("game_offers_menu.back_to_country", language), callback_data="back_to_country_selection")]
             ])
@@ -142,10 +147,10 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
     
     # Создаем клавиатуру с кнопками городов
     buttons = []
-    for city, count in city_stats.items():
+    for city, count in list(city_stats.items())[:5]:
         buttons.append([
             InlineKeyboardButton(
-                text=t("game_offers_menu.city_item", language, city=city, count=count),
+                text=t("game_offers_menu.city_item", language, city=get_city_translation(city, language), count=count),
                 callback_data=f"offercity_{city}"
             )
         ])
@@ -161,7 +166,7 @@ async def select_offer_country(callback: types.CallbackQuery, state: FSMContext)
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     await callback.message.edit_text(
-        t("game_offers_menu.select_city", language, country=remove_country_flag(country), sport=get_sport_translation(sport_type_selected, language)),
+        t("game_offers_menu.select_city", language, country=get_country_translation(country, language), sport=get_sport_translation(sport_type_selected, language)),
         reply_markup=keyboard
     )
     await state.set_state(BrowseOffersStates.SELECT_CITY)
@@ -221,7 +226,7 @@ async def select_offer_city(callback: types.CallbackQuery, state: FSMContext):
     if not all_offers:
         language = await get_user_language_async(str(callback.message.chat.id))
         await callback.message.edit_text(
-            f"❌ {t('game_offers_menu.no_offers_in_country', language, country=city, sport=get_sport_translation(sport_type_selected, language))}",
+            f"❌ {t('game_offers_menu.no_offers_in_country', language, country=get_country_translation(country, language), sport=get_sport_translation(sport_type_selected, language))}",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=t("game_offers_menu.back_to_city", language), callback_data="back_to_city_selection")]
             ])
@@ -257,7 +262,7 @@ async def show_offers_page(message: types.Message, state: FSMContext):
     
     # Заголовок
     country = state_data.get('selected_country', '')
-    text = f"🎾 {t('game_offers_menu.select_city', language, country=country, sport=get_sport_translation(sport_type_selected, language))}\n"
+    text = f"🎾 {t('game_offers_menu.select_city', language, country=get_country_translation(country, language), sport=get_sport_translation(sport_type_selected, language))}\n"
     
     # Создаем клавиатуру
     builder = InlineKeyboardBuilder()
@@ -285,7 +290,8 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         
         # Время
         time = offer.get('time', '-')
-        district = '' if offer.get('district', '') == None else offer.get('district', '')
+        district_raw = offer.get('district', '') or ''
+        district = get_district_translation(district_raw, language) if district_raw else ''
         
         # Получаем информацию о виде спорта для краткого описания
         sport = offer.get('sport', '🎾Большой теннис')
@@ -390,14 +396,14 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
         text = (
             f"{sport_translated}\n"
             f"👤 {user_name} {username_str}\n"
-            f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+            f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
             f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
             f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
         )
         if game.get('dating_goal'):
-            text += f"💕 " + ("Цель" if language == "ru" else "Goal") + f": {game.get('dating_goal')}\n"
+            text += f"💕 " + ("Цель" if language == "ru" else "Goal") + f": {get_dating_goal_translation(game.get('dating_goal'), language)}\n"
         if game.get('dating_interests'):
-            interests = ', '.join(game.get('dating_interests', []))
+            interests = ', '.join(get_dating_interest_translation(i, language) for i in game.get('dating_interests', []))
             text += f"🎯 " + ("Интересы" if language == "ru" else "Interests") + f": {interests}\n"
         if game.get('dating_additional'):
             text += f"📝 " + ("О себе" if language == "ru" else "About me") + f": {game.get('dating_additional')}\n"
@@ -406,7 +412,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
             )
@@ -414,7 +420,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
             )
@@ -424,7 +430,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 " + ("Рейтинг" if language == "ru" else "Rating") + f" {user_data.get('rating_points', '—')} (" + ("Лвл" if language == "ru" else "Lvl") + f": {player_level})\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📊 " + ("Сыграно матчей" if language == "ru" else "Matches played") + f": {user_data.get('games_played', 0)}\n\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
@@ -433,7 +439,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
             )
@@ -441,7 +447,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n" 
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n" 
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
             )
@@ -449,7 +455,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
             )
@@ -457,7 +463,7 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
             text = (
                 f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
             )
@@ -467,12 +473,12 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 " + ("Рейтинг" if language == "ru" else "Rating") + f" {user_data.get('rating_points', '—')} (" + ("Лвл" if language == "ru" else "Lvl") + f": {player_level})\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📊 " + ("Сыграно матчей" if language == "ru" else "Matches played") + f": {user_data.get('games_played', 0)}\n\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
-                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {game.get('type', '—')}\n"
-                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {game.get('payment_type', '—')}\n"
+                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {get_game_type_translation(game.get('type', '—'), language)}\n"
+                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {get_payment_type_translation(game.get('payment_type', '—'), language)}\n"
                 f"🏆 " + ("На счет" if language == "ru" else "Competitive") + f": {'Да' if game.get('competitive') else 'Нет'}\n"
             )
         elif sport == "🏓Настольный теннис":
@@ -480,12 +486,12 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 " + ("Рейтинг" if language == "ru" else "Rating") + f" {user_data.get('rating_points', '—')} (" + ("Лвл" if language == "ru" else "Lvl") + f": {player_level})\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📊 " + ("Сыграно матчей" if language == "ru" else "Matches played") + f": {user_data.get('games_played', 0)}\n\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
-                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {game.get('type', '—')}\n"
-                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {game.get('payment_type', '—')}\n"
+                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {get_game_type_translation(game.get('type', '—'), language)}\n"
+                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {get_payment_type_translation(game.get('payment_type', '—'), language)}\n"
                 f"🏆 " + ("На счет" if language == "ru" else "Competitive") + f": {'Да' if game.get('competitive') else 'Нет'}\n"
             )
         elif sport == "🏸Бадминтон":
@@ -493,12 +499,12 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 " + ("Рейтинг" if language == "ru" else "Rating") + f" {user_data.get('rating_points', '—')} (" + ("Лвл" if language == "ru" else "Lvl") + f": {player_level})\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📊 " + ("Сыграно матчей" if language == "ru" else "Matches played") + f": {user_data.get('games_played', 0)}\n\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
-                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {game.get('type', '—')}\n"
-                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {game.get('payment_type', '—')}\n"
+                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {get_game_type_translation(game.get('type', '—'), language)}\n"
+                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {get_payment_type_translation(game.get('payment_type', '—'), language)}\n"
                 f"🏆 " + ("На счет" if language == "ru" else "Competitive") + f": {'Да' if game.get('competitive') else 'Нет'}\n"
             )
         elif sport == "🏖️Пляжный теннис":
@@ -506,12 +512,12 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 " + ("Рейтинг" if language == "ru" else "Rating") + f" {user_data.get('rating_points', '—')} (" + ("Лвл" if language == "ru" else "Lvl") + f": {player_level})\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📊 " + ("Сыграно матчей" if language == "ru" else "Matches played") + f": {user_data.get('games_played', 0)}\n\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
-                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {game.get('type', '—')}\n"
-                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {game.get('payment_type', '—')}\n"
+                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {get_game_type_translation(game.get('type', '—'), language)}\n"
+                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {get_payment_type_translation(game.get('payment_type', '—'), language)}\n"
                 f"🏆 " + ("На счет" if language == "ru" else "Competitive") + f": {'Да' if game.get('competitive') else 'Нет'}\n"
             )
         elif sport == "🎾Падл-теннис":
@@ -519,38 +525,38 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 " + ("Рейтинг" if language == "ru" else "Rating") + f" {user_data.get('rating_points', '—')} (" + ("Лвл" if language == "ru" else "Lvl") + f": {player_level})\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📊 " + ("Сыграно матчей" if language == "ru" else "Matches played") + f": {user_data.get('games_played', 0)}\n\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
-                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {game.get('type', '—')}\n"
-                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {game.get('payment_type', '—')}\n"
+                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {get_game_type_translation(game.get('type', '—'), language)}\n"
+                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {get_payment_type_translation(game.get('payment_type', '—'), language)}\n"
                 f"🏆 " + ("На счет" if language == "ru" else "Competitive") + f": {'Да' if game.get('competitive') else 'Нет'}\n"
             )
         elif sport == "🥎Сквош":
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 " + ("Рейтинг" if language == "ru" else "Rating") + f" {user_data.get('rating_points', '—')} (" + ("Лвл" if language == "ru" else "Lvl") + f": {player_level})\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📊 " + ("Сыграно матчей" if language == "ru" else "Matches played") + f": {user_data.get('games_played', 0)}\n\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
-                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {game.get('type', '—')}\n"
-                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {game.get('payment_type', '—')}\n"
+                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {get_game_type_translation(game.get('type', '—'), language)}\n"
+                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {get_payment_type_translation(game.get('payment_type', '—'), language)}\n"
                 f"🏆 " + ("На счет" if language == "ru" else "Competitive") + f": {'Да' if game.get('competitive') else 'Нет'}\n"
             )
         elif sport == "🏆Пиклбол":
             text = (
-                f"{sport}\n"
+                f"{sport_translated}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 " + ("Рейтинг" if language == "ru" else "Rating") + f" {user_data.get('rating_points', '—')} (" + ("Лвл" if language == "ru" else "Lvl") + f": {player_level})\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📊 " + ("Сыграно матчей" if language == "ru" else "Matches played") + f": {user_data.get('games_played', 0)}\n\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
-                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {game.get('type', '—')}\n"
-                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {game.get('payment_type', '—')}\n"
+                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {get_game_type_translation(game.get('type', '—'), language)}\n"
+                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {get_payment_type_translation(game.get('payment_type', '—'), language)}\n"
                 f"🏆 " + ("На счет" if language == "ru" else "Competitive") + f": {'Да' if game.get('competitive') else 'Нет'}\n"
             )
         else:
@@ -558,12 +564,12 @@ async def view_offer_details(callback: types.CallbackQuery, state: FSMContext):
                 f"{sport}\n"
                 f"👤 {user_name} {username_str}\n"
                 f"🏅 " + ("Рейтинг" if language == "ru" else "Rating") + f" {user_data.get('rating_points', '—')} (" + ("Лвл" if language == "ru" else "Lvl") + f": {player_level})\n"
-                f"🌍 {remove_country_flag(game.get('country', '—'))}, {game.get('city', '—')} {game.get('district', '—')}\n"
+                f"🌍 {get_country_translation(game.get('country', '—'), language)}, {get_city_translation(game.get('city', '—'), language)} {get_district_translation(game.get('district', ''), language)}\n"
                 f"📊 " + ("Сыграно матчей" if language == "ru" else "Matches played") + f": {user_data.get('games_played', 0)}\n\n"
                 f"📅 " + ("Дата" if language == "ru" else "Date") + f": {game.get('date', '—')}\n"
                 f"⏰ " + ("Время" if language == "ru" else "Time") + f": {game.get('time', '—')}\n"
-                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {game.get('type', '—')}\n"
-                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {game.get('payment_type', '—')}\n"
+                f"🔍 " + ("Тип" if language == "ru" else "Type") + f": {get_game_type_translation(game.get('type', '—'), language)}\n"
+                f"💳 " + ("Оплата" if language == "ru" else "Payment") + f": {get_payment_type_translation(game.get('payment_type', '—'), language)}\n"
                 f"🏆 " + ("На счет" if language == "ru" else "Competitive") + f": {'Да' if game.get('competitive') else 'Нет'}\n"
             )
     
@@ -825,7 +831,7 @@ async def back_to_country_selection(callback: types.CallbackQuery, state: FSMCon
     for country, count in final_countries:
         buttons.append([
             InlineKeyboardButton(
-                text=t("game_offers_menu.country_item", language, country=country, count=count),
+                text=t("game_offers_menu.country_item", language, country=get_country_translation(country, language), count=count),
                 callback_data=f"offercountry_{country}"
             )
         ])
@@ -872,7 +878,7 @@ async def back_to_city_selection(callback: types.CallbackQuery, state: FSMContex
     
     if not city_stats:
         await callback.message.edit_text(
-            t("game_offers_menu.no_offers_in_country", language, country=country, sport=get_sport_translation(sport_type_selected, language)),
+            t("game_offers_menu.no_offers_in_country", language, country=get_country_translation(country, language), sport=get_sport_translation(sport_type_selected, language)),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=t("game_offers_menu.back_to_country", language), callback_data="back_to_country_selection")]
             ])
@@ -881,10 +887,10 @@ async def back_to_city_selection(callback: types.CallbackQuery, state: FSMContex
     
     # Создаем клавиатуру с кнопками городов
     buttons = []
-    for city, count in city_stats.items():
+    for city, count in list(city_stats.items())[:5]:
         buttons.append([
             InlineKeyboardButton(
-                text=t("game_offers_menu.city_item", language, city=city, count=count),
+                text=t("game_offers_menu.city_item", language, city=get_city_translation(city, language), count=count),
                 callback_data=f"offercity_{city}"
             )
         ])
@@ -901,7 +907,7 @@ async def back_to_city_selection(callback: types.CallbackQuery, state: FSMContex
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     await callback.message.edit_text(
-        t("game_offers_menu.select_city", language, country=remove_country_flag(country), sport=get_sport_translation(sport_type_selected, language)),
+        t("game_offers_menu.select_city", language, country=get_country_translation(country, language), sport=get_sport_translation(sport_type_selected, language)),
         reply_markup=keyboard
     )
     await state.set_state(BrowseOffersStates.SELECT_CITY)

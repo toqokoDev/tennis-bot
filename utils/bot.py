@@ -9,9 +9,11 @@ from aiogram.types import (
 )
 from utils.utils import calculate_age, remove_country_flag
 from utils.translations import get_user_language_async, t
-from config.profile import get_sport_translation
+from config.profile import (
+    get_sport_translation, get_country_translation, get_city_translation, get_district_translation,
+    get_gender_translation, get_payment_type_translation, get_sport_config, get_sport_texts,
+)
 from services.storage import storage
-from config.profile import get_sport_config, get_sport_texts
 
 # ---------- Вспомогательная отправка единого "текущего" сообщения ----------
 async def show_current_data(message: types.Message, state: FSMContext, text: str,
@@ -87,9 +89,10 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
     if config.get("has_payment", True) and profile.get('price') is not None:
         caption_lines.append(t("profile.view.training_price", language, price=profile.get('price')))
     
-    caption_lines.append(t("profile.view.country", language, country=remove_country_flag(profile.get('country', '—'))))
-    city = profile.get('city', '—')
-    district = profile.get('district', None)
+    caption_lines.append(t("profile.view.country", language, country=get_country_translation(profile.get('country', '—'), language)))
+    city = get_city_translation(profile.get('city', '—'), language)
+    district_raw = profile.get('district', None)
+    district = get_district_translation(district_raw, language) if district_raw else None
     if district:
         caption_lines.append(t("profile.view.city_district", language, city=city, district=district))
     else:
@@ -97,12 +100,7 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
     caption_lines.append(t("profile.view.sport", language, sport=sport_translated))
 
     gender_raw = profile.get('gender', '—')
-    if "Муж" in gender_raw:
-        gender_view = t("config.gender_types.male", language)
-    elif "Жен" in gender_raw:
-        gender_view = t("config.gender_types.female", language)
-    else:
-        gender_view = gender_raw
+    gender_view = get_gender_translation(gender_raw, language)
     caption_lines.append(t("profile.view.gender", language, gender=gender_view))
     
     # Показываем статистику игр только для спортивных видов
@@ -120,16 +118,7 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
     # Показываем оплату корта только если она нужна для данного вида спорта
     if config.get("has_payment", True) and profile.get('default_payment'):
         payment_raw = profile.get('default_payment', '—')
-        if "Пополам" in payment_raw:
-            payment_view = t("config.payment_types.split", language)
-        elif "Я оплачиваю" in payment_raw:
-            payment_view = t("config.payment_types.i_pay", language)
-        elif "Соперник" in payment_raw:
-            payment_view = t("config.payment_types.opponent_pays", language)
-        elif "Проигравший" in payment_raw:
-            payment_view = t("config.payment_types.loser_pays", language)
-        else:
-            payment_view = payment_raw
+        payment_view = get_payment_type_translation(payment_raw, language)
         caption_lines.append(t("profile.view.court_payment", language, payment=payment_view))
     
     # Показываем поиск партнера на отдых только если это нужно для данного вида спорта

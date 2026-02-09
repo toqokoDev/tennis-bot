@@ -9,7 +9,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.config import ITEMS_PER_PAGE
-from config.profile import create_sport_keyboard, sport_type, countries, cities_data, get_sport_config
+from config.profile import create_sport_keyboard, sport_type, countries, cities_data, get_sport_config, get_country_translation, get_city_translation, get_sport_translation
 from models.states import BrowseToursStates, CreateTourStates
 from services.channels import send_tour_to_channel
 from utils.utils import create_user_profile_link, format_tour_date, remove_country_flag
@@ -105,7 +105,7 @@ async def select_tour_sport(callback: types.CallbackQuery, state: FSMContext):
     for country in countries:
         buttons.append([
             InlineKeyboardButton(
-                text=country,
+                text=get_country_translation(country, language),
                 callback_data=f"tourcountry_{country}"
             )
         ])
@@ -161,7 +161,7 @@ async def select_tour_country(callback: types.CallbackQuery, state: FSMContext):
         for city, count in city_stats.items():
             buttons.append([
                 InlineKeyboardButton(
-                    text=f"{city} ({count})",
+                    text=f"{get_city_translation(city, language)} ({count})",
                     callback_data=f"tourcity_{city}"
                 )
             ])
@@ -171,7 +171,7 @@ async def select_tour_country(callback: types.CallbackQuery, state: FSMContext):
         for city in main_cities[:5]:  # Показываем первые 5 городов
             buttons.append([
                 InlineKeyboardButton(
-                    text=f"{city} (0)",
+                    text=f"{get_city_translation(city, language)} (0)",
                     callback_data=f"tourcity_{city}"
                 )
             ])
@@ -181,7 +181,7 @@ async def select_tour_country(callback: types.CallbackQuery, state: FSMContext):
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     await callback.message.edit_text(
-        t("admin_edit.select_city", language, country=country),
+        t("admin_edit.select_city", language, country=get_country_translation(country, language)),
         reply_markup=keyboard
     )
     
@@ -227,7 +227,7 @@ async def select_tour_country_from_input(message: types.Message, state: FSMConte
         for city, count in city_stats.items():
             buttons.append([
                 InlineKeyboardButton(
-                    text=f"{city} ({count})",
+                    text=f"{get_city_translation(city, language)} ({count})",
                     callback_data=f"tourcity_{city}"
                 )
             ])
@@ -237,7 +237,7 @@ async def select_tour_country_from_input(message: types.Message, state: FSMConte
         for city in main_cities[:5]:  # Показываем первые 5 городов
             buttons.append([
                 InlineKeyboardButton(
-                    text=f"{city} (0)",
+                    text=f"{get_city_translation(city, language)} (0)",
                     callback_data=f"tourcity_{city}"
                 )
             ])
@@ -247,7 +247,7 @@ async def select_tour_country_from_input(message: types.Message, state: FSMConte
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     await message.answer(
-        t("admin_edit.select_city", language, country=country),
+        t("admin_edit.select_city", language, country=get_country_translation(country, language)),
         reply_markup=keyboard
     )
     
@@ -364,11 +364,9 @@ async def show_tours_page(message: types.Message, state: FSMContext):
     end_idx = start_idx + ITEMS_PER_PAGE
     page_tours = all_tours[start_idx:end_idx]
 
-    any_sports = "любому виду спорта" if language == "ru" else "any kind of sport"
+    sport_text = t("tours.any_sport_text", language) if sport == "any" else get_sport_translation(sport, language)
 
-    sport_text = any_sports if sport == "any" else sport
-
-    text = f"🔎 {t('tours.find_tours', language, sport_text=sport_text)} {state_data.get('selected_city')}, {remove_country_flag(state_data.get('selected_country'))}\n\n"
+    text = f"🔎 {t('tours.find_tours', language, sport_text=sport_text)} {get_city_translation(state_data.get('selected_city'), language)}, {get_country_translation(state_data.get('selected_country'), language)}\n\n"
     
     # Создаем клавиатуру
     builder = InlineKeyboardBuilder()
@@ -384,7 +382,7 @@ async def show_tours_page(message: types.Message, state: FSMContext):
         # Имя сокращено до первой буквы + фамилия
         first_name = user_data.get('first_name', '')
         last_name = user_data.get('last_name', '')
-        user_name = f"{first_name[:1]}. {last_name}" if first_name and last_name else first_name or last_name or 'Неизвестно'
+        user_name = f"{first_name[:1]}. {last_name}" if first_name and last_name else first_name or last_name or t("common.not_specified", language)
         
         level = user_data.get('player_level', '-')
 
@@ -465,13 +463,15 @@ async def view_tour_details(callback: types.CallbackQuery, state: FSMContext):
     # Создаем ссылку на профиль
     profile_link = await create_user_profile_link(user_data, user_id)
     
+    country_display = get_country_translation(country, language) if country and country != "—" else country
+    city_display = get_city_translation(city, language) if city and city != "—" else city
     text = (
-        f"🔎 {'Тур пользователя' if language == 'ru' else 'User tour'}:\n\n"
+        f"🔎 {t('tours.user_tour', language)}:\n\n"
         f"{profile_link}\n"
-        f"📍 {'Место' if language == 'ru' else 'Place'}: {remove_country_flag(country)}, {city}\n\n"
-        f"📅 {'Даты поездки' if language == 'ru' else 'Travel dates'}:\n"
-        f"{'Начало' if language == 'ru' else 'Start'}: {user_data.get('vacation_start', '—')}\n"
-        f"{'Окончание' if language == 'ru' else 'The end'}: {user_data.get('vacation_end', '—')}\n\n"
+        f"📍 {t('tours.place', language)}: {country_display}, {city_display}\n\n"
+        f"📅 {t('tours.travel_dates', language)}:\n"
+        f"{t('tours.start', language)}: {user_data.get('vacation_start', '—')}\n"
+        f"{t('tours.end', language)}: {user_data.get('vacation_end', '—')}\n\n"
     )
     
     if user_data.get('vacation_comment'):
@@ -551,11 +551,9 @@ async def back_to_tours_list(callback: types.CallbackQuery, state: FSMContext):
         end_idx = start_idx + ITEMS_PER_PAGE
         page_tours = all_tours[start_idx:end_idx]
         
-        any_sports = "любому виду спорта" if language == "ru" else "any kind of sport"
+        sport_text = t("tours.any_sport_text", language) if sport == "any" else get_sport_translation(sport, language)
 
-        sport_text = any_sports if sport == "any" else sport
-
-        text = f"🔎 {t('tours.find_tours', language, sport_text=sport_text)} {state_data.get('selected_city')}, {remove_country_flag(state_data.get('selected_country'))}\n\n"
+        text = f"🔎 {t('tours.find_tours', language, sport_text=sport_text)} {get_city_translation(state_data.get('selected_city'), language)}, {get_country_translation(state_data.get('selected_country'), language)}\n\n"
     
         # Создаем клавиатуру
         builder = InlineKeyboardBuilder()
@@ -571,7 +569,7 @@ async def back_to_tours_list(callback: types.CallbackQuery, state: FSMContext):
             # Имя сокращено до первой буквы + фамилия
             first_name = user_data.get('first_name', '')
             last_name = user_data.get('last_name', '')
-            user_name = f"{first_name[:1]}. {last_name}" if first_name and last_name else first_name or last_name or 'Неизвестно'
+            user_name = f"{first_name[:1]}. {last_name}" if first_name and last_name else first_name or last_name or t("common.not_specified", language)
             
             level = user_data.get('player_level', '-')
 
@@ -625,7 +623,7 @@ async def start_create_tour_from_menu(callback: types.CallbackQuery, state: FSMC
     # Создаем клавиатуру с кнопками стран
     buttons = []
     for country in countries[:5]:
-        buttons.append([InlineKeyboardButton(text=f"{country}", callback_data=f"create_tour_country_{country}")])
+        buttons.append([InlineKeyboardButton(text=get_country_translation(country, language), callback_data=f"create_tour_country_{country}")])
     buttons.append([InlineKeyboardButton(text=t("registration.other_country", language), callback_data="create_tour_other_country")])
 
     try:
@@ -662,8 +660,8 @@ async def start_create_tour(callback: types.CallbackQuery, state: FSMContext):
     # Создаем клавиатуру с кнопками стран
     buttons = []
     for country in countries[:5]:
-        buttons.append([InlineKeyboardButton(text=f"{country}", callback_data=f"create_tour_country_{country}")])
-    buttons.append([InlineKeyboardButton(text="🌎 Другая страна", callback_data="create_tour_other_country")])
+        buttons.append([InlineKeyboardButton(text=get_country_translation(country, language), callback_data=f"create_tour_country_{country}")])
+    buttons.append([InlineKeyboardButton(text=t("registration.other_country", language), callback_data="create_tour_other_country")])
 
     try:
         await callback.message.edit_text(
@@ -711,17 +709,17 @@ async def ask_for_create_tour_city(message: types.Message, state: FSMContext, co
     language = await get_user_language_async(str(message.chat.id))
 
     cities = cities_data.get(country, [])
-    buttons = [[InlineKeyboardButton(text=f"{city}", callback_data=f"create_tour_city_{city}")] for city in cities[:5]]
+    buttons = [[InlineKeyboardButton(text=get_city_translation(city, language), callback_data=f"create_tour_city_{city}")] for city in cities[:5]]
     buttons.append([InlineKeyboardButton(text=t("registration.other_city", language), callback_data="create_tour_other_city")])
     
     try:
         await message.edit_text(
-            t("registration.select_vacation_city", language, country=country),
+            t("registration.select_vacation_city", language, country=get_country_translation(country, language)),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     except:
         await message.answer(
-            t("registration.select_vacation_city", language, country=country),
+            t("registration.select_vacation_city", language, country=get_country_translation(country, language)),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
     
@@ -863,9 +861,9 @@ async def process_tour_comment(message: types.Message, state: FSMContext):
     
     await message.answer(
         f"{t('tours.tour_successfully_created', language)}"
-        f"📍 {'Место' if language == 'ru' else 'Place'}: {remove_country_flag(vacation_country)}, {vacation_city}\n"
-        f"📅 {'Даты' if language == 'ru' else 'Dates'}: {vacation_start} - {vacation_end}\n"
-        f"💬 {'Комментарий' if language == 'ru' else 'Comment'}: {comment if comment else '-'}"
+        f"📍 {t('tours.place', language)}: {get_country_translation(vacation_country, language)}, {get_city_translation(vacation_city, language)}\n"
+        f"📅 {t('tours.travel_dates', language)}: {vacation_start} - {vacation_end}\n"
+        f"💬 {t('tours.comment', language)}: {comment if comment else '-'}"
     )
     
     await state.clear()

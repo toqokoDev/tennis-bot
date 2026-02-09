@@ -9,6 +9,7 @@ from utils.tournament_manager import tournament_manager
 from utils.utils import create_user_profile_link, escape_markdown
 from utils.translations import get_user_language_async, t
 from handlers.enter_invoice import create_set_score_keyboard
+from config.profile import get_city_translation
 
 router = Router()
 
@@ -58,10 +59,11 @@ async def create_tournament_keyboard(current_user_id: str) -> InlineKeyboardMark
         builder.button(text=t("tournament_score.no_tournaments_button", language), callback_data="tournament_score:no_tournaments")
     else:
         for tournament_id, tournament_data in user_tournaments.items():
-            name = tournament_data.get('name', 'Без названия')
-            city = tournament_data.get('city', 'Не указан')
+            name = tournament_data.get('name', t("common.not_specified", language))
+            city_raw = tournament_data.get('city', t("common.not_specified", language))
+            city_display = get_city_translation(city_raw, language) if isinstance(city_raw, str) else city_raw
             participants_count = len(tournament_data.get('participants', {}))
-            builder.button(text=f"🏆 {name} ({city}) - {participants_count} участников", 
+            builder.button(text=t("tournament_score.tournament_item", language, name=name, city=city_display, count=participants_count),
                           callback_data=f"tournament_score:select:{tournament_id}")
     
     builder.button(text=t("common.back", language), callback_data="tournament_score:back")
@@ -98,9 +100,9 @@ async def create_tournament_opponents_keyboard(tournament_id: str, current_user_
         builder.button(text=t("tournament_score.no_opponents", language), callback_data="tournament_score:no_participants")
     else:
         for i, opponent in enumerate(available_opponents):
-            name = opponent.get('name', 'Неизвестно')
+            name = opponent.get('name', t("common.not_specified", language))
             match_number = opponent.get('match_number', 0)
-            builder.button(text=f"👤 {name} (Матч {match_number + 1})", 
+            builder.button(text=f"👤 {name} ({t('tournament_score.match_n', language, n=match_number + 1)})",
                          callback_data=f"tournament_score:opponent:{tournament_id}:{i}")
     
     builder.button(text=t("common.back", language), callback_data="tournament_score:back")
@@ -146,7 +148,7 @@ async def handle_tournament_selection(callback: types.CallbackQuery, state: FSMC
     if current_participants < 2:
         await callback.message.edit_text(
             t("tournament_score.not_enough_participants", language,
-              tournament_name=tournament_data.get('name', 'Без названия'),
+              tournament_name=tournament_data.get('name', t("common.not_specified", language)),
               current_count=current_participants,
               min_count=2), 
             reply_markup=InlineKeyboardMarkup(

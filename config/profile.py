@@ -289,6 +289,551 @@ def get_sport_translation(sport: str, language: str = "ru") -> str:
     # Если не нашли, возвращаем оригинал
     return sport
 
+def get_country_translation(country: str, language: str = "ru") -> str:
+    """Переводит название страны"""
+    # Маппинг эмодзи-стран на ключи переводов
+    country_mapping = {
+        "🇷🇺 Россия": "russia",
+        "🇧🇾 Беларусь": "belarus",
+        "🇰🇿 Казахстан": "kazakhstan",
+        "🇬🇪 Грузия": "georgia",
+        "🇦🇲 Армения": "armenia",
+        "🇺🇿 Узбекистан": "uzbekistan"
+    }
+    
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return country
+    
+    # Ищем ключ для перевода; если перевода нет — оставляем оригинал
+    country_key = country_mapping.get(country)
+    if country_key:
+        return t(f"config.countries.{country_key}", language, default=country)
+    
+    # Если не нашли в маппинге, возвращаем оригинал без эмодзи
+    return country.replace("🇷🇺 ", "").replace("🇧🇾 ", "").replace("🇰🇿 ", "").replace("🇬🇪 ", "").replace("🇦🇲 ", "").replace("🇺🇿 ", "")
+
+def get_cities_for_country(country: str, language: str = "ru") -> list:
+    """Возвращает города для страны с учетом языка"""
+    # Получаем оригинальные города
+    original_cities = cities_data.get(country, [])
+    
+    # Если язык русский, возвращаем как есть
+    if language == "ru":
+        return original_cities
+    
+    # Переводим каждый город
+    translated_cities = []
+    for city in original_cities:
+        # Маппинг городов на ключи (используем нижний регистр и заменяем пробелы на подчеркивания)
+        city_key = city.lower().replace(" ", "_").replace("-", "_").replace("(", "").replace(")", "")
+        translated_city = t(f"config.cities.{city_key}", language, default=city)
+        translated_cities.append(translated_city)
+    
+    return translated_cities
+
+def get_city_translation(city: str, language: str = "ru") -> str:
+    """Переводит название города"""
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return city
+    
+    # Маппинг городов на ключи
+    city_key = city.lower().replace(" ", "_").replace("-", "_").replace("(", "").replace(")", "")
+    translated_city = t(f"config.cities.{city_key}", language, default=city)
+    return translated_city
+
+def get_district_translation(district: str, language: str = "ru") -> str:
+    """Переводит название округа Москвы или сторону света"""
+    # Маппинг округов Москвы
+    district_mapping = {
+        "ВАО": "vao",
+        "ЗАО": "zao",
+        "ЗелАО": "zela",
+        "САО": "sao",
+        "СВАО": "svao",
+        "СЗАО": "szao",
+        "ЦАО": "cao",
+        "ЮАО": "yao",
+        "ЮВАО": "yvao",
+        "ЮЗАО": "yzao"
+    }
+    
+    # Маппинг сторон света
+    direction_mapping = {
+        "Север": "north",
+        "Юг": "south",
+        "Запад": "west",
+        "Восток": "east"
+    }
+    
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return district
+    
+    # Сначала проверяем стороны света
+    direction_key = direction_mapping.get(district)
+    if direction_key:
+        return t(f"config.moscow_districts.{direction_key}", language, default=district)
+    
+    # Затем проверяем округа
+    district_key = district_mapping.get(district)
+    if district_key:
+        return t(f"config.moscow_districts.{district_key}", language, default=district)
+    
+    # Если не нашли, пробуем обратное преобразование для округов
+    for original, key in district_mapping.items():
+        if t(f"config.moscow_districts.{key}", language) == district:
+            return original
+    
+    # Обратное преобразование для сторон света
+    for original, key in direction_mapping.items():
+        if t(f"config.moscow_districts.{key}", language) == district:
+            return original
+    
+    # Если ничего не нашли, возвращаем оригинал
+    return district
+
+def get_game_type_translation(game_type: str, language: str = "ru") -> str:
+    """Переводит тип игры"""
+    # Маппинг типов игр
+    type_mapping = {
+        "Одиночная": "single",
+        "Парная": "double",
+        "Микст": "mixed",
+        "Тренировка": "training"
+    }
+    
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return game_type
+    
+    # Ищем ключ для перевода
+    type_key = type_mapping.get(game_type)
+    if type_key:
+        return t(f"config.game_types.{type_key}", language)
+    
+    # Обратное преобразование
+    for original, key in type_mapping.items():
+        if t(f"config.game_types.{key}", language) == game_type:
+            return original
+    
+    return game_type
+
+def get_category_translation(category: str, language: str = "ru") -> str:
+    """Переводит категорию турнира"""
+    # Маппинг категорий
+    category_mapping = {
+        "1 категория": "category_1",
+        "2 категория": "category_2",
+        "3 категория": "category_3",
+        "Мастерс": "masters",
+        "Профи": "pro",
+        "Без категории": "no_category"
+    }
+    
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return category
+    
+    # Ищем ключ для перевода
+    category_key = category_mapping.get(category)
+    if category_key:
+        return t(f"config.tournament_categories.{category_key}", language, default=category)
+    
+    # Обратное преобразование
+    for original, key in category_mapping.items():
+        translated = t(f"config.tournament_categories.{key}", language)
+        if translated == category:
+            return original
+    
+    return category
+
+def get_age_group_translation(age_group: str, language: str = "ru") -> str:
+    """Переводит возрастную группу"""
+    # Маппинг возрастных групп
+    age_mapping = {
+        "Взрослые": "adults",
+        "Дети": "children"
+    }
+    
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return age_group
+    
+    # Ищем ключ для перевода
+    age_key = age_mapping.get(age_group)
+    if age_key:
+        return t(f"config.tournament_age_groups.{age_key}", language, default=age_group)
+    
+    # Обратное преобразование
+    for original, key in age_mapping.items():
+        translated = t(f"config.tournament_age_groups.{key}", language)
+        if translated == age_group:
+            return original
+    
+    return age_group
+
+def get_duration_translation(duration: str, language: str = "ru") -> str:
+    """Переводит продолжительность турнира"""
+    # Маппинг продолжительности
+    duration_mapping = {
+        "Многодневные": "multi_day",
+        "Однодневные": "one_day",
+        "Выездной": "away"
+    }
+    
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return duration
+    
+    # Ищем ключ для перевода
+    duration_key = duration_mapping.get(duration)
+    if duration_key:
+        return t(f"config.tournament_durations.{duration_key}", language, default=duration)
+    
+    # Обратное преобразование
+    for original, key in duration_mapping.items():
+        translated = t(f"config.tournament_durations.{key}", language)
+        if translated == duration:
+            return original
+    
+    return duration
+
+def get_payment_type_translation(payment_type: str, language: str = "ru") -> str:
+    """Переводит тип оплаты"""
+    # Маппинг типов оплаты
+    type_mapping = {
+        "💰 Пополам": "split",
+        "💳 Я оплачиваю": "i_pay",
+        "💵 Соперник оплачивает": "opponent_pays",
+        "🎾 Проигравший оплачивает": "loser_pays"
+    }
+    
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return payment_type
+    
+    # Ищем ключ для перевода
+    type_key = type_mapping.get(payment_type)
+    if type_key:
+        return t(f"config.payment_types.{type_key}", language)
+    
+    # Обратное преобразование
+    for original, key in type_mapping.items():
+        if t(f"config.payment_types.{key}", language) == payment_type:
+            return original
+    
+    return payment_type
+
+def get_role_translation(role: str, language: str = "ru") -> str:
+    """Переводит роль"""
+    # Маппинг ролей
+    role_mapping = {
+        "🎯 Игрок": "player",
+        "👨‍🏫 Тренер": "trainer"
+    }
+    
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return role
+    
+    # Ищем ключ для перевода
+    role_key = role_mapping.get(role)
+    if role_key:
+        return t(f"config.roles.{role_key}", language)
+    
+    # Обратное преобразование
+    for original, key in role_mapping.items():
+        if t(f"config.roles.{key}", language) == role:
+            return original
+    
+    return role
+
+def get_tournament_type_translation(tournament_type: str, language: str = "ru") -> str:
+    """Переводит тип турнира"""
+    # Маппинг типов турниров
+    type_mapping = {
+        "Олимпийская система": "olympic",
+        "Круговая": "round_robin",
+        "Круговая система": "round_robin"
+    }
+    
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return tournament_type
+    
+    # Ищем ключ для перевода
+    type_key = type_mapping.get(tournament_type)
+    if type_key:
+        return t(f"config.tournament_types.{type_key}", language, default=tournament_type)
+    
+    # Обратное преобразование
+    for original, key in type_mapping.items():
+        translated = t(f"config.tournament_types.{key}", language)
+        if translated == tournament_type:
+            return original
+    
+    return tournament_type
+
+def get_gender_translation(gender: str, language: str = "ru") -> str:
+    """Переводит пол или формат участия в турнире"""
+    if not gender:
+        return gender or ""
+    
+    # Маппинг пола пользователя
+    user_gender_mapping = {
+        "Мужской": "male",
+        "Женский": "female"
+    }
+    
+    # Маппинг форматов участия в турнире
+    tournament_gender_mapping = {
+        "Мужчины": "men",
+        "Женщины": "women",
+        "Мужская пара": "men_pair",
+        "Женская пара": "women_pair",
+        "Микст": "mixed"
+    }
+    
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return gender
+    
+    # Убираем пробелы в начале и конце для сравнения
+    gender_clean = gender.strip()
+    
+    # Сначала проверяем формат участия в турнире
+    gender_key = tournament_gender_mapping.get(gender_clean)
+    if gender_key:
+        try:
+            translated = t(f"config.tournament_genders.{gender_key}", language, default=None)
+            if translated and translated != f"config.tournament_genders.{gender_key}" and translated != gender_clean:
+                return translated
+            # Если перевод не сработал, используем прямое обращение к переводам
+            translations = load_translations(language)
+            direct_translation = translations.get("config", {}).get("tournament_genders", {}).get(gender_key)
+            if direct_translation:
+                return direct_translation
+        except Exception:
+            pass
+    
+    # Затем проверяем пол пользователя
+    gender_key = user_gender_mapping.get(gender_clean)
+    if gender_key:
+        try:
+            translated = t(f"config.gender_types.{gender_key}", language, default=None)
+            if translated and translated != f"config.gender_types.{gender_key}" and translated != gender_clean:
+                return translated
+            # Если перевод не сработал, используем прямое обращение к переводам
+            translations = load_translations(language)
+            direct_translation = translations.get("config", {}).get("gender_types", {}).get(gender_key)
+            if direct_translation:
+                return direct_translation
+        except Exception:
+            pass
+    
+    # Обратное преобразование для формата участия
+    for original, key in tournament_gender_mapping.items():
+        try:
+            translated = t(f"config.tournament_genders.{key}", language)
+            if translated == gender_clean:
+                return original
+        except Exception:
+            pass
+    
+    # Обратное преобразование для пола пользователя
+    for original, key in user_gender_mapping.items():
+        try:
+            translated = t(f"config.gender_types.{key}", language)
+            if translated == gender_clean:
+                return original
+        except Exception:
+            pass
+    
+    return gender_clean
+
+def get_tournament_type_translation(tournament_type: str, language: str = "ru") -> str:
+    """Переводит тип турнира"""
+    # Маппинг типов турниров
+    type_mapping = {
+        "Олимпийская система": "olympic",
+        "Круговая": "round_robin",
+        "Круговая система": "round_robin"
+    }
+    
+    # Если язык русский, возвращаем оригинал
+    if language == "ru":
+        return tournament_type
+    
+    # Ищем ключ для перевода
+    type_key = type_mapping.get(tournament_type)
+    if type_key:
+        return t(f"config.tournament_types.{type_key}", language, default=tournament_type)
+    
+    # Обратное преобразование
+    for original, key in type_mapping.items():
+        translated = t(f"config.tournament_types.{key}", language)
+        if translated == tournament_type:
+            return original
+    
+    return tournament_type
+
+def get_price_range_translation(price_range: dict, language: str = "ru") -> dict:
+    """Переводит диапазон цен"""
+    if language == "ru":
+        return price_range
+    
+    # Создаем переведенную копию
+    translated = price_range.copy()
+    
+    # Маппинг меток ценовых диапазонов
+    label_mapping = {
+        "до 1000 руб.": "up_to_1000",
+        "1000-2000 руб.": "1000_2000",
+        "2000-3000 руб.": "2000_3000",
+        "3000-5000 руб.": "3000_5000",
+        "5000-10000 руб.": "5000_10000",
+        "от 10000 руб.": "from_10000"
+    }
+    
+    # Переводим метку
+    label_key = label_mapping.get(price_range.get("label", ""))
+    if label_key:
+        translated["label"] = t(f"config.price_ranges.{label_key}", language)
+    
+    return translated
+
+def get_weekday_translation(weekday_num: int, language: str = "ru") -> str:
+    """Переводит день недели"""
+    if language == "ru":
+        return WEEKDAYS.get(weekday_num, "")
+    return t(f"config.weekdays.{weekday_num}", language)
+
+def get_weekday_name(weekday_num: int, language: str = "ru") -> str:
+    """Возвращает полное название дня недели"""
+    return t(f"config.full_weekdays.{weekday_num}", language)
+
+def get_month_name(month_num: int, language: str = "ru") -> str:
+    """Возвращает название месяца"""
+    return t(f"config.months.{month_num}", language)
+
+def get_dating_goal_translation(goal: str, language: str = "ru") -> str:
+    """Переводит цель знакомства"""
+    # Маппинг целей знакомств
+    goal_mapping = {
+        "Отношения": "relationship",
+        "Общение": "communication",
+        "Дружба": "friendship",
+        "Никогда не знаешь, что будет": "never_know"
+    }
+    
+    if language == "ru":
+        return goal
+    
+    goal_key = goal_mapping.get(goal)
+    if goal_key:
+        return t(f"config.dating_goals.{goal_key}", language)
+    
+    # Обратное преобразование
+    for original, key in goal_mapping.items():
+        if t(f"config.dating_goals.{key}", language) == goal:
+            return original
+    
+    return goal
+
+def get_dating_interest_translation(interest: str, language: str = "ru") -> str:
+    """Переводит интерес для знакомств"""
+    # Маппинг интересов
+    interest_mapping = {
+        "Путешествия": "travel",
+        "Музыка": "music",
+        "Кино": "cinema",
+        "Кофе": "coffee",
+        "Гитара": "guitar",
+        "Горные лыжи": "skiing",
+        "Настолки": "board_games",
+        "Квизы": "quizzes"
+    }
+    
+    if language == "ru":
+        return interest
+    
+    interest_key = interest_mapping.get(interest)
+    if interest_key:
+        return t(f"config.dating_interests.{interest_key}", language)
+    
+    # Обратное преобразование
+    for original, key in interest_mapping.items():
+        if t(f"config.dating_interests.{key}", language) == interest:
+            return original
+    
+    return interest
+
+def get_dating_additional_translation(field: str, language: str = "ru") -> str:
+    """Переводит дополнительное поле для знакомств"""
+    # Маппинг дополнительных полей
+    field_mapping = {
+        "Работа / Профессия": "work",
+        "Образование: Вуз или уровень образования": "education",
+        "Рост": "height",
+        "Зодиак, Знак зодиака": "zodiac",
+        "Вредные привычки: Отношение к курению, алкоголю": "habits"
+    }
+    
+    if language == "ru":
+        return field
+    
+    field_key = field_mapping.get(field)
+    if field_key:
+        return t(f"config.dating_additional.{field_key}", language)
+    
+    # Обратное преобразование
+    for original, key in field_mapping.items():
+        if t(f"config.dating_additional.{key}", language) == field:
+            return original
+    
+    return field
+
+def translate_config_element(element: str, element_type: str, language: str = "ru") -> str:
+    """Универсальная функция для перевода элементов конфигурации
+    
+    Args:
+        element: Элемент для перевода
+        element_type: Тип элемента ('sport', 'country', 'city', 'district', 'game_type', 
+                                   'payment_type', 'role', 'gender', 'price_range', 
+                                   'weekday', 'dating_goal', 'dating_interest', 'dating_additional')
+        language: Язык перевода
+    """
+    if language == "ru":
+        return element
+    
+    translation_functions = {
+        'sport': get_sport_translation,
+        'country': get_country_translation,
+        'city': get_city_translation,
+        'district': get_district_translation,
+        'game_type': get_game_type_translation,
+        'payment_type': get_payment_type_translation,
+        'role': get_role_translation,
+        'gender': get_gender_translation,
+        'weekday': lambda x, lang: get_weekday_translation(int(x), lang) if x.isdigit() else x,
+        'dating_goal': get_dating_goal_translation,
+        'dating_interest': get_dating_interest_translation,
+        'dating_additional': get_dating_additional_translation
+    }
+    
+    func = translation_functions.get(element_type)
+    if func:
+        return func(element, language)
+    
+    # Для price_range нужна отдельная обработка
+    if element_type == 'price_range' and isinstance(element, dict):
+        translated = get_price_range_translation(element, language)
+        return translated.get("label", element.get("label", ""))
+    
+    return element
+
 # Для обратной совместимости
 sport_type = [
     "🎾Большой теннис",
