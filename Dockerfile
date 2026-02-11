@@ -4,6 +4,8 @@ FROM python:3.11-slim
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
+ENV PYTHONPATH=/app
+
 # Копируем файл зависимостей
 COPY requirements.txt .
 
