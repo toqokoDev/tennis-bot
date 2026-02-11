@@ -7,7 +7,6 @@ from aiogram.types import (
     ReplyKeyboardRemove
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config.config import ITEMS_PER_PAGE, SUBSCRIPTION_PRICE
 from config.profile import (
     create_sport_keyboard, sport_type, get_sport_config, get_sport_translation,
     get_country_translation, get_city_translation, get_district_translation,
@@ -21,6 +20,8 @@ from utils.utils import create_user_profile_link, get_sort_key, remove_country_f
 from utils.translations import get_user_language_async, t
 
 router = Router()
+
+ITEMS_PER_PAGE = 5
 
 @router.message(F.text.in_([t("menu.game_offers", "ru"), t("menu.game_offers", "en")]))
 async def browse_offers_start(message: types.Message, state: FSMContext):
