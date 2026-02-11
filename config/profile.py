@@ -1,6 +1,89 @@
+import logging
+from functools import lru_cache
+from typing import Optional
+
 from aiogram.types import InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from utils.translations import t, load_translations
+
+try:
+    from deep_translator import GoogleTranslator  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    GoogleTranslator = None  # type: ignore
+
+logger = logging.getLogger(__name__)
+
+_FLAG_PREFIXES = ("🇷🇺", "🇧🇾", "🇰🇿", "🇬🇪", "🇦🇲", "🇺🇿", "🇺🇸")
+
+
+def _extract_flag(country: str):
+    if not country:
+        return None, country
+    for flag in _FLAG_PREFIXES:
+        if country.startswith(flag):
+            return flag, country[len(flag):].lstrip()
+    return None, country
+
+
+@lru_cache(maxsize=8)
+def _get_translator_instance(target_language: str):
+    if GoogleTranslator is None:
+        return None
+    try:
+        return GoogleTranslator(source="auto", target=target_language)
+    except Exception as exc:
+        logger.debug("Translator init failed for %s: %s", target_language, exc)
+        return None
+
+
+def _looks_like_russian(text: str) -> bool:
+    if not text:
+        return False
+    # Быстрая эвристика: наличие кириллических символов
+    for char in text.lower():
+        if "а" <= char <= "я" or char == "ё":
+            return True
+    return False
+
+
+def _normalize_language_for_translation(language: str, *, force: bool = False) -> Optional[str]:
+    if not language:
+        return None
+    lang = language.lower().split("-", 1)[0]
+    if lang == "ru" and not force:
+        return None
+    return lang
+
+
+@lru_cache(maxsize=512)
+def _translate_text(text: str, language: str, *, force: bool = False) -> Optional[str]:
+    if not text:
+        return None
+    target_language = _normalize_language_for_translation(language, force=force)
+    if not target_language:
+        return None
+
+    translator = _get_translator_instance(target_language)
+    if translator is None:
+        return None
+
+    try:
+        translated = translator.translate(text)
+        if translated and isinstance(translated, str):
+            return translated
+    except Exception as exc:
+        logger.debug(
+            "Auto translation failed for '%s' to %s: %s",
+            text,
+            target_language,
+            exc,
+        )
+    return None
+
+
+def _strip_country_flag(country: str) -> str:
+    _, without_flag = _extract_flag(country)
+    return without_flag
 
 def get_tennis_levels(language: str = "ru") -> dict:
     """Возвращает уровни тенниса с переведенными описаниями"""
@@ -298,20 +381,34 @@ def get_country_translation(country: str, language: str = "ru") -> str:
         "🇰🇿 Казахстан": "kazakhstan",
         "🇬🇪 Грузия": "georgia",
         "🇦🇲 Армения": "armenia",
-        "🇺🇿 Узбекистан": "uzbekistan"
+        "🇺🇿 Узбекистан": "uzbekistan",
+        "🇺🇸 США": "usa",
     }
-    
-    # Если язык русский, возвращаем оригинал
+
+    flag, stripped_country = _extract_flag(country)
+
+    # Русский язык: оставляем как есть, но пробуем перевести из латиницы
     if language == "ru":
-        return country
-    
-    # Ищем ключ для перевода; если перевода нет — оставляем оригинал
+        if _looks_like_russian(stripped_country):
+            return country if flag else stripped_country
+        auto_translated = _translate_text(stripped_country, language, force=True)
+        if auto_translated:
+            return f"{flag} {auto_translated}" if flag else auto_translated
+        return country if flag else stripped_country
+
+    # Ищем ключ для перевода; если перевода нет — пытаемся перевести автоматически
     country_key = country_mapping.get(country)
     if country_key:
-        return t(f"config.countries.{country_key}", language, default=country)
-    
-    # Если не нашли в маппинге, возвращаем оригинал без эмодзи
-    return country.replace("🇷🇺 ", "").replace("🇧🇾 ", "").replace("🇰🇿 ", "").replace("🇬🇪 ", "").replace("🇦🇲 ", "").replace("🇺🇿 ", "")
+        translated = t(f"config.countries.{country_key}", language, default=None)
+        if translated and translated != f"config.countries.{country_key}":
+            return translated
+
+    auto_translated = _translate_text(stripped_country, language)
+    if auto_translated:
+        return auto_translated
+
+    # Если не нашли в маппинге или перевода, возвращаем название без эмодзи
+    return stripped_country
 
 def get_cities_for_country(country: str, language: str = "ru") -> list:
     """Возвращает города для страны с учетом языка"""
@@ -327,8 +424,14 @@ def get_cities_for_country(country: str, language: str = "ru") -> list:
     for city in original_cities:
         # Маппинг городов на ключи (используем нижний регистр и заменяем пробелы на подчеркивания)
         city_key = city.lower().replace(" ", "_").replace("-", "_").replace("(", "").replace(")", "")
-        translated_city = t(f"config.cities.{city_key}", language, default=city)
-        translated_cities.append(translated_city)
+        full_key = f"config.cities.{city_key}"
+        translated_city = t(full_key, language, default=None)
+        if translated_city and translated_city != full_key:
+            translated_cities.append(translated_city)
+            continue
+
+        auto_translated = _translate_text(city, language)
+        translated_cities.append(auto_translated or city)
     
     return translated_cities
 
@@ -336,12 +439,20 @@ def get_city_translation(city: str, language: str = "ru") -> str:
     """Переводит название города"""
     # Если язык русский, возвращаем оригинал
     if language == "ru":
-        return city
-    
+        if _looks_like_russian(city):
+            return city
+        auto_translated = _translate_text(city, language, force=True)
+        return auto_translated or city
+
     # Маппинг городов на ключи
     city_key = city.lower().replace(" ", "_").replace("-", "_").replace("(", "").replace(")", "")
-    translated_city = t(f"config.cities.{city_key}", language, default=city)
-    return translated_city
+    full_key = f"config.cities.{city_key}"
+    translated_city = t(full_key, language, default=None)
+    if translated_city and translated_city != full_key:
+        return translated_city
+
+    auto_translated = _translate_text(city, language)
+    return auto_translated or city
 
 def get_district_translation(district: str, language: str = "ru") -> str:
     """Переводит название округа Москвы или сторону света"""
