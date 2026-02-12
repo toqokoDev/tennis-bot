@@ -28,8 +28,8 @@ from utils.utils import calculate_new_ratings, remove_country_flag
 from handlers.profile import calculate_level_from_points
 from utils.tournament_notifications import TournamentNotifications
 from utils.translations import get_user_language_async, t
-import io
 from config.config import SHOP_ID, SECRET_KEY
+from yookassa import Configuration, Payment
 from models.states import TournamentPaymentStates
 
 router = Router()
@@ -3039,7 +3039,8 @@ async def tournament_pay_get_email(message: Message, state: FSMContext):
     data = await state.get_data()
     tournament_id = data['tournament_id']
     fee = data['tournament_fee']
-    
+    Configuration.account_id = SHOP_ID
+    Configuration.secret_key = SECRET_KEY
     from services.payments import create_payment
     try:
         payment_link, payment_id = await create_payment(message.chat.id, fee, t("tournament.payment_description", language, tournament_id=tournament_id), email)
@@ -3065,9 +3066,7 @@ async def tournament_pay_confirm(callback: CallbackQuery, state: FSMContext):
     tournament_id = callback.data.split(":")[1]
     user_id = callback.from_user.id
     try:
-        payment = {
-            "status": 'succeeded'
-        }
+        payment = Payment.find_one(payment_id)
         if payment.status == 'succeeded':
             tournaments = await storage.load_tournaments()
             tournament = tournaments.get(tournament_id, {})

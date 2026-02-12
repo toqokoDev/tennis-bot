@@ -24,6 +24,10 @@ EMAIL_FROM_ADDRESS = os.getenv('EMAIL_FROM_ADDRESS', 'info@tennis-play.com')
 EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Tennis-Play.com')
 EMAIL_ADMIN = os.getenv('EMAIL_ADMIN', 'toqoko@gmail.com') #promosite1@ya.ru
 
+TINKOFF_TERMINAL_KEY = "25862619DE"
+TINKOFF_PASSWORD = "l*5YOP%D8XdVSu!k"
+TINKOFF_API_URL = "securepay.tinkoff.ru"
+
 required_vars = ['TOKEN', 'BOT_USERNAME', 'CHANNEL_ID', 'SHOP_ID', 'SECRET_KEY']
 for var in required_vars:
     if not os.getenv(var):

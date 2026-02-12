@@ -1,3 +1,4 @@
+from yookassa import Configuration, Payment
 from datetime import datetime, timedelta
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
@@ -301,6 +302,9 @@ async def process_email_input(message: types.Message, state: FSMContext):
     # Сохраняем email и переходим к созданию платежа
     await state.update_data(user_email=email)
     
+    Configuration.account_id = SHOP_ID
+    Configuration.secret_key = SECRET_KEY
+    
     try:
         payment_link, payment_id = await create_payment(
             message.chat.id, 
@@ -349,9 +353,7 @@ async def confirm_payment(callback: types.CallbackQuery, state: FSMContext):
         pass
     
     try:
-        payment = {
-            "status": 'succeeded'
-        }
+        payment = Payment.find_one(payment_id)
         
         if payment.status == "succeeded":
             # Дополнительная проверка перед активацией подписки

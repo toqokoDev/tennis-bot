@@ -1,4 +1,5 @@
 import uuid
+from yookassa import Payment
 
 from config.config import BOT_USERNAME
 
@@ -44,10 +45,10 @@ async def create_payment(user_id, amount, description, email=None):
             ]
         }
     
-    payment = ""
+    payment = Payment.create(payment_data)
     
     # Получаем ссылку для оплаты
-    confirmation_url = payment
-    payment_id = 1
+    confirmation_url = payment.confirmation.confirmation_url
+    payment_id = payment.id
     
     return confirmation_url, payment_id
