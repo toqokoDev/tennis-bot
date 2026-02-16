@@ -678,7 +678,7 @@
     "payment_confirmed_message": "✅ Payment confirmed successfully! Good luck in the tournament.\n\n",
     "payment_confirmed_tournament_line": "🏆 {name}\n",
     "payment_confirmed_paid_line": "💳 Payment: ✅ Paid ({fee} ₽)",
-    "payment_email_prompt": "📧 Enter email for receipt (YooKassa):",
+    "payment_email_prompt": "📧 To receive an electronic receipt, please provide your email:\n\n<i>A receipt will be sent to this email</i>",
     "payment_link_message": "💳 Go to the payment link:\n{payment_link}\n\nAfter payment, click 'Confirm payment'\n\n📧 Receipt will be sent to: {email}",
     "payment_error_create": "❌ Payment creation error: {error}",
     "payment_description": "Tournament participation payment {tournament_id}",

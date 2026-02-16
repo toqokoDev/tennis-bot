@@ -16,17 +16,17 @@ API_BASE_URL = os.getenv('TENNIS_API_URL', 'https://tennis-play.by/profile/api.p
 API_SECRET_TOKEN = os.getenv('TENNIS_API_TOKEN', 'qTDrzUztf2CbdH3sUad9plkmfUryMNA5JAkX1HM2uXw')
 
 # Email настройки
-EMAIL_SMTP_HOST = os.getenv('EMAIL_SMTP_HOST', 'smtp.yandex.ru')
-EMAIL_SMTP_PORT = int(os.getenv('EMAIL_SMTP_PORT', 465))
+EMAIL_SMTP_HOST = 'smtp.yandex.ru'
+EMAIL_SMTP_PORT = 465
 EMAIL_SMTP_USERNAME = os.getenv('EMAIL_SMTP_USERNAME', 'info@tennis-play.com')
-EMAIL_SMTP_PASSWORD = os.getenv('EMAIL_SMTP_PASSWORD', '1q2w3e1q')
+EMAIL_SMTP_PASSWORD = os.getenv('EMAIL_SMTP_PASSWORD', '111111111')
 EMAIL_FROM_ADDRESS = os.getenv('EMAIL_FROM_ADDRESS', 'info@tennis-play.com')
 EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Tennis-Play.com')
-EMAIL_ADMIN = os.getenv('EMAIL_ADMIN', 'toqoko@gmail.com') #promosite1@ya.ru
+EMAIL_ADMIN = os.getenv('EMAIL_ADMIN', 'toqoko@gmail.com')
 
-TINKOFF_TERMINAL_KEY = "25862619DE"
-TINKOFF_PASSWORD = "l*5YOP%D8XdVSu!k"
-TINKOFF_API_URL = "securepay.tinkoff.ru"
+TINKOFF_TERMINAL_KEY = os.getenv('TINKOFF_TERMINAL_KEY', '0000')
+TINKOFF_PASSWORD = os.getenv('TINKOFF_PASSWORD', '111111111')
+TINKOFF_BASE_URL = "https://securepay.tinkoff.ru/v2"
 
 required_vars = ['TOKEN', 'BOT_USERNAME', 'CHANNEL_ID', 'SHOP_ID', 'SECRET_KEY']
 for var in required_vars:

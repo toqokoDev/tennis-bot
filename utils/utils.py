@@ -352,6 +352,22 @@ async def create_user_profile_link(user_data: dict, user_id: str, additional=Tru
     else:
         return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
 
+def parse_date_flexible(date_str: str):
+    """
+    Парсит дату в форматах DD.MM.YYYY или YYYY-MM-DD.
+    Возвращает объект date или None при ошибке.
+    """
+    if not date_str or not isinstance(date_str, str):
+        return None
+    date_str = date_str.strip()
+    for fmt in ["%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y"]:
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 async def format_tour_date(date_str):
     if not date_str or date_str == '-':
         return '-'
@@ -373,7 +389,8 @@ def get_sort_key(offer):
         if offer.get('date') is None:
             date = datetime.min
         elif isinstance(offer['date'], str):
-            date = datetime.strptime(offer['date'], '%d.%m.%Y')
+            parsed = parse_date_flexible(offer['date'])
+            date = datetime.combine(parsed, datetime.min.time()) if parsed else datetime.min
         else:
             date = offer['date']
     except (ValueError, TypeError):

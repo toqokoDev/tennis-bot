@@ -48,7 +48,7 @@ from utils.admin import is_user_banned
 from utils.media import download_photo_to_path
 from utils.bot import show_current_data, show_profile
 from utils.validate import validate_date, validate_date_range, validate_future_date, validate_price
-from utils.utils import calculate_age, remove_country_flag, escape_markdown
+from utils.utils import calculate_age, remove_country_flag, escape_markdown, parse_date_flexible
 from services.storage import storage
 from services.web_api import web_api_client
 from services.channels import send_tournament_application_to_channel
@@ -339,28 +339,22 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
             vacation_start_date = params.get("find_partner_from", "")
             
             if vacation_end_date:
-                try:
-                    # Парсим дату в формате YYYY-MM-DD
-                    end_date = datetime.strptime(vacation_end_date, "%Y-%m-%d").date()
+                # Парсим дату (API может вернуть DD.MM.YYYY или YYYY-MM-DD)
+                end_date = parse_date_flexible(vacation_end_date)
+                if end_date:
                     today = datetime.now().date()
                     
                     # Если дата окончания тура в будущем или сегодня, сохраняем данные
                     if end_date >= today:
                         vacation_tennis = True
-                        # Конвертируем даты в формат ДД.ММ.ГГГГ для бота
+                        # Сохраняем в формате ДД.ММ.ГГГГ для бота
                         vacation_end = end_date.strftime("%d.%m.%Y")
                         
                         if vacation_start_date:
-                            try:
-                                start_date = datetime.strptime(vacation_start_date, "%Y-%m-%d").date()
-                                vacation_start = start_date.strftime("%d.%m.%Y")
-                            except ValueError:
-                                vacation_start = ""
+                            start_date = parse_date_flexible(vacation_start_date)
+                            vacation_start = start_date.strftime("%d.%m.%Y") if start_date else ""
                         
                         vacation_comment = params.get("find_partner_comment", "")
-                except ValueError:
-                    # Если ошибка парсинга даты, не сохраняем
-                    pass
         
         profile = {
             "web_user_id": web_user_id,
@@ -405,15 +399,15 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
         if params.get("public_offer", False):
             offer_date_str = params.get("public_offer_date", "")
             if offer_date_str:
-                try:
-                    # Парсим дату в формате YYYY-MM-DD
-                    offer_date = datetime.strptime(offer_date_str, "%Y-%m-%d").date()
+                # Парсим дату (API может вернуть DD.MM.YYYY или YYYY-MM-DD)
+                offer_date = parse_date_flexible(offer_date_str)
+                if offer_date:
                     today = datetime.now().date()
                     
                     # Если дата игры в будущем или сегодня, добавляем предложение
                     if offer_date >= today:
-                        # Конвертируем дату в формат ДД.ММ (без года) для бота
-                        formatted_date = offer_date.strftime("%d.%m")
+                        # Сохраняем в формате YYYY-MM-DD для единообразия и корректной работы cleanup
+                        formatted_date = offer_date.strftime("%Y-%m-%d")
                             
                         # Создаем структуру игры с необходимыми полями
                         game_offer = {
@@ -444,9 +438,6 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
                                 profile['free_offers_used'] = free_offers_used + 1
 
                         game_counter += 1
-                except ValueError:
-                    # Если ошибка парсинга даты, не добавляем игру
-                    pass
         
         await storage.save_user(user_id, profile)
         

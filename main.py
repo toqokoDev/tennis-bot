@@ -10,6 +10,7 @@ from utils.admin import is_user_banned
 from utils.notifications import send_subscription_reminders
 from services.storage import storage
 from utils.translations import get_user_language_async, t
+from utils.utils import parse_date_flexible
 
 class BannedUserFilter(Filter):
     async def __call__(self, message: Message) -> bool:
@@ -74,8 +75,10 @@ async def cleanup_expired_game_offers(bot: Bot):
                                 game_time = datetime.strptime(game_time_str, '%H:%M').time()
                                 game_datetime = datetime.combine(game_date, game_time)
                             else:
-                                # Простой формат: 2025-01-15
-                                game_date = datetime.strptime(game_date_str, '%Y-%m-%d').date()
+                                # Форматы DD.MM.YYYY или YYYY-MM-DD
+                                game_date = parse_date_flexible(game_date_str)
+                                if game_date is None:
+                                    raise ValueError(f"Неизвестный формат даты: {game_date_str}")
                                 game_time = datetime.strptime(game_time_str, '%H:%M').time()
                                 game_datetime = datetime.combine(game_date, game_time)
                             

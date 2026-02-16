@@ -31,6 +31,8 @@ from utils.translations import get_user_language_async, t
 from config.config import SHOP_ID, SECRET_KEY
 from yookassa import Configuration, Payment
 from models.states import TournamentPaymentStates
+from services.payments import check_tinkoff_payment_status, generate_tinkoff_payment_link, generate_yookassa_payment_link
+from utils.email import send_tournament_payment_notification_to_admin
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -3025,6 +3027,7 @@ async def tournament_pay_start(callback: CallbackQuery, state: FSMContext):
     await state.update_data(tournament_id=tournament_id, tournament_fee=fee)
     await callback.message.answer(
         t("tournament.payment_email_prompt", language),
+        parse_mode='html'
     )
     await state.set_state(TournamentPaymentStates.WAITING_EMAIL)
     await callback.answer()
@@ -3041,9 +3044,9 @@ async def tournament_pay_get_email(message: Message, state: FSMContext):
     fee = data['tournament_fee']
     Configuration.account_id = SHOP_ID
     Configuration.secret_key = SECRET_KEY
-    from services.payments import create_payment
+    
     try:
-        payment_link, payment_id = await create_payment(message.chat.id, fee, t("tournament.payment_description", language, tournament_id=tournament_id), email)
+        payment_link, payment_id = await generate_tinkoff_payment_link(message.chat.id, fee, t("tournament.payment_description", language, tournament_id=tournament_id), email)
         await state.update_data(payment_id=payment_id, user_email=email)
         kb = InlineKeyboardBuilder()
         kb.button(text=t("tournament.buttons.to_payments", language), url=payment_link)
@@ -3066,22 +3069,34 @@ async def tournament_pay_confirm(callback: CallbackQuery, state: FSMContext):
     tournament_id = callback.data.split(":")[1]
     user_id = callback.from_user.id
     try:
-        payment = Payment.find_one(payment_id)
-        if payment.status == 'succeeded':
+        payment = await check_tinkoff_payment_status(payment_id)
+        if payment['status'] == "CONFIRMED":
             tournaments = await storage.load_tournaments()
             tournament = tournaments.get(tournament_id, {})
             payments = tournament.get('payments', {})
             payments[str(user_id)] = {
                 'payment_id': payment_id,
                 'status': 'succeeded',
-                'amount': float(payment.amount.value),  # Преобразуем Decimal в float для JSON
+                'amount': float(data['tournament_fee']),
                 'paid_at': datetime.now().isoformat(),
                 'email': data.get('user_email')
             }
             tournament['payments'] = payments
             tournaments[tournament_id] = tournament
             await storage.save_tournaments(tournaments)
-            
+
+            profile = await storage.get_user(user_id) or {}
+            tour_name = tournament.get('name') or t("tournament.no_name", language)
+            await send_tournament_payment_notification_to_admin(
+                user_id=user_id,
+                profile=profile,
+                payment_id=payment_id,
+                user_email=data.get('user_email', ''),
+                payment_amount=int(data['tournament_fee']),
+                tournament_name=tour_name,
+                tournament_id=tournament_id
+            )
+
             # Показываем турнир с обновленной информацией
             entry_fee = int(tournament.get('entry_fee', get_tournament_entry_fee()) or get_tournament_entry_fee())
             bracket_image, bracket_text = await build_and_render_tournament_image(tournament, tournament_id)
@@ -3091,8 +3106,7 @@ async def tournament_pay_confirm(callback: CallbackQuery, state: FSMContext):
             builder.button(text=t("tournament.buttons.all_tournaments", language), callback_data="view_tournaments_start")
             builder.button(text=t("tournament.buttons.main_menu", language), callback_data="tournaments_main_menu")
             builder.adjust(1)
-            
-            tour_name = tournament.get('name') or t("tournament.no_name", language)
+
             caption = (
                 t("tournament.payment_confirmed_message", language)
                 + t("tournament.payment_confirmed_tournament_line", language, name=tour_name)

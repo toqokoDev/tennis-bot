@@ -16,7 +16,7 @@ from config.profile import (
 from services.storage import storage
 from utils.admin import is_admin
 from models.states import BrowseOffersStates, RespondToOfferStates
-from utils.utils import create_user_profile_link, get_sort_key, remove_country_flag
+from utils.utils import create_user_profile_link, get_sort_key, remove_country_flag, parse_date_flexible
 from utils.translations import get_user_language_async, t
 
 router = Router()
@@ -279,15 +279,12 @@ async def show_offers_page(message: types.Message, state: FSMContext):
         else:
             user_info = f"{offer['user_name']}"
         
-        # Дата → только число
+        # Дата → только число (поддержка DD.MM.YYYY и YYYY-MM-DD)
         raw_date = offer.get('date')
         day_str = "—"
         if raw_date:
-            try:
-                dt = datetime.strptime(raw_date, "%Y-%m-%d")
-                day_str = f"{dt.day}е"
-            except ValueError:
-                day_str = raw_date[:2] + "е"
+            parsed = parse_date_flexible(raw_date)
+            day_str = f"{parsed.day}е" if parsed else (raw_date[:2] + "е" if len(raw_date) >= 2 else "—")
         
         # Время
         time = offer.get('time', '-')
