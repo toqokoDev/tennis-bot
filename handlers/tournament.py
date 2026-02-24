@@ -2205,15 +2205,19 @@ def _auto_category_and_age(user_profile: dict) -> tuple[str, str, str]:
     birth = user_profile.get('birth_date') or user_profile.get('birth')
     age_group = "Взрослые"
     try:
-        # calculate_age is async; simple local evaluation using datetime if missing
         from datetime import datetime
         if birth:
             try:
                 dt = datetime.strptime(birth, "%d.%m.%Y")
                 today = datetime.now()
                 age = today.year - dt.year - ((today.month, today.day) < (dt.month, dt.day))
-            except Exception:
-                age = 18
+            except ValueError:
+                try:
+                    dt = datetime.strptime(birth, "%d.%m")
+                    today = datetime.now()
+                    age = today.year - dt.year - ((today.month, today.day) < (dt.month, dt.day))
+                except ValueError:
+                    age = 18
         else:
             age = 18
         age_group = "Дети" if age < 18 else "Взрослые"

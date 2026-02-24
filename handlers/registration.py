@@ -241,6 +241,34 @@ async def show_registration_success_with_transfer_info(message: types.Message, p
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
 
+def _format_date_display(date_obj):
+    """Формат: ДД.ММ если текущий год, иначе ДД.ММ.ГГГГ."""
+    today = datetime.now().date()
+    if date_obj.year == today.year:
+        return date_obj.strftime("%d.%m")
+    return date_obj.strftime("%d.%m.%Y")
+
+def _parse_and_format_birth_date(date_str):
+    """Парсит дату рождения из разных форматов и возвращает ДД.ММ или ДД.ММ.ГГГГ."""
+    if not date_str or not str(date_str).strip():
+        return ""
+    s = str(date_str).strip()
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
+        try:
+            if fmt == "%Y-%m-%d":
+                dt = datetime.strptime(s[:10], fmt)
+            else:
+                dt = datetime.strptime(s, fmt)
+            return _format_date_display(dt.date())
+        except ValueError:
+            continue
+    try:
+        dt = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+        return _format_date_display(dt.date())
+    except ValueError:
+        pass
+    return s
+
 async def handle_auto_registration(message: types.Message, state: FSMContext, start_param: str):
     user_id = str(message.chat.id)
     
@@ -364,7 +392,7 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
             "first_name": params.get("fname", ""),
             "last_name": params.get("lname", ""),
             "phone": params.get("phone", ""),
-            "birth_date": params.get("bdate", ""),
+            "birth_date": _parse_and_format_birth_date(params.get("bdate", "")),
             "country": next((c for c in countries if params.get("country", "") != "" and params.get("country", "").lower() in c.lower()), params.get("country", "")),
             "city": params["city"],
             "district": params.get("district", "").replace('Москва - ', ''),
@@ -406,8 +434,8 @@ async def handle_auto_registration(message: types.Message, state: FSMContext, st
                     
                     # Если дата игры в будущем или сегодня, добавляем предложение
                     if offer_date >= today:
-                        # Конвертируем дату в формат ДД.ММ (без года) для бота
-                        formatted_date = offer_date.strftime("%d.%m")
+                        # Формат: ДД.ММ если текущий год, иначе ДД.ММ.ГГГГ
+                        formatted_date = _format_date_display(offer_date)
                             
                         # Создаем структуру игры с необходимыми полями
                         game_offer = {

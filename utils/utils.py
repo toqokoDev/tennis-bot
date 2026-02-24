@@ -233,8 +233,15 @@ async def calculate_age(birth_date_str: str) -> int:
         today = datetime.now()
         age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
         return age
-    except:
-        return 0
+    except ValueError:
+        try:
+            # Формат ДД.ММ (текущий год)
+            birth_date = datetime.strptime(birth_date_str, "%d.%m")
+            today = datetime.now()
+            age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+            return age
+        except ValueError:
+            return 0
 
 async def level_to_points(level: str) -> int:
     level_points = {

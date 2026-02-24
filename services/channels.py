@@ -57,12 +57,19 @@ async def send_registration_notification(message: types.Message, profile: dict):
         age_text = ""
         if profile.get('birth_date'):
             try:
-                birth_date = datetime.strptime(profile.get('birth_date'), "%d.%m.%Y")
+                bd_str = profile.get('birth_date')
+                birth_date = datetime.strptime(bd_str, "%d.%m.%Y")
                 today = datetime.now()
                 age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
                 age_text = t('channels.years_old', language, age=age)
-            except:
-                pass
+            except ValueError:
+                try:
+                    birth_date = datetime.strptime(bd_str, "%d.%m")
+                    today = datetime.now()
+                    age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+                    age_text = t('channels.years_old', language, age=age)
+                except ValueError:
+                    pass
         
         # Получаем пол
         gender = profile.get('gender', '')

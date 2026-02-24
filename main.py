@@ -133,15 +133,20 @@ async def check_subscriptions(bot: Bot):
                                 users[user_id]['subscription']['expired'] = True
                                 updated = True
                                 
-                                # Отправляем уведомление пользователю
-                                try:
-                                    language = await get_user_language_async(user_id)
-                                    await bot.send_message(
-                                        int(user_id),
-                                        t("main.subscription_expired", language)
-                                    )
-                                except Exception as e:
-                                    print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
+                                # Отправляем уведомление не чаще одного раза в сутки
+                                today_str = current_time.strftime('%Y-%m-%d')
+                                last_notification = users[user_id]['subscription'].get('last_expired_notification')
+                                if last_notification != today_str:
+                                    try:
+                                        language = await get_user_language_async(user_id)
+                                        await bot.send_message(
+                                            int(user_id),
+                                            t("main.subscription_expired", language)
+                                        )
+                                        users[user_id]['subscription']['last_expired_notification'] = today_str
+                                        updated = True
+                                    except Exception as e:
+                                        print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
                                 
                         except ValueError:
                             # Некорректный формат даты
