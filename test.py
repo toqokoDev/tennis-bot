@@ -1,68 +1,93 @@
-import asyncio
-from telethon import TelegramClient
-from telethon.errors import PhoneNumberInvalidError, PhoneNumberUnoccupiedError
-from telethon.tl.types import User
+import os
+import uuid
+import hashlib
+import requests
+from dotenv import load_dotenv
 
-api_id = '16635892'
-api_hash = '9929bdc36d6832f8502dd3210fcd2f2e'
-phone_number = '+375259997565'  # Ваш номер для авторизации
+load_dotenv()
 
-async def get_username_by_phone(target_phone):
-    """
-    Получает username пользователя по номеру телефона
-    """
-    try:
-        # Создаем клиент
-        client = TelegramClient('session_name', api_id, api_hash)
-        
-        # Запускаем клиент
-        await client.start(phone=phone_number)
-        
-        print("✓ Авторизация успешна")
-        print(f"Ищу пользователя с номером: {target_phone}")
-        
-        try:
-            # Получаем информацию о пользователе
-            user = await client.get_entity(target_phone)
-            
-            # Проверяем, является ли объект пользователем
-            if isinstance(user, User):
-                print(f"\n📋 Информация о пользователе:")
-                print(f"Имя: {user.first_name or 'Не указано'}")
-                print(f"Фамилия: {user.last_name or 'Не указано'}")
-                print(f"ID: {user.id}")
-                print(f"Username: @{user.username if user.username else 'Не установлен'}")
-                print(f"Номер: {user.phone}")
-                
-                if user.username:
-                    return f"@{user.username}"
-                else:
-                    return "У пользователя нет username"
-            else:
-                return "Найденный объект не является пользователем"
-                
-        except ValueError:
-            return "Пользователь не найден или скрыл номер"
-        except PhoneNumberUnoccupiedError:
-            return "Номер не зарегистрирован в Telegram"
-        except Exception as e:
-            return f"Ошибка: {str(e)}"
-            
-    except PhoneNumberInvalidError:
-        return "Неверный номер телефона"
-    except Exception as e:
-        return f"Ошибка авторизации: {str(e)}"
-    finally:
-        # Закрываем соединение
-        await client.disconnect()
+# Ваши константы
+TINKOFF_TERMINAL_KEY = os.getenv('TINKOFF_TERMINAL_KEY', '0000')
+TINKOFF_PASSWORD = os.getenv('TINKOFF_PASSWORD', '111111111')
 
-async def main():
-    # Номер для поиска
-    target_phone = '13313095883'  # Замените на номер для поиска
+TINKOFF_API_URL = "https://securepay.tinkoff.ru/v2/Init"
+TINKOFF_STATUS_URL = "https://securepay.tinkoff.ru/v2/GetState"
+
+def generate_tinkoff_payment_link(amount_rub, description="Оплата заказа"):
+    order_id = str(uuid.uuid4())
     
-    result = await get_username_by_phone(target_phone)
-    print(f"\n🔍 Результат: {result}")
+    payload = {
+        "TerminalKey": TINKOFF_TERMINAL_KEY,
+        "Amount": int(amount_rub * 100),
+        "OrderId": str(order_id),
+        "Description": description,
+    }
 
-# Запуск
+    params_for_token = payload.copy()
+    params_for_token["Password"] = TINKOFF_PASSWORD
+    sorted_keys = sorted(params_for_token.keys())
+    
+    token_string = "".join(str(params_for_token[key]) for key in sorted_keys)
+    payload["Token"] = hashlib.sha256(token_string.encode('utf-8')).hexdigest()
+
+    try:
+        response = requests.post(TINKOFF_API_URL, json=payload)
+        response_data = response.json()
+
+        if response_data.get("Success"):
+            return {
+                "success": True,
+                "payment_url": response_data.get("PaymentURL"),
+                "payment_id": response_data.get("PaymentId")
+            }
+        else:
+            return {
+                "success": False, 
+                "message": response_data.get("Message"),
+                "details": response_data.get("Details")
+            }
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+ 
+def check_tinkoff_payment_status(payment_id):
+    """
+    Проверяет текущий статус платежа по его PaymentId.
+    """
+    payload = {
+        "TerminalKey": TINKOFF_TERMINAL_KEY,
+        "PaymentId": str(payment_id),
+    }
+
+    params_for_token = payload.copy()
+    params_for_token["Password"] = TINKOFF_PASSWORD
+    
+    sorted_keys = sorted(params_for_token.keys())
+    token_string = "".join(str(params_for_token[key]) for key in sorted_keys)
+    payload["Token"] = hashlib.sha256(token_string.encode('utf-8')).hexdigest()
+
+    try:
+        response = requests.post(TINKOFF_STATUS_URL, json=payload)
+        data = response.json()
+
+        if data.get("Success"):
+            return {
+                "success": True,
+                "status": data.get("Status"),
+                "order_id": data.get("OrderId"),
+                "amount": data.get("Amount")
+            }
+        else:
+            return {
+                "success": False,
+                "message": data.get("Message")
+            }
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    # result = generate_tinkoff_payment_link(100, "Тестовая")
+    # print(result)
+    status_result = check_tinkoff_payment_status(7983702106)
+    print(f"Статус заказа: {status_result['status']}")

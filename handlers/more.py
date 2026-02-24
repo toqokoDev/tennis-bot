@@ -9,7 +9,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config.config import SUBSCRIPTION_PRICE, BOT_USERNAME
-from config.profile import get_price_ranges, cities_data, create_sport_keyboard, sport_type, countries
+from config.profile import get_price_ranges, cities_data, create_sport_keyboard, sport_type, countries, get_country_translation, get_city_translation, get_sport_translation
 from models.states import SearchStates
 from services.storage import storage
 from utils.admin import is_admin
@@ -38,12 +38,12 @@ async def handle_more(message: types.Message):
         types.InlineKeyboardButton(text=t("more.buttons.contacts", language), callback_data="contacts")
     )
     builder.row(
-        types.InlineKeyboardButton(text=t("more.buttons.multi_day_tournaments", language), url="https://tennis-play.com/tournaments/"),
-        types.InlineKeyboardButton(text=t("more.buttons.weekend_tournaments", language), url="https://tennis-play.com/tournaments/weekend/")
+        types.InlineKeyboardButton(text=t("more.buttons.multi_day_tournaments", language), url=f"{t('common.url_site', language)}/tournaments/"),
+        types.InlineKeyboardButton(text=t("more.buttons.weekend_tournaments", language), url=f"{t('common.url_site', language)}/tournaments/weekend/")
     )
     builder.row(
         types.InlineKeyboardButton(text=t("more.buttons.my_profile", language), callback_data="profile"),
-        types.InlineKeyboardButton(text=t("more.buttons.go_to_site", language), url="https://tennis-play.com/")
+        types.InlineKeyboardButton(text=t("more.buttons.go_to_site", language), url=t('common.url_site', language))
     )
     builder.row(
         types.InlineKeyboardButton(text=t("more.language_button", language), callback_data="select_language")
@@ -111,12 +111,13 @@ async def process_search_country(callback: types.CallbackQuery, state: FSMContex
     data = await state.get_data()
     search_type = data.get('search_type')
     
+    language = await get_user_language_async(str(callback.message.chat.id))
     cities = cities_data.get(country, [])
     buttons = []
     for city in cities:
         count = await count_users_by_location(search_type, country, city)
         buttons.append([InlineKeyboardButton(
-            text=f"{city} ({count})", 
+            text=f"{get_city_translation(city, language)} ({count})", 
             callback_data=f"search_city_{city}"
         )])
 
@@ -125,23 +126,20 @@ async def process_search_country(callback: types.CallbackQuery, state: FSMContex
     other_cities_count = sum(count for city, count in other_cities)
     
     if other_cities_count > 0:
-        language = await get_user_language_async(str(callback.message.chat.id))
         buttons.append([InlineKeyboardButton(
-            text=t("more.search.other_cities", language, count=other_cities_count), 
+            text=t("more_search.other_cities", language, count=other_cities_count), 
             callback_data="search_other_city"
         )])
     
-    language = await get_user_language_async(str(callback.message.chat.id))
     buttons.append([InlineKeyboardButton(
-        text=t("more.search.back_to_countries", language),
+        text=t("more_search.back_to_countries", language),
         callback_data="back_to_countries"
     )])
     
-    language = await get_user_language_async(str(callback.message.chat.id))
     if search_type == "coaches":
-        text = t("more.search.select_city_for_coaches", language, country=remove_country_flag(country))
+        text = t("more_search.select_city_for_coaches", language, country=get_country_translation(country, language))
     else:
-        text = t("more.search.select_city_for_players", language, country=remove_country_flag(country))
+        text = t("more_search.select_city_for_players", language, country=get_country_translation(country, language))
     
     await callback.message.edit_text(
         text,
@@ -163,19 +161,19 @@ async def process_search_other_country(callback: types.CallbackQuery, state: FSM
     buttons = []
     for country, count in top_countries:
         buttons.append([InlineKeyboardButton(
-            text=f"{country} ({count})", 
+            text=f"{get_country_translation(country, language)} ({count})", 
             callback_data=f"search_country_{country}"
         )])
     
     buttons.append([InlineKeyboardButton(
-        text=t("more.search.back", language), 
+        text=t("more_search.back", language), 
         callback_data="back_to_countries"
     )])
     
     if search_type == "coaches":
-        text = t("more.search.top_countries_with_coaches", language)
+        text = t("more_search.top_countries_with_coaches", language)
     else:
-        text = t("more.search.top_countries_with_players", language)
+        text = t("more_search.top_countries_with_players", language)
     
     await callback.message.edit_text(
         text,
@@ -203,12 +201,12 @@ async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
         types.InlineKeyboardButton(text=t("more.buttons.contacts", language), callback_data="contacts")
     )
     builder.row(
-        types.InlineKeyboardButton(text=t("more.buttons.multi_day_tournaments", language), url="https://tennis-play.com/tournaments/"),
-        types.InlineKeyboardButton(text=t("more.buttons.weekend_tournaments", language), url="https://tennis-play.com/tournaments/weekend/")
+        types.InlineKeyboardButton(text=t("more.buttons.multi_day_tournaments", language), url=f"{t('common.url_site', language)}/tournaments/"),
+        types.InlineKeyboardButton(text=t("more.buttons.weekend_tournaments", language), url=f"{t('common.url_site', language)}/tournaments/weekend/")
     )
     builder.row(
         types.InlineKeyboardButton(text=t("more.buttons.my_profile", language), callback_data="profile"),
-        types.InlineKeyboardButton(text=t("more.buttons.go_to_site", language), url="https://tennis-play.com/")
+        types.InlineKeyboardButton(text=t("more.buttons.go_to_site", language), url=t('common.url_site', language))
     )
     builder.row(
         types.InlineKeyboardButton(text=t("more.language_button", language), callback_data="select_language")
@@ -226,14 +224,14 @@ async def process_search_country_input(message: Message, state: FSMContext):
     language = await get_user_language_async(str(message.chat.id))
     
     if search_type == "coaches":
-        text = t("more.search.enter_city_for_coaches", language)
+        text = t("more_search.enter_city_for_coaches", language)
     else:
-        text = t("more.search.enter_city_for_players", language)
+        text = t("more_search.enter_city_for_players", language)
     
     await message.answer(
         text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=t("more.search.back", language), callback_data="back_to_countries")
+            InlineKeyboardButton(text=t("more_search.back", language), callback_data="back_to_countries")
         ]])
     )
     await state.set_state(SearchStates.SEARCH_CITY_INPUT)
@@ -263,19 +261,19 @@ async def process_search_other_city(callback: types.CallbackQuery, state: FSMCon
     buttons = []
     for city, count in top_cities:
         buttons.append([InlineKeyboardButton(
-            text=f"{city} ({count})", 
+            text=f"{get_city_translation(city, language)} ({count})", 
             callback_data=f"search_city_{city}"
         )])
     
     buttons.append([InlineKeyboardButton(
-        text=t("more.search.back", language), 
+        text=t("more_search.back", language), 
         callback_data="back_to_cities"
     )])
     
     if search_type == "coaches":
-        text = t("more.search.top_cities_with_coaches", language, country=remove_country_flag(country))
+        text = t("more_search.top_cities_with_coaches", language, country=get_country_translation(country, language))
     else:
-        text = t("more.search.top_cities_with_players", language, country=remove_country_flag(country))
+        text = t("more_search.top_cities_with_players", language, country=get_country_translation(country, language))
     
     await callback.message.edit_text(
         text,
@@ -288,20 +286,19 @@ async def process_search_other_city(callback: types.CallbackQuery, state: FSMCon
 async def back_to_countries(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     search_type = data.get('search_type')
+    language = await get_user_language_async(str(callback.message.chat.id))
     
     buttons = []
     for country in countries[:5]:
         count = await count_users_by_location(search_type, country)
         buttons.append([InlineKeyboardButton(
-            text=f"{country} ({count})", 
+            text=f"{get_country_translation(country, language)} ({count})", 
             callback_data=f"search_country_{country}"
         )])
     
     # Получаем количество пользователей в других странах
     other_countries = await get_top_countries(search_type=search_type, exclude_countries=countries[:5])
     other_countries_count = sum(count for country, count in other_countries)
-    
-    language = await get_user_language_async(str(callback.message.chat.id))
     if other_countries_count > 0:
         buttons.append([InlineKeyboardButton(
             text=t("search_partner.other_countries", language, count=other_countries_count), 
@@ -309,13 +306,13 @@ async def back_to_countries(callback: types.CallbackQuery, state: FSMContext):
         )])
     
     buttons.append([InlineKeyboardButton(
-        text=t("more.search.back", language), 
+        text=t("more_search.back", language), 
         callback_data="back_to_main"
     )])
     if search_type == "coaches":
-        text = t("more.search.select_country_for_coaches", language)
+        text = t("more_search.select_country_for_coaches", language)
     else:
-        text = t("more.search.select_country_for_players", language)
+        text = t("more_search.select_country_for_players", language)
     
     await callback.message.edit_text(
         text,
@@ -342,20 +339,19 @@ async def process_search_city_input(message: Message, state: FSMContext):
 async def back_to_countries_from_input(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     search_type = data.get('search_type')
+    language = await get_user_language_async(str(callback.message.chat.id))
     
     buttons = []
     for country in countries[:5]:
         count = await count_users_by_location(search_type, country)
         buttons.append([InlineKeyboardButton(
-            text=f"{country} ({count})", 
+            text=f"{get_country_translation(country, language)} ({count})", 
             callback_data=f"search_country_{country}"
         )])
     
     counts = []
     for c in countries[:5]:
         counts.append(await count_users_by_location(search_type, c))
-
-    language = await get_user_language_async(str(callback.message.chat.id))
     count_other = await count_users_by_location(search_type) - sum(counts)
     buttons.append([InlineKeyboardButton(
         text=t("search_partner.other_countries", language, count=count_other), 
@@ -363,15 +359,14 @@ async def back_to_countries_from_input(callback: types.CallbackQuery, state: FSM
     )])
     
     buttons.append([InlineKeyboardButton(
-        text=t("more.search.back", language), 
+        text=t("more_search.back", language), 
         callback_data="back_to_main"
     )])
 
-    language = await get_user_language_async(str(callback.message.chat.id))
     if search_type == "coaches":
-        text = t("more.search.select_country_for_coaches", language)
+        text = t("more_search.select_country_for_coaches", language)
     else:
-        text = t("more.search.select_country_for_players", language)
+        text = t("more_search.select_country_for_players", language)
     
     await callback.message.edit_text(
         text,
@@ -404,7 +399,7 @@ async def show_sport_types_for_players(message: Union[types.Message, types.Callb
 
     try:
         await message.edit_text(
-            t("more.search.players_select_sport", language),
+            t("more_search.players_select_sport", language),
             reply_markup=builder.as_markup()
         )
     except:
@@ -412,7 +407,7 @@ async def show_sport_types_for_players(message: Union[types.Message, types.Callb
             await message.delete()
         except:
             await message.answer(
-            t("more.search.players_select_sport", language),
+            t("more_search.players_select_sport", language),
             reply_markup=builder.as_markup()
         )
     await state.set_state(SearchStates.SEARCH_SPORT)
@@ -441,7 +436,7 @@ async def show_sport_types(message: Union[types.Message, types.CallbackQuery], s
 
     try:
         await message.edit_text(
-            t("more.search.coaches_select_sport", language),
+            t("more_search.coaches_select_sport", language),
             reply_markup=builder.as_markup()
         )
     except:
@@ -449,7 +444,7 @@ async def show_sport_types(message: Union[types.Message, types.CallbackQuery], s
             await message.delete()
         except:
             await message.answer(
-            t("more.search.coaches_select_sport", language),
+            t("more_search.coaches_select_sport", language),
             reply_markup=builder.as_markup()
         )
     await state.set_state(SearchStates.SEARCH_SPORT)
@@ -463,13 +458,15 @@ async def process_players_sport_selection(callback: types.CallbackQuery, state: 
         sport_type = callback.data.split("_", 2)[2]
         await state.update_data(sport_type=sport_type)
     
+    language = await get_user_language_async(str(callback.message.chat.id))
+
     # После выбора вида спорта переходим к выбору страны для игроков
     data = await state.get_data()
     buttons = []
     for country in countries[:5]:
         count = await count_users_by_location("players", country, sport_type=data.get('sport_type'))
         buttons.append([InlineKeyboardButton(
-            text=f"{country} ({count})", 
+            text=f"{get_country_translation(country, language)} ({count})", 
             callback_data=f"search_country_{country}"
         )])
     
@@ -479,17 +476,17 @@ async def process_players_sport_selection(callback: types.CallbackQuery, state: 
     
     if other_countries_count > 0:
         buttons.append([InlineKeyboardButton(
-            text=f"🌎 Другие страны ({other_countries_count})", 
+            text=t("search_partner.other_countries", language, count=other_countries_count), 
             callback_data="search_other_country"
         )])
     
     buttons.append([InlineKeyboardButton(
-        text="⬅️ Назад к виду спорта", 
+        text=t("more_search.back", language), 
         callback_data="back_to_players_sport"
     )])
 
     await callback.message.edit_text(
-        "🌍 Выберите страну для поиска игроков:",
+        t("more_search.select_country_for_players", language),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await state.set_state(SearchStates.SEARCH_COUNTRY)
@@ -515,7 +512,7 @@ async def show_price_ranges(message: Union[types.Message, types.CallbackQuery], 
     language = await get_user_language_async(str(message.chat.id))
     
     builder.row(InlineKeyboardButton(
-        text=t("more.search.any_price", language),
+        text=t("more_search.any_price", language),
         callback_data="price_range_any"
     ))
 
@@ -534,7 +531,7 @@ async def show_price_ranges(message: Union[types.Message, types.CallbackQuery], 
     ))
     try:
         await message.edit_text(
-            t("more.search.select_price_range", language),
+            t("more_search.select_price_range", language),
             reply_markup=builder.as_markup()
         )
     except:
@@ -542,7 +539,7 @@ async def show_price_ranges(message: Union[types.Message, types.CallbackQuery], 
             await message.delete()
         except:
             await message.answer(
-                t("more.search.select_price_range", language),
+                t("more_search.select_price_range", language),
                 reply_markup=builder.as_markup()
             )
     await state.set_state(SearchStates.SEARCH_PRICE_RANGE)
@@ -558,13 +555,14 @@ async def process_price_range(callback: types.CallbackQuery, state: FSMContext):
     # После выбора цены переходим к выбору страны для тренеров
     data = await state.get_data()
     search_type = data.get('search_type')
+    language = await get_user_language_async(str(callback.message.chat.id))
     
     if search_type == "coaches":
         buttons = []
         for country in countries[:5]:
             count = await count_users_by_location(search_type, country)
             buttons.append([InlineKeyboardButton(
-                text=f"{country} ({count})", 
+                text=f"{get_country_translation(country, language)} ({count})", 
                 callback_data=f"search_country_{country}"
             )])
         
@@ -574,17 +572,17 @@ async def process_price_range(callback: types.CallbackQuery, state: FSMContext):
 
         count_other = await count_users_by_location(search_type) - sum(counts)
         buttons.append([InlineKeyboardButton(
-            text=f"🌎 Другие страны ({count_other})", 
+            text=t("search_partner.other_countries", language, count=count_other), 
             callback_data="search_other_country"
         )])
         
         buttons.append([InlineKeyboardButton(
-            text="⬅️ Назад к цене", 
+            text=t("more_search.back", language), 
             callback_data="back_to_price_range"
         )])
 
         await callback.message.edit_text(
-            "🌍 Выберите страну для поиска тренеров:",
+            t("more_search.select_country_for_coaches", language),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
         await state.set_state(SearchStates.SEARCH_COUNTRY)
@@ -664,21 +662,22 @@ async def perform_search(message: Union[types.Message, types.CallbackQuery], sta
 
     language = await get_user_language_async(str(message.chat.id))
     if not results:
-        sport_text = f", вид спорта: {sport_type}" if sport_type else ""
+        sport_text = t("more_search.sport_suffix", language, sport=get_sport_translation(sport_type, language)) if sport_type else ""
         price_text = ""
         if search_type == "coaches" and price_min is not None and price_max is not None:
-            price_text = f", цена: {price_min}-{price_max} руб."
-        
+            price_text = t("more_search.price_suffix", language, price_min=price_min, price_max=price_max)
+        city_display = get_city_translation(city, language)
+        country_display = get_country_translation(country, language)
         if search_type == "coaches":
-            text = t("more.search.no_coaches_found", language, city=city, country=country, sport=sport_text, price=price_text)
+            text = t("more_search.no_coaches_found", language, city=city_display, country=country_display, sport=sport_text, price=price_text)
         else:
-            text = t("more.search.no_players_found", language, city=city, country=country, sport=sport_text, price=price_text)
+            text = t("more_search.no_players_found", language, city=city_display, country=country_display, sport=sport_text, price=price_text)
         
         try:
             await message.edit_text(
                 text,
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text=t("more.search.back", language), callback_data="back_to_cities")
+                    InlineKeyboardButton(text=t("more_search.back", language), callback_data="back_to_cities")
                 ]])
             )
         except:
@@ -687,13 +686,13 @@ async def perform_search(message: Union[types.Message, types.CallbackQuery], sta
             except:
                 language = await get_user_language_async(str(message.chat.id))
                 if search_type == "coaches":
-                    text = t("more.search.no_coaches_found", language, city=city, country=country, sport=sport_text, price=price_text)
+                    text = t("more_search.no_coaches_found", language, city=city_display, country=country_display, sport=sport_text, price=price_text)
                 else:
-                    text = t("more.search.no_players_found", language, city=city, country=country, sport=sport_text, price=price_text)
+                    text = t("more_search.no_players_found", language, city=city_display, country=country_display, sport=sport_text, price=price_text)
                 await message.answer(
                     text,
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                        InlineKeyboardButton(text=t("more.search.back", language), callback_data="back_to_cities")
+                        InlineKeyboardButton(text=t("more_search.back", language), callback_data="back_to_cities")
                     ]])
                 )
         await state.set_state(SearchStates.SEARCH_NO_RESULTS)
@@ -712,8 +711,9 @@ async def show_search_results_list(message: types.Message, state: FSMContext, pa
     price_min = data.get('price_min')
     price_max = data.get('price_max')
     
+    language = await get_user_language_async(str(message.chat.id))
     if not results:
-        await message.answer("Результаты поиска не найдены.")
+        await message.answer(t("more_search.no_results_found", language))
         await state.clear()
         return
     
@@ -746,10 +746,9 @@ async def show_search_results_list(message: types.Message, state: FSMContext, pa
 
         if search_type == "coaches":
             lesson_price = profile.get('price')
-
-            name = f"{gender_icon} {name} {age} лет {lesson_price} руб."
+            name = f"{gender_icon} {name} {t('channels.years_old', language, age=age)} {lesson_price}{t('more_search.rub_short', language)}"
         else:
-            name = f"{gender_icon} {name} {age} лет {display_name}"
+            name = f"{gender_icon} {name} {t('channels.years_old', language, age=age)} {display_name}"
             
         builder.add(InlineKeyboardButton(
             text=name,
@@ -774,22 +773,22 @@ async def show_search_results_list(message: types.Message, state: FSMContext, pa
     if pagination_buttons:
         builder.row(*pagination_buttons)
     
-    language = await get_user_language_async(str(message.chat.id))
     # Кнопка возврата
     back_callback = "back_to_cities"
     builder.row(InlineKeyboardButton(
-        text=t("more.search.back", language),
+        text=t("more_search.back", language),
         callback_data=back_callback
     ))
-    sport_text = f", вид спорта: {sport_type}" if sport_type else ""
+    sport_text = t("more_search.sport_suffix", language, sport=get_sport_translation(sport_type, language)) if sport_type else ""
     price_text = ""
     if search_type == "coaches" and price_min is not None and price_max is not None:
-        price_text = f", цена: {price_min}-{price_max} руб."
-    
+        price_text = t("more_search.price_suffix", language, price_min=price_min, price_max=price_max)
+    city_display = get_city_translation(city, language)
+    country_display = get_country_translation(country, language)
     if search_type == "coaches":
-        found_text = t("more.search.found_coaches", language, count=len(results), city=city, country=country, sport=sport_text, price=price_text)
+        found_text = t("more_search.found_coaches", language, count=len(results), city=city_display, country=country_display, sport=sport_text, price=price_text)
     else:
-        found_text = t("more.search.found_players", language, count=len(results), city=city, country=country, sport=sport_text, price=price_text)
+        found_text = t("more_search.found_players", language, count=len(results), city=city_display, country=country_display, sport=sport_text, price=price_text)
     
     try:
         await message.edit_text(
@@ -803,9 +802,9 @@ async def show_search_results_list(message: types.Message, state: FSMContext, pa
             pass
         language = await get_user_language_async(str(message.chat.id))
         if search_type == "coaches":
-            found_text = t("more.search.found_coaches", language, count=len(results), city=city, country=country, sport=sport_text, price=price_text)
+            found_text = t("more_search.found_coaches", language, count=len(results), city=city_display, country=country_display, sport=sport_text, price=price_text)
         else:
-            found_text = t("more.search.found_players", language, count=len(results), city=city, country=country, sport=sport_text, price=price_text)
+            found_text = t("more_search.found_players", language, count=len(results), city=city_display, country=country_display, sport=sport_text, price=price_text)
         await message.answer(
             found_text + f"\n{t('common.page', language, page=page + 1, total=total_pages)}\n\n{t('common.select_profile', language)}",
             reply_markup=builder.as_markup()
@@ -827,7 +826,8 @@ async def handle_show_profile(callback: types.CallbackQuery, state: FSMContext):
     # Получаем профиль пользователя
     profile = await storage.get_user(user_id)
     if not profile:
-        await callback.answer("❌ Профиль не найден")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("common.profile_not_found", language))
         return
     
     # Показываем профиль
@@ -849,13 +849,14 @@ async def handle_back_to_cities(callback: types.CallbackQuery, state: FSMContext
     data = await state.get_data()
     country = data.get('search_country')
     search_type = data.get('search_type')
+    language = await get_user_language_async(str(callback.message.chat.id))
     
     cities = cities_data.get(country, [])
     buttons = []
     for city in cities:
         count = await count_users_by_location(search_type, country, city)
         buttons.append([InlineKeyboardButton(
-            text=f"{city} ({count})", 
+            text=f"{get_city_translation(city, language)} ({count})", 
             callback_data=f"search_city_{city}"
         )])
     
@@ -865,20 +866,18 @@ async def handle_back_to_cities(callback: types.CallbackQuery, state: FSMContext
     
     if other_cities_count > 0:
         buttons.append([InlineKeyboardButton(
-            text=f"🏙 Другие города ({other_cities_count})", 
+            text=t("more_search.other_cities", language, count=other_cities_count), 
             callback_data="search_other_city"
         )])
-    
-    language = await get_user_language_async(str(callback.message.chat.id))
     buttons.append([InlineKeyboardButton(
-        text=t("more.search.back_to_countries", language), 
+        text=t("more_search.back_to_countries", language), 
         callback_data="back_to_countries"
     )])
     
     if search_type == "coaches":
-        text = t("more.search.select_city_for_coaches", language, country=remove_country_flag(country))
+        text = t("more_search.select_city_for_coaches", language, country=get_country_translation(country, language))
     else:
-        text = t("more.search.select_city_for_players", language, country=remove_country_flag(country))
+        text = t("more_search.select_city_for_players", language, country=get_country_translation(country, language))
     
     await callback.message.edit_text(
         text,
@@ -906,7 +905,8 @@ async def handle_back_to_sport(callback: types.CallbackQuery, state: FSMContext)
 async def handle_my_profile(callback: types.CallbackQuery):
     user_id = callback.message.chat.id
     if not await storage.is_user_registered(user_id):
-        await callback.answer("❌ Вы еще не зарегистрированы. Введите /start для регистрации.")
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("main.not_registered", language))
         return
     
     profile = await storage.get_user(user_id)
@@ -975,12 +975,12 @@ async def handle_set_language(callback: types.CallbackQuery):
         types.InlineKeyboardButton(text=t("more.buttons.contacts", new_language), callback_data="contacts")
     )
     builder.row(
-        types.InlineKeyboardButton(text=t("more.buttons.multi_day_tournaments", new_language), url="https://tennis-play.com/tournaments/"),
-        types.InlineKeyboardButton(text=t("more.buttons.weekend_tournaments", new_language), url="https://tennis-play.com/tournaments/weekend/")
+        types.InlineKeyboardButton(text=t("more.buttons.multi_day_tournaments", new_language), url=f"{t('common.url_site', new_language)}/tournaments/"),
+        types.InlineKeyboardButton(text=t("more.buttons.weekend_tournaments", new_language), url=f"{t('common.url_site', new_language)}/tournaments/weekend/")
     )
     builder.row(
         types.InlineKeyboardButton(text=t("more.buttons.my_profile", new_language), callback_data="profile"),
-        types.InlineKeyboardButton(text=t("more.buttons.go_to_site", new_language), url="https://tennis-play.com/")
+        types.InlineKeyboardButton(text=t("more.buttons.go_to_site", new_language), url=t("common.url_site", new_language))
     )
     builder.row(
         types.InlineKeyboardButton(text=t("more.language_button", new_language), callback_data="select_language")

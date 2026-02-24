@@ -237,6 +237,14 @@ class AdminEditGameStates(StatesGroup):
     EDIT_WINNER = State()
     ENTER_TOURNAMENT_SCORE = State()  # Для внесения счета матча турнира
 
+
+class AdminBroadcastStates(StatesGroup):
+    """Рассылка объявления: переслать сообщение или ручное заполнение."""
+    WAIT_FORWARD = State()  # Ожидание пересланного сообщения
+    MANUAL_MEDIA = State()  # Шаг 1: фото/видео с кнопками удалить
+    MANUAL_TEXT = State()  # Шаг 2: текст объявления
+    CONFIRM = State()  # Подтверждение перед рассылкой
+
 class BeautyContestStates(StatesGroup):
     MAIN_MENU = State()
     SELECT_GENDER = State()

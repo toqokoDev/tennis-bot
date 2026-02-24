@@ -9,18 +9,15 @@ from aiogram.types import (
 
 from config.paths import BASE_DIR, PHOTOS_DIR
 from config.profile import (
-    create_sport_keyboard, moscow_districts, cities_data, countries, sport_type,
-    get_sport_config, get_sport_texts, get_base_keyboard, get_payment_types,
-    get_tennis_levels, get_table_tennis_levels,
-    get_dating_goals, get_dating_interests, get_dating_additional_fields,
-    DATING_GOALS, DATING_INTERESTS, DATING_ADDITIONAL_FIELDS
+    create_sport_keyboard, get_moscow_districts, cities_data, countries,
+    get_sport_config, get_base_keyboard,
+    get_tennis_levels, get_table_tennis_levels
 )
 from models.states import EditProfileStates
 from utils.bot import show_profile
 from utils.media import download_photo_to_path
 from utils.utils import remove_country_flag
 from services.storage import storage
-from handlers.registration import check_profile_completeness, get_missing_fields_text
 from utils.translations import get_user_language_async, t
 
 async def _get_menu_keyboard(user_id: int):
@@ -674,12 +671,15 @@ async def ask_for_city(message: types.Message, state: FSMContext, country: str, 
 
 @router.callback_query(EditProfileStates.CITY, F.data.startswith("edit_city_"))
 async def process_city_selection(callback: types.CallbackQuery, state: FSMContext):
+    language = await get_user_language_async(str(callback.message.chat.id))
+
     city = callback.data.split("_", 2)[2]
     await state.update_data(city=city)
     
     if city == "Москва":
         buttons = []
         row = []
+        moscow_districts = get_moscow_districts(language)
         for i, district in enumerate(moscow_districts):
             row.append(InlineKeyboardButton(text=district, callback_data=f"edit_district_{district}"))
             if (i + 1) % 3 == 0 or i == len(moscow_districts) - 1:
@@ -687,12 +687,12 @@ async def process_city_selection(callback: types.CallbackQuery, state: FSMContex
                 row = []
         try:
             await callback.message.edit_text(
-            "🏙 Выберите округ Москвы:",
+            t("admin_edit.select_district", language),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
         except:
             await callback.message.answer(
-                "🏙 Выберите округ Москвы:",
+                t("admin_edit.select_district", language),
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
             )
     else:
@@ -711,7 +711,9 @@ async def process_district_selection(callback: types.CallbackQuery, state: FSMCo
 
 @router.callback_query(EditProfileStates.CITY, F.data == "edit_other_city")
 async def process_other_city(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("🏙 Введите название города:", reply_markup=None)
+    language = await get_user_language_async(str(callback.message.chat.id))
+
+    await callback.message.edit_text(t("admin_edit.enter_city", language), reply_markup=None)
     await state.set_state(EditProfileStates.CITY_INPUT)
     await callback.answer()
 

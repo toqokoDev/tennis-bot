@@ -30,7 +30,7 @@ async def invite_friend(message: types.Message):
              referral_link=referral_link)
     
     buttons = [
-        [InlineKeyboardButton(text=t("invite.share_button", language), switch_inline_query=f"Присоединяйся к сообществу по теннису и другим видам спорта!\n\n{referral_link}")],
+        [InlineKeyboardButton(text=t("invite.share_button", language), switch_inline_query=f"{t('invite.share_button', language)}\n\n{referral_link}")],
         [InlineKeyboardButton(text=t("invite.back_button", language), callback_data="back_to_main")]
     ]
     

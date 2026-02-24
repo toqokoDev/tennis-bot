@@ -16,6 +16,7 @@ from services.storage import storage
 from utils.admin import is_admin
 from utils.utils import calculate_age, remove_country_flag
 from utils.translations import get_user_language_async, t
+from config.profile import get_country_translation, get_city_translation, get_gender_translation
 from config.paths import BASE_DIR
 
 router = Router()
@@ -300,8 +301,8 @@ async def show_profile_page(message: Message, viewer_id: int, state: FSMContext)
     
     # Формируем текст анкеты
     age = await calculate_age(profile.get('birth_date', ''))
-    country = remove_country_flag(profile.get('country', '—'))
-    city = profile.get('city', '—')
+    country = get_country_translation(profile.get('country', '—'), language) or remove_country_flag(profile.get('country', '—'))
+    city = get_city_translation(profile.get('city', '—'), language)
     first_name = profile.get('first_name', '')
     last_name = profile.get('last_name', '')
 
@@ -433,19 +434,7 @@ async def vote_for_profile(callback: CallbackQuery, state: FSMContext):
     can_vote, reason = await can_vote_for_gender(contest_data, voter_id, target_gender)
     
     if not can_vote:
-        if reason == "no_premium":
-            gender_text = "мужчин" if target_gender == "Мужской" else "женщин"
-            text = (
-                f"❌ <b>Голос за {gender_text} уже использован</b>\n\n"
-                f"Вы уже использовали свой голос за {gender_text}.\n\n"
-                "⭐️ С Premium подпиской вы получите еще один голос за каждый пол!\n\n"
-                "Оформите подписку в разделе «💳 Платежи»"
-            )
-        else:
-            text = (
-                "❌ <b>Достигнут лимит голосов</b>\n\n"
-                "Вы уже использовали все доступные голоса за этот пол."
-            )
+        text = t("beauty_contest.no_votes_left", language)
         
         await callback.answer(text, show_alert=True)
         return
@@ -585,8 +574,7 @@ async def apply_to_contest(callback: CallbackQuery, state: FSMContext):
         return
 
     # Проверяем наличие фото
-    photo_path = BASE_DIR / user_data['photo_path']
-    if not photo_path.exists():
+    if 'photo_path' not in user_data or not user_data['photo_path']:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=t("common.back", language), callback_data="beauty_contest"))
         try:
@@ -604,10 +592,12 @@ async def apply_to_contest(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     
+    photo_path = BASE_DIR / user_data['photo_path']
+
     # Показываем данные для подтверждения
     age = await calculate_age(user_data.get('birth_date', ''))
-    country = remove_country_flag(user_data.get('country', '—'))
-    city = user_data.get('city', '—')
+    country = get_country_translation(user_data.get('country', '—'), language) or remove_country_flag(user_data.get('country', '—'))
+    city = get_city_translation(user_data.get('city', '—'), language)
     first_name = user_data.get('first_name', '')
     last_name = user_data.get('last_name', '')
     
@@ -693,17 +683,14 @@ async def confirm_application(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "bc_delete_application")
 async def delete_application_confirm(callback: CallbackQuery, state: FSMContext):
     """Подтверждение удаления заявки"""
+    language = await get_user_language_async(str(callback.from_user.id))
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="✅ Да, удалить", callback_data="bc_confirm_delete"),
-        InlineKeyboardButton(text="❌ Отмена", callback_data="beauty_contest")
+        InlineKeyboardButton(text=t("beauty_contest.yes_delete", language), callback_data="bc_confirm_delete"),
+        InlineKeyboardButton(text=t("beauty_contest.cancel_button", language), callback_data="beauty_contest")
     )
     
-    text = (
-        "❓ <b>Удалить свою заявку?</b>\n\n"
-        "Вы уверены, что хотите удалить свою заявку из конкурса красоты?\n"
-        "Все голоса за вас будут потеряны."
-    )
+    text = t("beauty_contest.delete_confirm", language)
     
     await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     await state.set_state(BeautyContestStates.DELETE_APPLICATION)

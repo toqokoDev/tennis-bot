@@ -33,7 +33,7 @@ router = Router()
 last_message_ids = {}
 
 # Создание inline клавиатуры для выбора пользователей
-async def create_users_inline_keyboard(users_list: List[tuple], action: str, page: int = 0, has_more: bool = False) -> InlineKeyboardMarkup:
+async def create_users_inline_keyboard(users_list: List[tuple], action: str, page: int = 0, has_more: bool = False, language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     users_per_page = 8
     
@@ -57,8 +57,8 @@ async def create_users_inline_keyboard(users_list: List[tuple], action: str, pag
             display_name = f"{user_data.get('player_level')} ({user_data.get('rating_points')} lvl)"
         else:
             display_name = ""
-
-        btn_text = f"{gender_icon} {name} {age} лет {display_name}"
+        year = "лет" if language == "ru" else "years"
+        btn_text = f"{gender_icon} {name} {age} {year} {display_name}"
 
         builder.button(text=btn_text, callback_data=f"{action}:{user_id}")
     
@@ -67,29 +67,29 @@ async def create_users_inline_keyboard(users_list: List[tuple], action: str, pag
     # Кнопки навигации
     nav_buttons = []
     if page > 0:
-        nav_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"nav:{action}:{page-1}"))
+        nav_buttons.append(InlineKeyboardButton(text=t("common.back", language=language), callback_data=f"nav:{action}:{page-1}"))
     if has_more and end_idx < len(users_list):
-        nav_buttons.append(InlineKeyboardButton(text="➡️ Вперед", callback_data=f"nav:{action}:{page+1}"))
+        nav_buttons.append(InlineKeyboardButton(text=t("common.next", language=language), callback_data=f"nav:{action}:{page+1}"))
     
     if nav_buttons:
         builder.row(*nav_buttons)
     
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
+    builder.row(InlineKeyboardButton(text=t("common.back", language=language), callback_data="back"))
     
     return builder.as_markup()
 
 # Создание inline клавиатуры для выбора типа игры
 async def create_game_type_keyboard(language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=t("enter_invoice.single_game", language), callback_data="game_type:single")
-    builder.button(text=t("enter_invoice.double_game", language), callback_data="game_type:double")
-    builder.button(text=t("enter_invoice.tournament_game", language), callback_data="game_type:tournament")
-    builder.button(text=t("enter_invoice.back", language), callback_data="back")
+    builder.button(text=t("enter_invoice.single_game", language=language), callback_data="game_type:single")
+    builder.button(text=t("enter_invoice.double_game", language=language), callback_data="game_type:double")
+    builder.button(text=t("enter_invoice.tournament_game", language=language), callback_data="game_type:tournament")
+    builder.button(text=t("enter_invoice.back", language=language), callback_data="back")
     builder.adjust(1)
     return builder.as_markup()
 
 # Создание inline клавиатуры для выбора счета супертайбрейка
-def create_supertiebreak_keyboard(set_number: int = 3) -> InlineKeyboardMarkup:
+def create_supertiebreak_keyboard(set_number: int = 3, language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     
     # Левая колонка: победа первого игрока (10:0 до 10:8, потом 11:9 до 20:18)
@@ -116,13 +116,13 @@ def create_supertiebreak_keyboard(set_number: int = 3) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=right_score, callback_data=f"set_score:{set_number}_{right_score}")
         )
     
-    builder.row(InlineKeyboardButton(text="🔙 К обычному счету", callback_data=f"back_to_normal_set:{set_number}"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
+    builder.row(InlineKeyboardButton(text=t("common.back_to_regular", language=language), callback_data=f"back_to_normal_set:{set_number}"))
+    builder.row(InlineKeyboardButton(text=t("common.back", language=language), callback_data="back"))
     
     return builder.as_markup()
 
 # Создание inline клавиатуры для выбора счета сета
-def create_set_score_keyboard(set_number: int = 1) -> InlineKeyboardMarkup:
+def create_set_score_keyboard(set_number: int = 1, language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     
     # Левая колонка: победа первого игрока
@@ -141,70 +141,20 @@ def create_set_score_keyboard(set_number: int = 1) -> InlineKeyboardMarkup:
     # На 3-ем сете добавляем супертайбрейк для всех типов игр
     if set_number == 3:
         builder.row(
-            InlineKeyboardButton(text="⚡ Супертай", callback_data=f"supertiebreak:{set_number}")
+            InlineKeyboardButton(text=t("enter_invoice.super_tie_button", language=language), callback_data=f"supertiebreak:{set_number}")
         )
     
     # Кнопки навигации
     if set_number > 1:
         builder.row(
-            InlineKeyboardButton(text="⬅️ Предыдущий сет", callback_data=f"prev_set:{set_number-1}"),
-            InlineKeyboardButton(text="➡️ Следующий сет", callback_data=f"next_set:{set_number+1}")
+            InlineKeyboardButton(text=t("enter_invoice.previous_set_button", language=language), callback_data=f"prev_set:{set_number-1}"),
+            InlineKeyboardButton(text=t("enter_invoice.next_set_button", language=language), callback_data=f"next_set:{set_number+1}")
         )
     else:
-        builder.row(InlineKeyboardButton(text="➡️ Следующий сет", callback_data=f"next_set:{set_number+1}"))
+        builder.row(InlineKeyboardButton(text=t("enter_invoice.next_set_button", language=language), callback_data=f"next_set:{set_number+1}"))
     
-    builder.row(InlineKeyboardButton(text="✅ Завершить ввод счета", callback_data="finish_score"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back"))
-    
-    return builder.as_markup()
-
-# Создание inline клавиатуры для добавления еще одного сета
-def create_add_another_set_keyboard() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Да, добавить еще сет", callback_data="add_another_set:yes")
-    builder.button(text="❌ Нет, завершить ввод", callback_data="add_another_set:no")
-    builder.button(text="🔙 Назад", callback_data="back")
-    builder.adjust(1)
-    return builder.as_markup()
-
-# Создание inline клавиатуры для медиа
-def create_media_keyboard() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📷 Прикрепить фото", callback_data="media:photo")
-    builder.button(text="🎥 Прикрепить видео", callback_data="media:video")
-    builder.button(text="➡️ Пропустить", callback_data="media:skip")
-    builder.button(text="🔙 Назад", callback_data="back")
-    builder.adjust(1)
-    return builder.as_markup()
-
-# Создание inline клавиатуры для выбора турнира
-# Tournament score keyboard - перенесено в handlers.tournament_score
-
-# Создание inline клавиатуры для подтверждения
-def create_confirmation_keyboard() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Подтвердить", callback_data="confirm:yes")
-    builder.button(text="✏️ Редактировать счет", callback_data="confirm:edit_score")
-    builder.button(text="❌ Отменить", callback_data="confirm:no")
-    builder.adjust(1)
-    return builder.as_markup()
-
-# Создание inline клавиатуры для навигации по истории игр
-def create_history_navigation_keyboard(game_index: int, total_games: int, target_user_id: str, current_user_id: str) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    
-    # Кнопки навигации
-    if game_index > 0:
-        builder.button(text="⬅️ Предыдущая", callback_data=f"history_nav:{target_user_id}:{game_index-1}")
-    
-    if game_index < total_games - 1:
-        builder.button(text="Следующая ➡️", callback_data=f"history_nav:{target_user_id}:{game_index+1}")
-    
-    builder.adjust(2)
-    
-    builder.row(
-        InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{current_user_id}")
-    )
+    builder.row(InlineKeyboardButton(text=t("enter_invoice.complete_entry_button", language=language), callback_data="finish_score"))
+    builder.row(InlineKeyboardButton(text=t("enter_invoice.back", language=language), callback_data="back"))
     
     return builder.as_markup()
 
@@ -274,34 +224,24 @@ async def handle_add_score(message: types.Message, state: FSMContext):
     user_id = message.chat.id
     users = await storage.load_users()
     
-    # @TODO 
-    # if not await is_admin(user_id):
-    #     if not users[str(user_id)].get('subscription', {}).get('active', False):
-    #         # Показываем сообщение о необходимости подписки
-    #         referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{message.from_user.id}"
-    #         text = (
-    #             "🔒 <b>Доступ закрыт</b>\n\n"
-    #             "Функция внесения счета доступна только для пользователей с активной подписки Tennis-Play PRO.\n\n"
-    #             f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n"
-    #             "Перейдите в раздел '💳 Платежи' для оформления подписки.\n\n"
-    #             "Также вы можете получить подписку бесплатно, пригласив 5 друзей.\n"
-    #             "Ваша персональная ссылка для приглашений доступна в разделе «🔗 Пригласить друга».\n\n"
-    #             f"🔗 <b>Ваша реферальная ссылка:</b>\n"
-    #             f"<code>{referral_link}</code>\n\n"
-    #         )
+    if not await is_admin(user_id):
+        if not users[str(user_id)].get('subscription', {}).get('active', False):
+            # Показываем сообщение о необходимости подписки
+            referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{message.from_user.id}"
+            text = t("enter_invoice.enter_invoice_locked", language, price=SUBSCRIPTION_PRICE, referral_link=referral_link)
             
-    #         await message.answer(
-    #             text,
-    #             parse_mode="HTML"
-    #         )
-    #         return
+            await message.answer(
+                text,
+                parse_mode="HTML"
+            )
+            return
     
     # Если подписка активна, продолжаем процесс
     await state.set_state(AddScoreState.selecting_game_type)
     
     language = await get_user_language_async(str(message.chat.id))
-    keyboard = await create_game_type_keyboard(language)
-    msg = await message.answer(t("enter_invoice.select_game_type", language), reply_markup=keyboard)
+    keyboard = await create_game_type_keyboard(language=language)
+    msg = await message.answer(t("enter_invoice.select_game_type", language=language), reply_markup=keyboard)
     save_message_id(message.chat.id, msg.message_id)
 
 @router.callback_query(F.data.startswith("game_type:"))
@@ -314,9 +254,9 @@ async def handle_game_type_selection(callback: types.CallbackQuery, state: FSMCo
         await state.set_state(AddScoreState.searching_opponent)
         language = await get_user_language_async(str(callback.message.chat.id))
         await callback.message.edit_text(
-            t("enter_invoice.search_opponent_prompt", language),
+            t("enter_invoice.search_opponent_prompt", language=language),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language), callback_data="back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
             )
         )
         
@@ -324,9 +264,9 @@ async def handle_game_type_selection(callback: types.CallbackQuery, state: FSMCo
         await state.set_state(AddScoreState.selecting_partner)
         language = await get_user_language_async(str(callback.message.chat.id))
         await callback.message.edit_text(
-            t("enter_invoice.search_partner_prompt", language),
+            t("enter_invoice.search_partner_prompt", language=language),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language), callback_data="back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
             )
         )
     
@@ -343,22 +283,20 @@ async def handle_game_type_selection(callback: types.CallbackQuery, state: FSMCo
     
     await callback.answer()
 
-# Tournament selection handlers moved to handlers.tournament_score
-
 @router.message(AddScoreState.searching_opponent)
 async def handle_opponent_search(message: types.Message, state: FSMContext):
     search_query = message.text
     current_user_id = str(message.chat.id)
-    
+    language = await get_user_language_async(current_user_id)
+
     matching_users = await search_users(search_query, exclude_ids=[current_user_id])
     
     if not matching_users:
-        language = await get_user_language_async(str(message.chat.id))
         keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language), callback_data="back")]]
+            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
         )
         msg = await message.answer(
-            t("enter_invoice.users_not_found", language),
+            t("enter_invoice.users_not_found", language=language),
             reply_markup=keyboard
         )
         save_message_id(message.chat.id, msg.message_id)
@@ -367,9 +305,8 @@ async def handle_opponent_search(message: types.Message, state: FSMContext):
     await state.update_data(opponent_search=search_query)
     await state.set_state(AddScoreState.selecting_opponent)
     
-    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent")
-    language = await get_user_language_async(str(message.chat.id))
-    msg = await message.answer(t("enter_invoice.select_opponent", language), reply_markup=keyboard)
+    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent", language=language)
+    msg = await message.answer(t("enter_invoice.select_opponent", language=language), reply_markup=keyboard)
     save_message_id(message.chat.id, msg.message_id)
 
 @router.message(AddScoreState.selecting_partner)
@@ -382,10 +319,10 @@ async def handle_partner_search(message: types.Message, state: FSMContext):
     if not matching_users:
         language = await get_user_language_async(str(message.chat.id))
         keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language), callback_data="back")]]
+            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
         )
         msg = await message.answer(
-            t("enter_invoice.users_not_found", language),
+            t("enter_invoice.users_not_found", language=language),
             reply_markup=keyboard
         )
         save_message_id(message.chat.id, msg.message_id)
@@ -394,19 +331,19 @@ async def handle_partner_search(message: types.Message, state: FSMContext):
     await state.update_data(partner_search=search_query)
     await state.set_state(AddScoreState.searching_partner)
     
-    keyboard = await create_users_inline_keyboard(matching_users, "select_partner")
     language = await get_user_language_async(str(message.chat.id))
-    msg = await message.answer(t("enter_invoice.select_partner", language), reply_markup=keyboard)
+    keyboard = await create_users_inline_keyboard(matching_users, "select_partner", language=language)
+    msg = await message.answer(t("enter_invoice.select_partner", language=language), reply_markup=keyboard)
     save_message_id(message.chat.id, msg.message_id)
 
 @router.callback_query(F.data.startswith("select_partner:"))
 async def handle_partner_selection(callback: types.CallbackQuery, state: FSMContext):
     partner_id = callback.data.split(":")[1]
     users = await storage.load_users()
-    
+    language = await get_user_language_async(str(callback.message.chat.id))
+
     if partner_id not in users:
-        language = await get_user_language_async(str(callback.message.chat.id))
-        await callback.answer(t("enter_invoice.user_not_found", language))
+        await callback.answer(t("enter_invoice.user_not_found", language=language))
         return
     
     selected_partner = users[partner_id]
@@ -418,23 +355,22 @@ async def handle_partner_selection(callback: types.CallbackQuery, state: FSMCont
     partner_sport = selected_partner.get('sport', '')
     
     if current_user_sport != partner_sport:
-        language = await get_user_language_async(str(callback.message.chat.id))
         await callback.message.edit_text(
             t("enter_invoice.sport_mismatch", language, current=current_user_sport, other=partner_sport),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language), callback_data="back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
             )
         )
-        await callback.answer(t("enter_invoice.sports_not_match", language))
+        await callback.answer(t("enter_invoice.sports_not_match", language=language))
         return
     
     await state.update_data(partner=selected_partner)
     await state.set_state(AddScoreState.searching_opponent1)
     
     await callback.message.edit_text(
-        t("enter_invoice.search_opponent1_prompt", await get_user_language_async(str(callback.message.chat.id))),
+        t("enter_invoice.search_opponent1_prompt", language=language),
         reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", await get_user_language_async(str(callback.message.chat.id))), callback_data="back")]]
+            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
         )
     )
     await callback.answer()
@@ -445,15 +381,16 @@ async def handle_opponent1_search(message: types.Message, state: FSMContext):
     current_user_id = str(message.chat.id)
     data = await state.get_data()
     partner_id = data.get('partner', {}).get('telegram_id')
+    language = await get_user_language_async(str(message.chat.id))
     
     matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id])
     
     if not matching_users:
         keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
         )
         msg = await message.answer(
-            "Пользователи не найдены. Попробуйте еще раз:",
+            t("enter_invoice.users_not_found", language=language),
             reply_markup=keyboard
         )
         save_message_id(message.chat.id, msg.message_id)
@@ -462,17 +399,18 @@ async def handle_opponent1_search(message: types.Message, state: FSMContext):
     await state.update_data(opponent1_search=search_query)
     await state.set_state(AddScoreState.selecting_opponent1)
     
-    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent1")
-    msg = await message.answer("Выберите первого соперника из списка:", reply_markup=keyboard)
+    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent1", language=language)
+    msg = await message.answer(t("enter_invoice.select_opponent", language=language), reply_markup=keyboard)
     save_message_id(message.chat.id, msg.message_id)
 
 @router.callback_query(F.data.startswith("select_opponent1:"))
 async def handle_opponent1_selection(callback: types.CallbackQuery, state: FSMContext):
     opponent_id = callback.data.split(":")[1]
     users = await storage.load_users()
+    language = await get_user_language_async(str(callback.message.chat.id))
     
     if opponent_id not in users:
-        await callback.answer("Соперник не найден")
+        await callback.answer(t("enter_invoice.opponent_not_found", language=language))
         return
     
     selected_opponent = users[opponent_id]
@@ -483,26 +421,24 @@ async def handle_opponent1_selection(callback: types.CallbackQuery, state: FSMCo
     current_user_sport = current_user.get('sport', '')
     opponent_sport = selected_opponent.get('sport', '')
     
+    
     if current_user_sport != opponent_sport:
         await callback.message.edit_text(
-            f"❌ Нельзя играть с игроками другого вида спорта!\n\n"
-            f"Ваш вид спорта: {current_user_sport}\n"
-            f"Вид спорта соперника: {opponent_sport}\n\n"
-            f"Выберите соперника с тем же видом спорта.",
+            t("enter_invoice.sport_mismatch", language, current=current_user_sport, other=opponent_sport),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
             )
         )
-        await callback.answer("Виды спорта не совпадают")
+        await callback.answer(t("enter_invoice.sports_not_match", language=language))
         return
     
     await state.update_data(opponent1=selected_opponent)
     await state.set_state(AddScoreState.searching_opponent2)
     
     await callback.message.edit_text(
-        "Поиск второго соперника\nНапишите имя или фамилию второго соперника:",
+        t("enter_invoice.search_opponent2_prompt", language=language),
         reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
         )
     )
     await callback.answer()
@@ -511,6 +447,7 @@ async def handle_opponent1_selection(callback: types.CallbackQuery, state: FSMCo
 async def handle_opponent2_search(message: types.Message, state: FSMContext):
     search_query = message.text
     current_user_id = str(message.chat.id)
+    language = await get_user_language_async(str(message.chat.id))
     data = await state.get_data()
     partner_id = data.get('partner', {}).get('telegram_id')
     opponent1_id = data.get('opponent1', {}).get('telegram_id')
@@ -519,10 +456,10 @@ async def handle_opponent2_search(message: types.Message, state: FSMContext):
     
     if not matching_users:
         keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
         )
         msg = await message.answer(
-            "Пользователи не найдены. Попробуйте еще раз:",
+            t("enter_invoice.users_not_found", language=language),
             reply_markup=keyboard
         )
         save_message_id(message.chat.id, msg.message_id)
@@ -530,18 +467,19 @@ async def handle_opponent2_search(message: types.Message, state: FSMContext):
     
     await state.update_data(opponent2_search=search_query)
     await state.set_state(AddScoreState.selecting_opponent2)
-    
-    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent2")
-    msg = await message.answer("Выберите второго соперника из списка:", reply_markup=keyboard)
+
+    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent2", language=language)
+    msg = await message.answer(t("enter_invoice.select_opponent2", language=language), reply_markup=keyboard)
     save_message_id(message.chat.id, msg.message_id)
 
 @router.callback_query(F.data.startswith("select_opponent2:"))
 async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMContext):
     opponent_id = callback.data.split(":")[1]
     users = await storage.load_users()
-    
+    language = await get_user_language_async(str(callback.message.chat.id))
+
     if opponent_id not in users:
-        await callback.answer("Соперник не найден")
+        await callback.answer(t("enter_invoice.opponent_not_found", language=language))
         return
     
     selected_opponent = users[opponent_id]
@@ -554,15 +492,12 @@ async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMCo
     
     if current_user_sport != opponent_sport:
         await callback.message.edit_text(
-            f"❌ Нельзя играть с игроками другого вида спорта!\n\n"
-            f"Ваш вид спорта: {current_user_sport}\n"
-            f"Вид спорта соперника: {opponent_sport}\n\n"
-            f"Выберите соперника с тем же видом спорта.",
+            t("enter_invoice.sport_mismatch", language, current=current_user_sport, other=opponent_sport),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
             )
         )
-        await callback.answer("Виды спорта не совпадают")
+        await callback.answer(t("enter_invoice.sports_not_match", language=language))
         return
     
     await state.update_data(opponent2=selected_opponent)
@@ -573,22 +508,18 @@ async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMCo
     opponent1 = data.get('opponent1')
     opponent2 = selected_opponent
     
-    team1_avg = (current_user.get('rating_points', 0) + partner.get('rating_points', 0)) / 2
-    team2_avg = (opponent1.get('rating_points', 0) + opponent2.get('rating_points', 0)) / 2
-    
-    keyboard = create_set_score_keyboard(1)
-    
+    keyboard = create_set_score_keyboard(1, language=language)
+
     await callback.message.edit_text(
-        f"Пары сформированы:\n\n"
-        f"Пара 1 (ваша):\n"
-        f"• {await create_user_profile_link(current_user, current_user.get('telegram_id'), additional=False)}\n" 
-        f"• {await create_user_profile_link(partner, partner.get('telegram_id'), additional=False)}\n"
-        f"Средний рейтинг: {team1_avg:.0f}\n\n"
-        f"Пара 2:\n"
-        f"• {await create_user_profile_link(opponent1, opponent1.get('telegram_id'), additional=False)}\n"
-        f"• {await create_user_profile_link(opponent2, opponent2.get('telegram_id'), additional=False)}\n"
-        f"Средний рейтинг: {team2_avg:.0f}\n\n"
-        f"Выберите счет 1-го сета:",
+        t("enter_invoice.pairs_formed", 
+          language, 
+          team1_player1=await create_user_profile_link(current_user, current_user.get('telegram_id'), additional=False), 
+          team1_player2=await create_user_profile_link(partner, partner.get('telegram_id'), additional=False), 
+          team2_player1=await create_user_profile_link(opponent1, opponent1.get('telegram_id'), additional=False), 
+          team2_player2=await create_user_profile_link(opponent2, opponent2.get('telegram_id'), additional=False), 
+          team1_avg=(current_user.get('rating_points', 0) + partner.get('rating_points', 0)) / 2, 
+          team2_avg=(opponent1.get('rating_points', 0) + opponent2.get('rating_points', 0)) / 2
+        ),
         reply_markup=keyboard, 
         parse_mode="Markdown"
     )
@@ -598,9 +529,10 @@ async def handle_opponent2_selection(callback: types.CallbackQuery, state: FSMCo
 async def handle_single_opponent_selection(callback: types.CallbackQuery, state: FSMContext):
     opponent_id = callback.data.split(":")[1]
     users = await storage.load_users()
+    language = await get_user_language_async(str(callback.message.chat.id))
     
     if opponent_id not in users:
-        await callback.answer("Соперник не найден")
+        await callback.answer(t("enter_invoice.opponent_not_found", language=language))
         return
     
     selected_opponent = users[opponent_id]
@@ -613,15 +545,12 @@ async def handle_single_opponent_selection(callback: types.CallbackQuery, state:
     
     if current_user_sport != opponent_sport:
         await callback.message.edit_text(
-            f"❌ Нельзя играть с игроками другого вида спорта!\n\n"
-            f"Ваш вид спорта: {current_user_sport}\n"
-            f"Вид спорта соперника: {opponent_sport}\n\n"
-            f"Выберите соперника с тем же видом спорта.",
+            t("enter_invoice.sport_mismatch", language, current=current_user_sport, other=opponent_sport),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
             )
         )
-        await callback.answer("Виды спорта не совпадают")
+        await callback.answer(t("enter_invoice.sports_not_match", language=language))
         return
     
     await state.update_data(opponent1=selected_opponent)
@@ -629,13 +558,14 @@ async def handle_single_opponent_selection(callback: types.CallbackQuery, state:
     
     opponent = selected_opponent
     
-    keyboard = create_set_score_keyboard(1)
+    keyboard = create_set_score_keyboard(1, language=language)
     
     await callback.message.edit_text( 
-        f"Вы выбрали соперника:\n"
-        f"👤 {await create_user_profile_link(opponent, opponent.get('telegram_id', ''), additional=False)}\n\n"
-        f"Ваш рейтинг: {current_user.get('rating_points', 0)}\n\n"
-        f"Выберите счет 1-го сета:",
+        t("enter_invoice.search_opponent", 
+          language, 
+          opponent_link=await create_user_profile_link(opponent, opponent.get('telegram_id', ''), additional=False), 
+          user_score=current_user.get('rating_points', 0)
+        ),
         reply_markup=keyboard, 
         parse_mode="Markdown"
     )
@@ -647,14 +577,13 @@ async def handle_set_score_selection(callback: types.CallbackQuery, state: FSMCo
     set_number = int(set_number_str)
     data = await state.get_data()
     sets = data.get('sets', [])
+    language = await get_user_language_async(str(callback.message.chat.id))
     
     # Проверяем, был ли выбран супертайбрейк
     supertiebreak_set = data.get('supertiebreak_set')
     
     # Если это супертайбрейк, просто используем счет как есть
     if supertiebreak_set == set_number:
-        # Счет супертайбрейка остается как есть (например, "10:8" или "20:18")
-        # Очищаем данные о супертайбрейке
         await state.update_data(supertiebreak_set=None)
     
     # Обновляем или добавляем счет сета
@@ -675,14 +604,19 @@ async def handle_set_score_selection(callback: types.CallbackQuery, state: FSMCo
     else:
         # Предлагаем добавить еще сет
         await state.set_state(AddScoreState.adding_another_set)
-        keyboard = create_add_another_set_keyboard()
+        builder = InlineKeyboardBuilder()
+        builder.button(text=t("enter_invoice.add_another_set_button", language=language), callback_data="add_another_set:yes")
+        builder.button(text=t("enter_invoice.complete_input_button", language=language), callback_data="add_another_set:no")
+        builder.button(text=t("enter_invoice.back", language=language), callback_data="back")
+        builder.adjust(1)
         
-        sets_text = "\n".join([f"Сет {i+1}: {s}" for i, s in enumerate(sets)])
+        sets_ = "Сет" if language == "ru" else "Set"
+
+        sets_text = "\n".join([f"{sets_} {i+1}: {s}" for i, s in enumerate(sets)])
         
         await callback.message.edit_text(
-            f"Текущий счет:\n{sets_text}\n\n"
-            f"Добавить еще один сет?",
-            reply_markup=keyboard
+            t("enter_invoice.current_score", language, score=sets_text),
+            reply_markup=builder.as_markup()
         )
     
     await callback.answer()
@@ -690,17 +624,18 @@ async def handle_set_score_selection(callback: types.CallbackQuery, state: FSMCo
 @router.callback_query(F.data.startswith("add_another_set:"))
 async def handle_add_another_set(callback: types.CallbackQuery, state: FSMContext):
     action = callback.data.split(":")[1]
-    
+    language = await get_user_language_async(str(callback.message.chat.id))
+
     if action == "yes":
         data = await state.get_data()
         sets = data.get('sets', [])
         next_set_number = len(sets) + 1
         
         await state.set_state(AddScoreState.selecting_set_score)
-        keyboard = create_set_score_keyboard(next_set_number)
+        keyboard = create_set_score_keyboard(next_set_number, language=language)
         
         await callback.message.edit_text(
-            f"Выберите счет {next_set_number}-го сета:",
+            t("enter_invoice.select_score", language, next_set_number=next_set_number),
             reply_markup=keyboard
         )
     else:
@@ -710,14 +645,16 @@ async def handle_add_another_set(callback: types.CallbackQuery, state: FSMContex
 
 @router.callback_query(F.data.startswith(("prev_set:", "next_set:")))
 async def handle_navigate_sets(callback: types.CallbackQuery, state: FSMContext):
-    action, set_number_str = callback.data.split(":")
+    action_, set_number_str = callback.data.split(":")
     set_number = int(set_number_str)
+
+    language = await get_user_language_async(str(callback.message.chat.id))
     
     await state.set_state(AddScoreState.selecting_set_score)
-    keyboard = create_set_score_keyboard(set_number)
+    keyboard = create_set_score_keyboard(set_number, language=language)
     
     await callback.message.edit_text(
-        f"Выберите счет {set_number}-го сета:",
+        t("enter_invoice.select_score", language, next_set_number=set_number),
         reply_markup=keyboard
     )
     await callback.answer()
@@ -726,16 +663,16 @@ async def handle_navigate_sets(callback: types.CallbackQuery, state: FSMContext)
 async def handle_supertiebreak_selection(callback: types.CallbackQuery, state: FSMContext):
     """Обработчик выбора супертайбрейка для 3-его сета в турнирной игре"""
     set_number = int(callback.data.split(":")[1])
-    
+    language = await get_user_language_async(str(callback.message.chat.id))
+
     # Сохраняем выбор супертайбрейка
     await state.update_data(supertiebreak_set=set_number)
     
     # Показываем клавиатуру выбора счета супертайбрейка
-    keyboard = create_supertiebreak_keyboard(set_number)
+    keyboard = create_supertiebreak_keyboard(set_number, language=language)
     
     await callback.message.edit_text(
-        f"🏆 Супертайбрейк - 3-й сет\n\n"
-        f"Выберите счет супертайбрейка:",
+        t("enter_invoice.super_tiebreak", language=language),
         reply_markup=keyboard
     )
     await callback.answer()
@@ -745,15 +682,17 @@ async def handle_back_to_normal_set(callback: types.CallbackQuery, state: FSMCon
     """Возврат к обычному выбору счета сета"""
     set_number = int(callback.data.split(":")[1])
     
+    language = await get_user_language_async(str(callback.message.chat.id))
+
     # Очищаем данные о супертайбрейке
     data = await state.get_data()
     if 'supertiebreak_set' in data:
         await state.update_data(supertiebreak_set=None)
     
-    keyboard = create_set_score_keyboard(set_number)
+    keyboard = create_set_score_keyboard(set_number, language=language)
     
     await callback.message.edit_text(
-        f"Выберите счет {set_number}-го сета:",
+        t("enter_invoice.select_score", language, next_set_number=set_number),
         reply_markup=keyboard
     )
     await callback.answer()
@@ -766,9 +705,10 @@ async def handle_finish_score(callback: types.CallbackQuery, state: FSMContext):
 async def process_completed_game(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     sets = data.get('sets', [])
+    language = await get_user_language_async(str(callback.message.chat.id))
     
     if not sets:
-        await callback.answer("Счет не введен")
+        await callback.answer(t("enter_invoice.score_not_entered", language=language))
         return
     
     # Рассчитываем общую разницу геймов
@@ -797,30 +737,36 @@ async def process_completed_game(callback: types.CallbackQuery, state: FSMContex
     
     await state.set_state(AddScoreState.adding_media)
     
-    keyboard = create_media_keyboard()
+    builder = InlineKeyboardBuilder()
+    builder.button(text=t("common.add_photo", language=language), callback_data="media:photo")
+    builder.button(text=t("common.add_video", language=language), callback_data="media:video")
+    builder.button(text=t("common.skip", language=language), callback_data="media:skip")
+    builder.button(text=t("common.back", language=language), callback_data="back")
+    builder.adjust(1)
     await callback.message.edit_text(
-        "Хотите прикрепить фото или видео к результату?",
-        reply_markup=keyboard
+        t("enter_invoice.attach_media_to_result", language=language),
+        reply_markup=builder.as_markup()
     )
 
 @router.callback_query(F.data.startswith("media:"))
 async def handle_media_selection(callback: types.CallbackQuery, state: FSMContext):
     media_type = callback.data.split(":")[1]
-    
+    language = await get_user_language_async(str(callback.message.chat.id))
+
     if media_type == "skip":
         await confirm_score(callback, state)
     elif media_type == "photo":
         await callback.message.edit_text(
-            "Пожалуйста, отправьте фото:",
+            t("common.send_photo", language=language),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
             )
         )
     elif media_type == "video":
         await callback.message.edit_text(
-            "Пожалуйста, отправьте видео:",
+            t("common.send_video", language=language),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
             )
         )
     
@@ -830,12 +776,14 @@ async def handle_media_selection(callback: types.CallbackQuery, state: FSMContex
 @router.message(AddScoreState.adding_media, F.photo)
 async def handle_photo(message: types.Message, state: FSMContext):
     photo_id = message.photo[-1].file_id
+    language = await get_user_language_async(str(message.chat.id))
+
     await state.update_data(photo_id=photo_id, media_type='photo')
     
     # Удаляем сообщение с просьбой отправить фото
     try:
         await message.delete()
-        msg = await message.answer("Загрузка фото...")
+        msg = await message.answer(t("common.loading", language=language))
         await state.update_data(media_message_id=msg.message_id)
     except:
         pass
@@ -846,12 +794,14 @@ async def handle_photo(message: types.Message, state: FSMContext):
 @router.message(AddScoreState.adding_media, F.video)
 async def handle_video(message: types.Message, state: FSMContext):
     video_id = message.video.file_id
+    language = await get_user_language_async(str(message.chat.id))
+
     await state.update_data(video_id=video_id, media_type='video')
     
     # Удаляем сообщение с просьбой отправить видео
     try:
         await message.delete()
-        msg = await message.answer("Загрузка видео...")
+        msg = await message.answer(t("common.loading", language=language))
         await state.update_data(media_message_id=msg.message_id)
     except:
         pass
@@ -868,6 +818,8 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         message = message_or_callback
         callback = None
         bot = message.bot
+
+    language = await get_user_language_async(str(message.chat.id))
 
     # Данные состояния
     data = await state.get_data()
@@ -886,9 +838,9 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
 
     if not current_user:
         if callback:
-            await callback.message.edit_text("Ошибка: ваш профиль не найден")
+            await callback.message.edit_text(t("common.profile_not_found", language=language))
         else:
-            await message.answer("Ошибка: ваш профиль не найден")
+            await message.answer(t("common.profile_not_found", language=language))
         await state.clear()
         return
 
@@ -1036,24 +988,32 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
                 old_ratings=old_ratings
             )
 
-        # Текст результата для турнирной игры (с рейтингом)
-        winner_name_link = await create_user_profile_link(winner_user, pid(winner_user) or "", additional=False)
-        loser_name_link = await create_user_profile_link(loser_user, pid(loser_user) or "", additional=False)
+        winner_rating_change = new_winner_points - winner_old
+        loser_rating_change = new_loser_points - loser_old
 
-        result_text = (
-            f"🏆 Турнирная игра\n"
-            f"🏆 Турнир: {tournament_name}\n\n"
-            f"👤 {winner_name_link}\n"
-            f"🆚\n"
-            f"👤 {loser_name_link}\n\n"
-            f"📊 Счёт: {score}\n\n"
-            f"📈 Изменение рейтинга:\n"
-            f"• {winner_user.get('first_name', '')}: {format_rating(winner_old)} → "
-            f"{format_rating(winner_old + (new_winner_points - winner_old))} "
-            f"({'+' if (new_winner_points - winner_old) > 0 else ''}{format_rating(new_winner_points - winner_old)})\n"
-            f"• {loser_user.get('first_name', '')}: {format_rating(loser_old)} → "
-            f"{format_rating(loser_old + (new_loser_points - loser_old))} "
-            f"({'+' if (new_loser_points - loser_old) > 0 else ''}{format_rating(new_loser_points - loser_old)})"
+        # Форматируем изменения рейтинга
+        winner_rating_formatted = f"{'+' if winner_rating_change > 0 else ''}{format_rating(winner_rating_change)}"
+        loser_rating_formatted = f"{'+' if loser_rating_change > 0 else ''}{format_rating(loser_rating_change)}"
+
+        # Вычисляем новые рейтинги
+        winner_new_rating = winner_old + winner_rating_change
+        loser_new_rating = loser_old + loser_rating_change
+
+        # Получаем имена пользователей
+        winner_name = winner_user.get('first_name', '')
+        loser_name = loser_user.get('first_name', '')
+
+        # Форматируем строки изменений рейтинга
+        winner_rating_line = f"• {winner_name}: {format_rating(winner_old)} → {format_rating(winner_new_rating)} ({winner_rating_formatted})"
+        loser_rating_line = f"• {loser_name}: {format_rating(loser_old)} → {format_rating(loser_new_rating)} ({loser_rating_formatted})"
+
+        result_text = t("enter_invoice.tournament_match_message", language,
+            tournament_name=tournament_name,
+            winner_name_link=await create_user_profile_link(winner_user, pid(winner_user) or "", additional=False),
+            loser_name_link=await create_user_profile_link(loser_user, pid(loser_user) or "", additional=False),
+            score=score,
+            winner_rating_line=winner_rating_line,
+            loser_rating_line=loser_rating_line
         )
 
     # ---- ОДИНОЧНАЯ ИГРА ----
@@ -1141,24 +1101,31 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
                 old_ratings=old_ratings
             )
 
-        # Текст результата
-        # Показываем сверху победителя
-        winner_name_link = await create_user_profile_link(winner_user, pid(winner_user) or "", additional=False)
-        loser_name_link = await create_user_profile_link(loser_user, pid(loser_user) or "", additional=False)
+        winner_rating_change = new_winner_points - winner_old
+        loser_rating_change = new_loser_points - loser_old
 
-        result_text = (
-            f"🎯 Одиночная игра\n\n"
-            f"👤 {winner_name_link}\n"
-            f"🆚\n"
-            f"👤 {loser_name_link}\n\n"
-            f"📊 Счёт: {score}\n\n"
-            f"📈 Изменение рейтинга:\n"
-            f"• {winner_user.get('first_name', '')}: {format_rating(winner_old)} → "
-            f"{format_rating(winner_old + (new_winner_points - winner_old))} "
-            f"({'+' if (new_winner_points - winner_old) > 0 else ''}{format_rating(new_winner_points - winner_old)})\n"
-            f"• {loser_user.get('first_name', '')}: {format_rating(loser_old)} → "
-            f"{format_rating(loser_old + (new_loser_points - loser_old))} "
-            f"({'+' if (new_loser_points - loser_old) > 0 else ''}{format_rating(new_loser_points - loser_old)})"
+        # Форматируем изменения рейтинга
+        winner_rating_formatted = f"{'+' if winner_rating_change > 0 else ''}{format_rating(winner_rating_change)}"
+        loser_rating_formatted = f"{'+' if loser_rating_change > 0 else ''}{format_rating(loser_rating_change)}"
+
+        # Вычисляем новые рейтинги
+        winner_new_rating = winner_old + winner_rating_change
+        loser_new_rating = loser_old + loser_rating_change
+
+        # Получаем имена пользователей
+        winner_name = winner_user.get('first_name', '')
+        loser_name = loser_user.get('first_name', '')
+
+        # Форматируем строки изменений рейтинга
+        winner_rating_line = f"• {winner_name}: {format_rating(winner_old)} → {format_rating(winner_new_rating)} ({winner_rating_formatted})"
+        loser_rating_line = f"• {loser_name}: {format_rating(loser_old)} → {format_rating(loser_new_rating)} ({loser_rating_formatted})"
+
+        result_text = t("enter_invoice.single_match_message", language,
+            winner_link=await create_user_profile_link(winner_user, pid(winner_user) or "", additional=False),
+            loser_link=await create_user_profile_link(loser_user, pid(loser_user) or "", additional=False),
+            score=score,
+            winner_rating_line=winner_rating_line,
+            loser_rating_line=loser_rating_line
         )
 
     # ---- ПАРНАЯ ИГРА ----
@@ -1241,16 +1208,12 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             sign = '+' if delta > 0 else ''
             return f"• {name_link}: {format_rating(old_val)} → {format_rating(new_val)} ({sign}{format_rating(delta)})"
 
-        result_text = (
-            f"👥 Парная игра\n\n"
-            f"Пара 1:\n"
-            f"• {await create_user_profile_link(current_user, current_id, additional=False)}\n"
-            f"• {await create_user_profile_link(partner, pid_partner, additional=False)}\n\n"
-            f"Пара 2:\n"
-            f"• {await create_user_profile_link(opponent1, pid_op1, additional=False)}\n"
-            f"• {await create_user_profile_link(opponent2, pid_op2, additional=False)}\n\n"
-            f"📊 Счёт: {score}\n\n"
-            f"📈 Изменение рейтинга:\n"
+        result_text = t("enter_invoice.doubles_match_message", language,
+            current_user_link=await create_user_profile_link(current_user, current_id, additional=False),
+            partner_link=await create_user_profile_link(partner, pid_partner, additional=False),
+            opponent1_link=await create_user_profile_link(opponent1, pid_op1, additional=False),
+            opponent2_link=await create_user_profile_link(opponent2, pid_op2, additional=False),
+            score=score
         )
 
         # Добавляем строки с изменениями для всех игроков (в порядке победители, потом проигравшие)
@@ -1317,8 +1280,8 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
         if game_type == 'tournament' and data.get('tournament_id'):
             tournaments = await storage.load_tournaments()
             tid = data.get('tournament_id')
-            t = tournaments.get(tid, {})
-            t_matches = t.get('matches') or []
+            t_tournaments = tournaments.get(tid, {})
+            t_matches = t_tournaments.get('matches') or []
             # Идентификация матча: по составу пар (без учета порядка)
             def key_of(p1: str | None, p2: str | None):
                 if not p1 or not p2:
@@ -1348,8 +1311,8 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
                     'score': score,
                     'winner_id': winner_id_for_record
                 })
-            t['matches'] = t_matches
-            tournaments[tid] = t
+            t_tournaments['matches'] = t_matches
+            tournaments[tid] = t_tournaments
             await storage.save_tournaments(tournaments)
     except Exception as e:
         print(f"[TOURNAMENT][MATCHES] Не удалось обновить матчи турнира: {e}")
@@ -1362,7 +1325,11 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
     await state.update_data(result_text=result_text, game_id=game_id)
     await state.set_state(AddScoreState.confirming_score)
 
-    keyboard = create_confirmation_keyboard()
+    keyboard = InlineKeyboardBuilder()
+    keyboard.button(text=t("enter_invoice.confirm_button", language=language), callback_data="confirm:yes")
+    keyboard.button(text=t("enter_invoice.edit_score_button", language=language), callback_data="confirm:edit_score")
+    keyboard.button(text=t("common.cancel", language=language), callback_data="confirm:no")
+    keyboard.adjust(1)
 
     # Подготовка медиа
     media_data = {}
@@ -1373,7 +1340,7 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
 
     # Отправка/редактирование сообщения
     if callback:
-        await edit_media_message(callback, result_text, keyboard, media_data)
+        await edit_media_message(callback, result_text, keyboard.as_markup(), media_data)
     else:
         try:
             await message.delete()
@@ -1383,18 +1350,18 @@ async def confirm_score(message_or_callback: Union[types.Message, types.Callback
             await message.answer_photo(
                 data['photo_id'],
                 caption=result_text,
-                reply_markup=keyboard,
+                reply_markup=keyboard.as_markup(),
                 parse_mode="Markdown"
             )
         elif 'video_id' in data:
             await message.answer_video(
                 data['video_id'],
                 caption=result_text,
-                reply_markup=keyboard,
+                reply_markup=keyboard.as_markup(),
                 parse_mode="Markdown"
             )
         else:
-            await message.answer(result_text, reply_markup=keyboard, parse_mode="Markdown")
+            await message.answer(result_text, reply_markup=keyboard.as_markup(), parse_mode="Markdown")
 
     try:
         await bot.delete_message(message.chat.id, media_message_id)
@@ -1406,6 +1373,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
     action = callback.data.split(":")[1]
     
     current_user_id = str(callback.message.chat.id)
+    language = await get_user_language_async(str(callback.message.chat.id))
     await state.update_data(current_user_id=current_user_id)
     
     if action == "yes":
@@ -1662,7 +1630,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
         
     elif action == "edit_score":
         await state.set_state(AddScoreState.selecting_set_score)
-        keyboard = create_set_score_keyboard(1)
+        keyboard = create_set_score_keyboard(1, language=language)
         
         # Удаляем текущее сообщение и отправляем новое
         try:
@@ -1671,7 +1639,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
             pass
         
         new_msg = await callback.message.answer(
-            "Выберите счет 1-го сета:",
+            t("enter_invoice.select_score", language, next_set_number=1),
             reply_markup=keyboard
         )
         save_message_id(callback.message.chat.id, new_msg.message_id)
@@ -1809,7 +1777,7 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
             pass
 
         await callback.message.answer(
-            "❌ Внесение счета отменено. Все изменения отменены.",
+            t("enter_invoice.invoice_cancelled", language=language),
             reply_markup=None
         )
         await state.clear()
@@ -1819,16 +1787,17 @@ async def handle_score_confirmation(callback: types.CallbackQuery, state: FSMCon
 @router.callback_query(F.data == "back")
 async def handle_back(callback: types.CallbackQuery, state: FSMContext):
     current_state = await state.get_state()
-    
+    language = await get_user_language_async(str(callback.message.chat.id))
+
     if current_state == AddScoreState.selecting_game_type.state:
-        await callback.message.edit_text("Действие отменено.")
+        await callback.message.edit_text(t("common.action_cancelled", language=language))
         await state.clear()
         
     elif current_state == AddScoreState.selecting_tournament.state:
         await state.set_state(AddScoreState.selecting_game_type)
-        language = await get_user_language_async(str(callback.message.chat.id))
-        keyboard = await create_game_type_keyboard(language)
-        await callback.message.edit_text(t("enter_invoice.select_game_type", language), reply_markup=keyboard)
+        
+        keyboard = await create_game_type_keyboard(language=language)
+        await callback.message.edit_text(t("enter_invoice.select_game_type", language=language), reply_markup=keyboard)
         
     elif current_state == AddScoreState.selecting_tournament_opponent.state:
         # Tournament logic moved to handlers.tournament_score
@@ -1836,35 +1805,33 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         await state.set_state(AddScoreState.selecting_tournament)
         current_user_id = str(callback.message.chat.id)
         keyboard = await create_tournament_keyboard(current_user_id)
-        await callback.message.edit_text("🏆 Выберите запущенный турнир для внесения счета:", reply_markup=keyboard)
+        await callback.message.edit_text(t("enter_invoice.select_tournament", language=language), reply_markup=keyboard)
         
     elif current_state == AddScoreState.searching_opponent.state:
         await state.set_state(AddScoreState.selecting_game_type)
-        language = await get_user_language_async(str(callback.message.chat.id))
-        keyboard = await create_game_type_keyboard(language)
-        await callback.message.edit_text(t("enter_invoice.select_game_type", language), reply_markup=keyboard)
+        keyboard = await create_game_type_keyboard(language=language)
+        await callback.message.edit_text(t("enter_invoice.select_game_type", language=language), reply_markup=keyboard)
         
     elif current_state == AddScoreState.selecting_opponent.state:
         await state.set_state(AddScoreState.searching_opponent)
         await callback.message.edit_text(
-            "Поиск соперника\nНапишите имя или фамилию соперника:",
+            t("enter_invoice.search_opponent_prompt", language=language),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
             )
         )
         
     elif current_state == AddScoreState.selecting_partner.state:
         await state.set_state(AddScoreState.selecting_game_type)
-        language = await get_user_language_async(str(callback.message.chat.id))
-        keyboard = await create_game_type_keyboard(language)
-        await callback.message.edit_text(t("enter_invoice.select_game_type", language), reply_markup=keyboard)
+        keyboard = await create_game_type_keyboard(language=language)
+        await callback.message.edit_text(t("enter_invoice.select_game_type", language=language), reply_markup=keyboard)
         
     elif current_state == AddScoreState.searching_partner.state:
         await state.set_state(AddScoreState.selecting_partner)
         await callback.message.edit_text(
-            "Ваш партнер по паре\nНапишите имя или фамилию партнера:",
+            t("enter_invoice.search_partner_prompt", language=language),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
             )
         )
         
@@ -1877,22 +1844,22 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         matching_users = await search_users(search_query, exclude_ids=[current_user_id])
         
         if matching_users:
-            keyboard = await create_users_inline_keyboard(matching_users, "select_partner")
-            await callback.message.edit_text("Выберите партнера из списка:", reply_markup=keyboard)
+            keyboard = await create_users_inline_keyboard(matching_users, "select_partner", language=language)
+            await callback.message.edit_text(t("enter_invoice.select_partner", language=language), reply_markup=keyboard)
         else:
             await callback.message.edit_text(
-                "Ваш партнер по паре\nНапишите имя или фамилию партнера:",
+                t("enter_invoice.search_partner_prompt", language=language),
                 reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                    inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
                 )
             )
         
     elif current_state == AddScoreState.selecting_opponent1.state:
         await state.set_state(AddScoreState.searching_opponent1)
         await callback.message.edit_text(
-            "Поиск первого соперника\nНапишите имя или фамилию первого соперника:",
+            t("enter_invoice.search_opponent1_prompt", language=language),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
             )
         )
         
@@ -1906,22 +1873,22 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id])
         
         if matching_users:
-            keyboard = await create_users_inline_keyboard(matching_users, "select_opponent1")
-            await callback.message.edit_text("Выберите первого соперника из списка:", reply_markup=keyboard)
+            keyboard = await create_users_inline_keyboard(matching_users, "select_opponent1", language=language)
+            await callback.message.edit_text(t("enter_invoice.select_opponent", language=language), reply_markup=keyboard)
         else:
             await callback.message.edit_text(
-                "Поиск первого соперника\nНапишите имя или фамилию первого соперника:",
+                t("enter_invoice.search_opponent1_prompt", language=language),
                 reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                    inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
                 )
             )
         
     elif current_state == AddScoreState.selecting_opponent2.state:
         await state.set_state(AddScoreState.searching_opponent2)
         await callback.message.edit_text(
-            "Поиск второго соперника\nНапишите имя или фамилию второго соперника:",
+            t("enter_invoice.search_opponent2_prompt", language=language),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
             )
         )
         
@@ -1938,13 +1905,13 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
             matching_users = await search_users(search_query, exclude_ids=[current_user_id])
             
             if matching_users:
-                keyboard = await create_users_inline_keyboard(matching_users, "select_opponent")
-                await callback.message.edit_text("Выберите соперника из списка:", reply_markup=keyboard)
+                keyboard = await create_users_inline_keyboard(matching_users, "select_opponent", language=language)
+                await callback.message.edit_text(t("enter_invoice.select_opponent", language=language), reply_markup=keyboard)
             else:
                 await callback.message.edit_text(
-                    "Поиск соперника\nНапишите имя или фамилию соперника:",
+                    t("enter_invoice.search_opponent_prompt", language=language),
                     reply_markup=InlineKeyboardMarkup(
-                        inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                        inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
                     )
                 )
                 
@@ -1963,13 +1930,13 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
                 matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
                 
                 if matching_users:
-                    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent2")
-                    await callback.message.edit_text("Выберите второго соперника из списка:", reply_markup=keyboard)
+                    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent2", language=language)
+                    await callback.message.edit_text(t("enter_invoice.select_opponent2", language=language), reply_markup=keyboard)
                 else:
                     await callback.message.edit_text(
-                        "Поиск второго соперника\nНапишите имя или фамилию второго соперника:",
+                        t("enter_invoice.search_opponent2_prompt", language=language),
                         reply_markup=InlineKeyboardMarkup(
-                            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
                         )
                     )
                 
@@ -1984,13 +1951,13 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
                 matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id])
                 
                 if matching_users:
-                    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent1")
-                    await callback.message.edit_text("Выберите первого соперника из списка:", reply_markup=keyboard)
+                    keyboard = await create_users_inline_keyboard(matching_users, "select_opponent1", language=language)
+                    await callback.message.edit_text(t("enter_invoice.select_opponent", language=language), reply_markup=keyboard)
                 else:
                     await callback.message.edit_text(
-                        "Поиск первого соперника\nНапишите имя или фамилию первого соперника:",
+                        t("enter_invoice.search_opponent1_prompt", language=language),
                         reply_markup=InlineKeyboardMarkup(
-                            inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="back")]]
+                            inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data="back")]]
                         )
                     )
         
@@ -1999,16 +1966,16 @@ async def handle_back(callback: types.CallbackQuery, state: FSMContext):
         data = await state.get_data()
         sets = data.get('sets', [])
         current_set = len(sets)
-        keyboard = create_set_score_keyboard(current_set)
-        await callback.message.edit_text(f"Выберите счет {current_set}-го сета:", reply_markup=keyboard)
+        keyboard = create_set_score_keyboard(current_set, language=language)
+        await callback.message.edit_text(t("enter_invoice.select_score", language, next_set_number=current_set), reply_markup=keyboard)
     
     elif current_state == AddScoreState.adding_media.state:
         await state.set_state(AddScoreState.selecting_set_score)
         data = await state.get_data()
         sets = data.get('sets', [])
         current_set = len(sets)
-        keyboard = create_set_score_keyboard(current_set)
-        await callback.message.edit_text(f"Выберите счет {current_set}-го сета:", reply_markup=keyboard)
+        keyboard = create_set_score_keyboard(current_set, language=language)
+        await callback.message.edit_text(t("enter_invoice.select_score", language, next_set_number=current_set), reply_markup=keyboard)
     
     await callback.answer()
 
@@ -2017,7 +1984,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
     _, action, page_str = callback.data.split(":")
     page = int(page_str)
     
-    users = await storage.load_users()
+    language = await get_user_language_async(str(callback.message.chat.id))
     current_user_id = str(callback.message.chat.id)
     
     if action == "select_opponent":
@@ -2026,7 +1993,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
         matching_users = await search_users(search_query, exclude_ids=[current_user_id])
         
         has_more = len(matching_users) > (page + 1) * 8
-        keyboard = await create_users_inline_keyboard(matching_users, action, page, has_more)
+        keyboard = await create_users_inline_keyboard(matching_users, action, page, has_more, language=language)
         await callback.message.edit_reply_markup(reply_markup=keyboard)
     
     elif action == "select_partner":
@@ -2035,7 +2002,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
         matching_users = await search_users(search_query, exclude_ids=[current_user_id])
         
         has_more = len(matching_users) > (page + 1) * 8
-        keyboard = await create_users_inline_keyboard(matching_users, action, page, has_more)
+        keyboard = await create_users_inline_keyboard(matching_users, action, page, has_more, language=language)
         await callback.message.edit_reply_markup(reply_markup=keyboard)
     
     elif action == "select_opponent1":
@@ -2045,7 +2012,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
         matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id])
         
         has_more = len(matching_users) > (page + 1) * 8
-        keyboard = await create_users_inline_keyboard(matching_users, action, page, has_more)
+        keyboard = await create_users_inline_keyboard(matching_users, action, page, has_more, language=language)
         await callback.message.edit_reply_markup(reply_markup=keyboard)
     
     elif action == "select_opponent2":
@@ -2056,7 +2023,7 @@ async def handle_navigation(callback: types.CallbackQuery, state: FSMContext):
         matching_users = await search_users(search_query, exclude_ids=[current_user_id, partner_id, opponent1_id])
         
         has_more = len(matching_users) > (page + 1) * 8
-        keyboard = await create_users_inline_keyboard(matching_users, action, page, has_more)
+        keyboard = await create_users_inline_keyboard(matching_users, action, page, has_more, language=language)
         await callback.message.edit_reply_markup(reply_markup=keyboard)
     
     await callback.answer()
@@ -2068,6 +2035,7 @@ async def handle_history_request(callback: types.CallbackQuery):
         # Извлекаем ID пользователя, чью историю запрашиваем
         target_user_id = callback.data.split(":")[1]
         current_user_id = str(callback.message.chat.id)
+        language = await get_user_language_async(current_user_id)
         
         # Проверяем права доступа для просмотра чужой истории
         if not await is_admin(callback.message.chat.id):
@@ -2075,15 +2043,7 @@ async def handle_history_request(callback: types.CallbackQuery):
                 users = await storage.load_users()
                 if not users.get(current_user_id, {}).get('subscription', {}).get('active', False):
                     referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{callback.from_user.id}"
-                    text = (
-                        "🔒 <b>Доступ закрыт</b>\n\n"
-                        "Функция просмотра истории игр игроков доступна только для пользователей с активной подпиской Tennis-Play PRO.\n\n"
-                        f"Стоимость: <b>{SUBSCRIPTION_PRICE} руб./месяц</b>\n"
-                        "Перейдите в раздел '💳 Платежи' для оформления подписки.\n\n"
-                        "Также вы можете получить подписку бесплатно, пригласив 5 друзей.\n\n"
-                        f"Ваша персональная ссылка для приглашений <code>{referral_link}</code>\n\n"
-                        "Статистика приглашений доступна в разделе «🔗 Пригласить друга».\n\n"
-                    )
+                    text = t("enter_invoice.game_history_locked", language, price=SUBSCRIPTION_PRICE, referral_link=referral_link)
                     
                     await callback.message.answer(
                         text,
@@ -2116,11 +2076,12 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
     # Загружаем игры и пользователей
     games = await storage.load_games()
     users = await storage.load_users()
+    language = await get_user_language_async(str(callback.message.chat.id))
     
     # Получаем информацию о целевом пользователе
     target_user = users.get(target_user_id)
     if not target_user:
-        await callback.answer("Пользователь не найден")
+        await callback.answer(t("common.user_not_found", language=language))
         return
     
     # Фильтруем игры, в которых участвовал пользователь
@@ -2138,10 +2099,12 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
     
     if not user_games:
         await callback.message.answer(
-            f"📊 История игр пользователя {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n"
-            "Пока нет сыгранных игр.",
+            t("enter_invoice.user_game_not_found", language, 
+              first_name=target_user.get('first_name', ''), 
+              last_name=target_user.get('last_name', '') 
+            ),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_profile:{callback.message.chat.id}")]]
+                inline_keyboard=[[InlineKeyboardButton(text=t("common.back", language=language), callback_data=f"back_to_profile:{callback.message.chat.id}")]]
             )
         )
         await callback.answer()
@@ -2170,16 +2133,18 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
                    if int(set_score.split(':')[0]) < int(set_score.split(':')[1]))
     
     if (user_in_team1 and team1_wins > team2_wins) or (not user_in_team1 and team2_wins > team1_wins):
-        result = "✅ Победа"
+        result = "✅ Победа" if language == "ru" else "✅ Victory"
     else:
-        result = "❌ Поражение"
+        result = "❌ Поражение" if language == "ru" else "❌ Defeat"
     
     # Получаем изменение рейтинга
     rating_change = game['rating_changes'].get(target_user_id, 0)
     rating_change_str = f"+{format_rating(rating_change)}" if rating_change > 0 else f"{format_rating(rating_change)}"
     
     # Формируем информацию об игре
-    history_text = f"📊 Игра #{game_index + 1} из {len(user_games)}\n\n"
+    game_ = "Игра" if language == "ru" else "Game"
+
+    history_text = f"📊 {game_} #{game_index + 1} / {len(user_games)}\n\n"
     history_text += f"📅 {formatted_date}\n"
     history_text += f"🎯 {result}\n\n"
     
@@ -2189,9 +2154,9 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
         opponent_id = game['players']['team2'][0] if user_in_team1 else game['players']['team1'][0]
         opponent = users.get(opponent_id, {})
 
-        history_text += f"👤 Игрок:\n"
+        history_text += f"👤 Игрок:\n" if language == "ru" else f"👤 Player:\n"
         history_text += f"• {target_user.get('first_name', '')} {target_user.get('last_name', '')}\n\n" 
-        history_text += f"👤 Соперник:\n"
+        history_text += f"👤 Соперник:\n" if language == "ru" else f"👤 Rival:\n"
         history_text += f"• {await create_user_profile_link(opponent, opponent.get('telegram_id'), additional=False)}\n\n"
         
     else:
@@ -2211,18 +2176,24 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
         opponent1_name = await create_user_profile_link(opponent1, opponents[0], additional=False)
         opponent2_name = await create_user_profile_link(opponent2, opponents[1], additional=False)
         
-        history_text += f"👥 Пара 1:\n"
+        pair = "Пара" if language == "ru" else "Pair"
+
+        history_text += f"👥 {pair} 1:\n"
         history_text += f"• {await create_user_profile_link(target_user, target_user.get('telegram_id', ''), additional=False)}\n"
         history_text += f"• {teammate_name}\n\n"
-        history_text += f"👥 Пара 2:\n"
+        history_text += f"👥 {pair} 2:\n"
         history_text += f"• {opponent1_name}\n"
         history_text += f"• {opponent2_name}\n\n"
     
+    check = "Счет" if language == "ru" else "Score"
+
     # Добавляем счет
-    history_text += f"📊 Счет: {game['score']}\n\n"
+    history_text += f"📊 {check}: {game['score']}\n\n"
     
+    rating_change_ = "Изменение рейтинга" if language == "ru" else "Rating change"
+
     # Добавляем изменение рейтинга
-    history_text += f"📈 Изменение рейтинга: {rating_change_str}\n"
+    history_text += f"📈 {rating_change_}: {rating_change_str}\n"
     
     # Добавляем ID игры для админа
     if await is_admin(callback.message.chat.id):
@@ -2235,12 +2206,12 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
     nav_buttons = []
     if game_index > 0:
         nav_buttons.append(InlineKeyboardButton(
-            text="⬅️ Назад", 
+            text=t("common.back", language=language), 
             callback_data=f"game_history:{target_user_id}:{game_index - 1}"
         ))
     if game_index < len(user_games) - 1:
         nav_buttons.append(InlineKeyboardButton(
-            text="Вперед ➡️", 
+            text=t("common.next", language=language), 
             callback_data=f"game_history:{target_user_id}:{game_index + 1}"
         ))
     
@@ -2250,7 +2221,7 @@ async def show_single_game_history(callback: types.CallbackQuery, target_user_id
     # Кнопка возврата к профилю
     keyboard_buttons.append([
         InlineKeyboardButton(
-            text="🔙 К профилю", 
+            text=t("common.to_profile", language=language), 
             callback_data=f"back_to_profile:{target_user_id}"
         )
     ])

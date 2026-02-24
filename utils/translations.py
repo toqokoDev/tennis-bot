@@ -45,17 +45,18 @@ def get_translation(key: str, language: str = "ru", **kwargs) -> str:
     Args:
         key: Ключ перевода в формате "section.key" или "section.subsection.key" (например, "registration.welcome" или "config.sports.tennis")
         language: Язык перевода ("ru" или "en")
-        **kwargs: Параметры для подстановки в строку
+        **kwargs: Параметры для подстановки в строку; default — значение, если перевод не найден
     
     Returns:
-        Переведенная строка или ключ, если перевод не найден
+        Переведенная строка, или default (если передан), или ключ, если перевод не найден
     """
+    default_value = kwargs.pop("default", None)
     translations = load_translations(language)
     
     # Разбиваем ключ на части
     parts = key.split(".")
     if len(parts) < 2:
-        return key
+        return default_value if default_value is not None else key
     
     # Начинаем с корневого словаря переводов
     current = translations
@@ -65,15 +66,17 @@ def get_translation(key: str, language: str = "ru", **kwargs) -> str:
         if isinstance(current, dict):
             current = current.get(part)
             if current is None:
-                return key
+                return default_value if default_value is not None else key
         else:
-            return key
+            return default_value if default_value is not None else key
     
     # Получаем финальное значение
     if isinstance(current, dict):
-        text = current.get(parts[-1], key)
+        text = current.get(parts[-1])
+        if text is None:
+            return default_value if default_value is not None else key
     else:
-        text = key
+        return default_value if default_value is not None else key
     
     # Подставляем параметры, если они есть
     if kwargs:
