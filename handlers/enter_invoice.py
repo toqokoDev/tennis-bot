@@ -223,6 +223,7 @@ async def handle_add_score(message: types.Message, state: FSMContext):
     # Проверяем наличие активной подписки
     user_id = message.chat.id
     users = await storage.load_users()
+    language = await get_user_language_async(str(message.chat.id))
     
     if not await is_admin(user_id):
         if not users[str(user_id)].get('subscription', {}).get('active', False):
@@ -239,7 +240,6 @@ async def handle_add_score(message: types.Message, state: FSMContext):
     # Если подписка активна, продолжаем процесс
     await state.set_state(AddScoreState.selecting_game_type)
     
-    language = await get_user_language_async(str(message.chat.id))
     keyboard = await create_game_type_keyboard(language=language)
     msg = await message.answer(t("enter_invoice.select_game_type", language=language), reply_markup=keyboard)
     save_message_id(message.chat.id, msg.message_id)

@@ -111,6 +111,17 @@ async def cleanup_expired_game_offers(bot: Bot):
     except Exception as e:
         print(f"Ошибка при очистке прошедших игр: {e}")
 
+async def tournament_scheduled_loop(bot: Bot):
+    """Окна оплаты 24ч и напоминания по круговым турнирам."""
+    from utils.tournament_lifecycle import run_tournament_scheduled_jobs
+    while True:
+        try:
+            await run_tournament_scheduled_jobs(bot)
+        except Exception as e:
+            print(f"[{datetime.now()}] Ошибка фоновых задач турниров: {e}")
+        await asyncio.sleep(15 * 60)
+
+
 async def check_subscriptions(bot: Bot):
     """Ежедневная проверка и обновление статуса подписок"""
     while True:
@@ -203,15 +214,21 @@ async def main():
 
     # Запускаем фоновые задачи
     subscription_task = asyncio.create_task(check_subscriptions(bot))
+    tournament_jobs_task = asyncio.create_task(tournament_scheduled_loop(bot))
     
     try:
         await dp.start_polling(bot)
     finally:
         # Отменяем фоновые задачи при завершении работы
         subscription_task.cancel()
+        tournament_jobs_task.cancel()
         
         try:
             await subscription_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await tournament_jobs_task
         except asyncio.CancelledError:
             pass
         

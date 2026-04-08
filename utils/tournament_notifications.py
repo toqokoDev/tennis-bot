@@ -2,6 +2,7 @@
 Модуль для уведомлений участников турниров
 """
 
+import html
 import logging
 from typing import List, Dict, Any
 from aiogram import Bot
@@ -228,21 +229,48 @@ class TournamentNotifications:
                                 message += create_opponent_link(opponent_id, opponent_name) + "\n"
                                 
                     elif tournament_type == "Круговая":
-                        message += f"🎯 <b>Ваши соперники:</b>\n"
-                        for match in user_matches:
-                            if match.get('status') == 'pending' and not match.get('is_bye'):
-                                if str(match.get('player1_id')) == str(user_id):
-                                    opponent_name = match.get('player2_name', 'Неизвестно')
-                                    opponent_id = str(match.get('player2_id', ''))
-                                else:
-                                    opponent_name = match.get('player1_name', 'Неизвестно')
-                                    opponent_id = str(match.get('player1_id', ''))
-                                
-                                # Пропускаем сам-с-собой
-                                if opponent_id and str(opponent_id) == str(user_id):
-                                    continue
-
-                                message += create_opponent_link(opponent_id, opponent_name) + "\n"
+                        view_url = f"https://t.me/{BOT_USERNAME}?start=view_tournament_{tournament_id}"
+                        safe_tname = html.escape(tournament_name)
+                        pname = html.escape(participant_data.get('name', 'Участник'))
+                        message = (
+                            f"Здравствуйте, {pname}!\n\n"
+                            f"В турнире TennisBot — «{safe_tname}» "
+                            f"(<a href=\"{view_url}\">карточка турнира</a>) "
+                            f"вам назначены соперники.\n\n"
+                        )
+                        um = [
+                            m for m in user_matches
+                            if m.get('status') == 'pending' and not m.get('is_bye')
+                        ]
+                        um.sort(key=lambda m: int(m.get('match_number', 0)))
+                        n = 0
+                        for match in um:
+                            if str(match.get('player1_id')) == str(user_id):
+                                opponent_name = match.get('player2_name', 'Неизвестно')
+                                opponent_id = str(match.get('player2_id', ''))
+                            else:
+                                opponent_name = match.get('player1_name', 'Неизвестно')
+                                opponent_id = str(match.get('player1_id', ''))
+                            if opponent_id and opponent_id == str(user_id):
+                                continue
+                            n += 1
+                            opponent_data = users.get(opponent_id, {}) or {}
+                            phone = html.escape(str(opponent_data.get('phone') or 'не указан'))
+                            ou = opponent_data.get('username') or ''
+                            tg = f"@{html.escape(ou)}" if ou else 'не указан'
+                            oname_esc = html.escape(str(opponent_name))
+                            profile_url = f"https://t.me/{BOT_USERNAME}?start=profile_{opponent_id}"
+                            message += (
+                                f"{n}. <a href=\"{profile_url}\">{oname_esc}</a>\n"
+                                f"   📞 {phone}\n"
+                                f"   📱 Telegram: {tg}\n"
+                            )
+                        message += (
+                            "\nПредпочтительно провести игры в указанном порядке.\n"
+                            "<b>До завершения всех игр у вас 21 день</b> с даты старта турнира.\n"
+                            "После каждой игры укажите счёт в боте: "
+                            "<b>Меню → Турниры → Внести счёт по турниру</b>.\n"
+                        )
                     
                     logger.info(f"Отправка сообщения участнику {user_id}, длина сообщения: {len(message)}")
                     

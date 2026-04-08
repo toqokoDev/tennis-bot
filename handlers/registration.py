@@ -625,6 +625,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
                     tournament['participants'] = participants
                     tournaments[tournament_id] = tournament
                     await storage.save_tournaments(tournaments)
+                    from utils.tournament_lifecycle import maybe_begin_payment_collection
+                    await maybe_begin_payment_collection(message.bot, tournament_id)
                     # Уведомление в канал
                     try:
                         await send_tournament_application_to_channel(message.bot, tournament_id, tournament, str(user_id), u)
@@ -645,6 +647,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 # Обработка deep-link для просмотра турнира из канала
                 tournament_id = start_param.replace('view_tournament_', '')
                 # Импортируем функцию для показа краткой информации о турнире
+                from handlers.tournament import show_tournament_brief_info
+                await show_tournament_brief_info(message, tournament_id, user_id)
+                return
+            elif start_param.startswith('pay_tournament_'):
+                tournament_id = start_param.replace('pay_tournament_', '')
                 from handlers.tournament import show_tournament_brief_info
                 await show_tournament_brief_info(message, tournament_id, user_id)
                 return

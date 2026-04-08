@@ -1,5 +1,7 @@
 from datetime import datetime
 import asyncio
+import re
+from html import escape as html_escape
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.filters import Command
@@ -9,6 +11,7 @@ import os
 import logging
 
 from utils.tournament_manager import tournament_manager
+from utils.tournament_lifecycle import admin_sort_tournament_items, participants_count_label
 from services.storage import storage
 from utils.admin import get_confirmation_keyboard, is_admin
 from handlers.profile import calculate_level_from_points
@@ -131,7 +134,7 @@ async def show_delete_tournaments_page(callback: CallbackQuery, page: int = 0):
     TOURNAMENTS_PER_PAGE = 5
     
     # Преобразуем в список для пагинации
-    tournament_items = list(tournaments.items())
+    tournament_items = admin_sort_tournament_items(list(tournaments.items()))
     total_tournaments = len(tournament_items)
     total_pages = (total_tournaments + TOURNAMENTS_PER_PAGE - 1) // TOURNAMENTS_PER_PAGE
     
@@ -167,7 +170,7 @@ async def show_delete_tournaments_page(callback: CallbackQuery, page: int = 0):
         number_match = re.search(r'№(\d+)', name)
         tournament_number = number_match.group(1) if number_match else '?'
         
-        text = f"🗑️ №{tournament_number} | {level} | {location}"
+        text = f"🗑️ №{tournament_number} | {level} | {location} | {participants_count_label(tournament_data)}"
         builder.button(text=text, callback_data=f"admin_delete_tournament:{tournament_id}")
     
     builder.adjust(1)
@@ -247,7 +250,7 @@ async def delete_tournament_handler(callback: CallbackQuery):
         f"🔢 Номер: {tournament_number}\n"
         f"📊 Уровень: {level}\n"
         f"📍 Место: {location}\n"
-        f"👥 Участников: {len(tournament_data.get('participants', {}))}\n\n"
+        f"👥 Участников: {participants_count_label(tournament_data)}\n\n"
         "Это действие удалит все данные о турнире!",
         keyboard
     )
@@ -321,7 +324,7 @@ async def back_to_tournaments(callback: CallbackQuery):
     
     import re
     text = "🏆 Активные турниры:\n\n"
-    for tournament_id, tournament_data in tournaments.items():
+    for tournament_id, tournament_data in admin_sort_tournament_items(list(tournaments.items())):
         city = tournament_data.get('city', 'Не указан')
         district = tournament_data.get('district', '')
         country = tournament_data.get('country', '')
@@ -342,7 +345,7 @@ async def back_to_tournaments(callback: CallbackQuery):
         text += f"🔢 Номер: {tournament_number}\n"
         text += f"📊 Уровень: {level}\n"
         text += f"📍 Место: {location}\n"
-        text += f"👥 Участников: {len(tournament_data.get('participants', {}))}\n"
+        text += f"👥 Участников: {participants_count_label(tournament_data)}\n"
         text += f"🆔 ID: {tournament_id}\n"
         text += "─" * 20 + "\n"
     
@@ -462,7 +465,7 @@ async def tournaments_handler(callback: CallbackQuery):
     
     import re
     text = "🏆 Активные турниры:\n\n"
-    for tournament_id, tournament_data in tournaments.items():
+    for tournament_id, tournament_data in admin_sort_tournament_items(list(tournaments.items())):
         # Формируем информацию о турнире
         city = tournament_data.get('city', 'Не указан')
         district = tournament_data.get('district', '')
@@ -490,7 +493,7 @@ async def tournaments_handler(callback: CallbackQuery):
         text += f"🏆 Категория: {tournament_data.get('category', 'Не указана')}\n"
         text += f"👶 Возраст: {tournament_data.get('age_group', 'Не указан')}\n"
         text += f"⏱️ Продолжительность: {tournament_data.get('duration', 'Не указана')}\n"
-        text += f"👥 Участников: {len(tournament_data.get('participants', {}))}/{tournament_data.get('participants_count', 'Не указано')}\n"
+        text += f"👥 Участников: {participants_count_label(tournament_data)}\n"
         text += f"📋 В списке города: {'Да' if tournament_data.get('show_in_list', False) else 'Нет'}\n"
         text += f"🔒 Скрыть сетку: {'Да' if tournament_data.get('hide_bracket', False) else 'Нет'}\n"
         if tournament_data.get('comment'):
@@ -556,6 +559,225 @@ async def banned_list_handler(callback: CallbackQuery):
 
 # ==================== РАССЫЛКА ОБЪЯВЛЕНИЯ ====================
 
+_FORWARD_ALBUM_DEBOUNCE_SEC = 0.9
+
+
+def _broadcast_input_media_from_item(m: dict):
+    """Один элемент сохранённого медиа → InputMedia для send_media_group."""
+    from aiogram.types import InputMediaAnimation, InputMediaPhoto, InputMediaVideo
+
+    if m["type"] == "photo":
+        return InputMediaPhoto(media=m["file_id"])
+    if m["type"] == "animation":
+        return InputMediaAnimation(media=m["file_id"])
+    # video, video_file (документ с видео)
+    return InputMediaVideo(media=m["file_id"])
+
+
+def _broadcast_media_from_forward_message(message: Message) -> dict | None:
+    """Из пересланного сообщения — type + file_id для send_media_group / send_*."""
+    if message.photo:
+        return {"type": "photo", "file_id": message.photo[-1].file_id}
+    if message.video:
+        return {"type": "video", "file_id": message.video.file_id}
+    if (
+        message.document
+        and message.document.mime_type
+        and message.document.mime_type.startswith("video/")
+    ):
+        return {"type": "video_file", "file_id": message.document.file_id}
+    if message.animation:
+        return {"type": "animation", "file_id": message.animation.file_id}
+    return None
+
+
+def _forward_caption_as_html(message: Message) -> str | None:
+    """Подпись к медиа в HTML (как в исходном сообщении)."""
+    if not message.caption:
+        return None
+    # html_text для сообщения с медиа берёт текст из caption
+    return message.html_text
+
+
+def _broadcast_caption_preview(html: str, max_len: int = 120) -> str:
+    plain = re.sub(r"<[^>]+>", "", html)
+    if len(plain) > max_len:
+        return plain[: max_len - 1] + "…"
+    return plain
+
+
+def _merge_forward_caption_from_raw(raw_sorted: list[dict]) -> str | None:
+    """В альбоме подпись обычно у одного из сообщений — берём первую по порядку message_id."""
+    for x in raw_sorted:
+        c = x.get("caption_html")
+        if c:
+            return c
+    return None
+
+
+def _forward_entry_from_message(message: Message) -> dict:
+    """Служебная запись для сбора альбома (сортировка по message_id)."""
+    from_chat_id = message.chat.id
+    msg_id = message.message_id
+    caption_html = _forward_caption_as_html(message)
+    media = _broadcast_media_from_forward_message(message)
+    if media:
+        d: dict = {"message_id": msg_id, "from_chat_id": from_chat_id, **media}
+        if caption_html:
+            d["caption_html"] = caption_html
+        return d
+    return {
+        "message_id": msg_id,
+        "from_chat_id": from_chat_id,
+        "copy_only": True,
+    }
+
+
+async def _broadcast_send_one_media(
+    bot, uid: int, m: dict, *, caption: str | None = None
+):
+    """Одно фото/видео/гиф без медиагруппы (send_media_group требует ≥2 элементов)."""
+    t = m["type"]
+    fid = m["file_id"]
+    if t == "photo":
+        return await bot.send_photo(
+            chat_id=uid,
+            photo=fid,
+            caption=caption,
+            parse_mode="HTML" if caption else None,
+        )
+    if t == "animation":
+        return await bot.send_animation(
+            chat_id=uid,
+            animation=fid,
+            caption=caption,
+            parse_mode="HTML" if caption else None,
+        )
+    return await bot.send_video(
+        chat_id=uid,
+        video=fid,
+        caption=caption,
+        parse_mode="HTML" if caption else None,
+    )
+
+
+async def _broadcast_send_media_list_to_user(bot, uid: int, media_list: list, text: str):
+    """Отправка списка медиа одному пользователю: альбом объединён в send_media_group (по 10 шт.)."""
+    if not media_list:
+        if text:
+            await bot.send_message(chat_id=uid, text=text, parse_mode="HTML")
+        return
+    for batch_start in range(0, len(media_list), 10):
+        chunk = media_list[batch_start : batch_start + 10]
+        cap = text if batch_start == 0 else None
+        if len(chunk) == 1:
+            await _broadcast_send_one_media(bot, uid, chunk[0], caption=cap)
+        else:
+            media_group = [_broadcast_input_media_from_item(m) for m in chunk]
+            if cap and media_group:
+                media_group[0].caption = cap
+                media_group[0].parse_mode = "HTML"
+            await bot.send_media_group(chat_id=uid, media=media_group)
+
+
+async def _broadcast_send_manual_to_user(bot, uid: int, media_list: list, text: str):
+    """Ручная рассылка: те же правила, что и для пересланного альбома."""
+    await _broadcast_send_media_list_to_user(bot, uid, media_list, text)
+
+
+async def _broadcast_show_confirm_forward(
+    bot,
+    chat_id: int,
+    state: FSMContext,
+    *,
+    media_items: list[dict] | None = None,
+    copy_pairs: list[tuple[int, int]] | None = None,
+    caption_html: str | None = None,
+):
+    """Экран подтверждения: либо альбом/медиа через send_media_group, либо copy_message по списку."""
+    if media_items is not None:
+        cap = caption_html.strip() if caption_html else None
+        await state.update_data(
+            broadcast_forward_media_items=media_items,
+            broadcast_forward_copy_pairs=None,
+            broadcast_forward_caption=cap,
+        )
+        n = len(media_items)
+        if n == 1:
+            body = (
+                "Будет отправлено <b>одно</b> медиа в личку <b>{count}</b> пользователям."
+            )
+        else:
+            body = (
+                f"Будет отправлен <b>один альбом</b> из <b>{n}</b> медиа "
+                "в личку <b>{count}</b> пользователям (как единая группа)."
+            )
+    elif copy_pairs is not None:
+        await state.update_data(
+            broadcast_forward_copy_pairs=copy_pairs,
+            broadcast_forward_media_items=None,
+            broadcast_forward_caption=None,
+        )
+        n = len(copy_pairs)
+        if n == 1:
+            body = (
+                "Будет скопировано <b>одно</b> сообщение в личку <b>{count}</b> пользователям."
+            )
+        else:
+            body = (
+                f"Будет скопировано <b>{n}</b> сообщений подряд в личку <b>{{count}}</b> "
+                "пользователям (без объединения в альбом — в пересылке есть не-медиа)."
+            )
+    else:
+        return
+
+    await state.set_state(AdminBroadcastStates.CONFIRM)
+    users = await storage.load_users()
+    count = len([k for k in users.keys() if k and str(k).isdigit()])
+    body = body.format(count=count)
+    caption_hint = ""
+    if media_items is not None and caption_html and caption_html.strip():
+        preview = _broadcast_caption_preview(caption_html.strip())
+        caption_hint = f"\n\n📝 Подпись: «{html_escape(preview)}»"
+    text = (
+        f"📋 <b>Подтверждение рассылки</b>\n\n"
+        f"{body}{caption_hint}\n\n"
+        "Нажмите «Разослать» или «Отмена»."
+    )
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📤 Разослать", callback_data="admin_broadcast_confirm")
+    builder.button(text="❌ Отмена", callback_data="admin_broadcast_cancel")
+    builder.adjust(1)
+    await bot.send_message(chat_id, text, reply_markup=builder.as_markup(), parse_mode="HTML")
+
+
+async def _debounced_finalize_forward_album(bot, state: FSMContext, chat_id: int, seq: int):
+    await asyncio.sleep(_FORWARD_ALBUM_DEBOUNCE_SEC)
+    data = await state.get_data()
+    if data.get("broadcast_collect_seq") != seq:
+        return
+    cur = await state.get_state()
+    if cur != AdminBroadcastStates.WAIT_FORWARD.state:
+        return
+    raw = data.get("broadcast_forward_messages_raw") or []
+    if not raw:
+        return
+    raw_sorted = sorted(raw, key=lambda x: x["message_id"])
+    if any(x.get("copy_only") for x in raw_sorted):
+        copy_pairs = [(x["from_chat_id"], x["message_id"]) for x in raw_sorted]
+        await _broadcast_show_confirm_forward(
+            bot, chat_id, state, copy_pairs=copy_pairs
+        )
+    else:
+        media_items = [
+            {"type": x["type"], "file_id": x["file_id"]} for x in raw_sorted
+        ]
+        cap = _merge_forward_caption_from_raw(raw_sorted)
+        await _broadcast_show_confirm_forward(
+            bot, chat_id, state, media_items=media_items, caption_html=cap
+        )
+
+
 @admin_router.callback_query(F.data == "admin_broadcast_menu")
 async def admin_broadcast_menu(callback: CallbackQuery, state: FSMContext):
     """Меню выбора способа рассылки: переслать сообщение или ручное заполнение."""
@@ -567,10 +789,11 @@ async def admin_broadcast_menu(callback: CallbackQuery, state: FSMContext):
     text = (
         "📢 <b>Рассылка объявления</b>\n\n"
         "Выберите способ:\n\n"
-        "1️⃣ <b>Переслать сообщение</b> — перешлите сюда сообщение из канала или чата, "
-        "оно будет скопировано всем пользователям (без пометки «переслано»).\n\n"
-        "2️⃣ <b>Ручное заполнение</b> — отправьте фото, видео (можно несколько) и текст. "
-        "Затем нажмите «Готово — разослать»."
+        "1️⃣ <b>Переслать сообщение</b> — перешлите сообщение или <b>альбом</b> "
+        "(несколько фото/видео одним пересланием) из канала или чата; "
+        "копия уйдёт всем без пометки «переслано».\n\n"
+        "2️⃣ <b>Ручное заполнение</b> — фото, видео или видео как файл (можно несколько), "
+        "затем текст. После подтверждения при рассылке показывается прогресс «Отправка N/всего»."
     )
     builder = InlineKeyboardBuilder()
     builder.button(text="1️⃣ Переслать сообщение", callback_data="admin_broadcast_forward")
@@ -588,12 +811,22 @@ async def admin_broadcast_forward_mode(callback: CallbackQuery, state: FSMContex
         language = await get_user_language_async(str(callback.message.chat.id))
         await callback.answer(t("admin.no_admin_rights", language))
         return
-    await state.update_data(broadcast_mode="forward")
+    await state.update_data(
+        broadcast_mode="forward",
+        broadcast_forward_chat_id=callback.message.chat.id,
+        broadcast_forward_messages_raw=[],
+        broadcast_forward_media_items=None,
+        broadcast_forward_copy_pairs=None,
+        broadcast_forward_caption=None,
+        broadcast_collect_seq=0,
+        broadcast_media_group_id=None,
+    )
     await state.set_state(AdminBroadcastStates.WAIT_FORWARD)
     text = (
         "📨 <b>Переслать сообщение</b>\n\n"
-        "Перешлите сюда одно сообщение из канала или чата. "
-        "Оно будет скопировано всем пользователям бота (без подписи «переслано»)."
+        "Перешлите одно сообщение или альбом (несколько фото/видео) из канала или чата. "
+        "Все части альбома соберутся автоматически. "
+        "Копия уйдёт всем пользователям бота (без подписи «переслано»)."
     )
     builder = InlineKeyboardBuilder()
     builder.button(text="❌ Отмена", callback_data="admin_broadcast_cancel")
@@ -609,7 +842,14 @@ async def admin_broadcast_manual_mode(callback: CallbackQuery, state: FSMContext
         language = await get_user_language_async(str(callback.message.chat.id))
         await callback.answer(t("admin.no_admin_rights", language))
         return
-    await state.update_data(broadcast_mode="manual", broadcast_media=[], broadcast_text="")
+    await state.update_data(
+        broadcast_mode="manual",
+        broadcast_media=[],
+        broadcast_text="",
+        manual_album_raw=[],
+        manual_album_group_id=None,
+        manual_album_collect_seq=0,
+    )
     await state.set_state(AdminBroadcastStates.MANUAL_MEDIA)
     text = (
         "📷 <b>Шаг 1: Медиа</b>\n\n"
@@ -641,33 +881,51 @@ async def admin_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.answer("Рассылка отменена")
 
 
-# Ожидание пересланного сообщения
+# Ожидание пересланного сообщения (одно или альбом из нескольких фото/видео)
 @admin_router.message(AdminBroadcastStates.WAIT_FORWARD, F.forward_date)
 async def admin_broadcast_forward_received(message: Message, state: FSMContext):
     if not await is_admin(message.from_user.id):
         await state.clear()
         return
-    # Всегда копируем из чата с админом — бот гарантированно имеет доступ,
-    # в отличие от исходного канала, куда бот может быть не добавлен
-    from_chat_id = message.chat.id
-    msg_id = message.message_id
+    # Медиа берём из сообщения в чате с админом (file_id) и шлём как единый альбом.
+    # Текст/не-медиа — только copy_message по очереди.
+    entry = _forward_entry_from_message(message)
+
+    if not message.media_group_id:
+        if entry.get("copy_only"):
+            await _broadcast_show_confirm_forward(
+                message.bot,
+                message.chat.id,
+                state,
+                copy_pairs=[(entry["from_chat_id"], entry["message_id"])],
+            )
+        else:
+            await _broadcast_show_confirm_forward(
+                message.bot,
+                message.chat.id,
+                state,
+                media_items=[
+                    {"type": entry["type"], "file_id": entry["file_id"]},
+                ],
+                caption_html=entry.get("caption_html"),
+            )
+        return
+
+    data = await state.get_data()
+    raw = list(data.get("broadcast_forward_messages_raw") or [])
+    existing_mgid = data.get("broadcast_media_group_id")
+    if existing_mgid is not None and existing_mgid != message.media_group_id:
+        raw = []
+    raw.append(entry)
+    seq = int(data.get("broadcast_collect_seq") or 0) + 1
     await state.update_data(
-        broadcast_from_chat_id=from_chat_id,
-        broadcast_message_id=msg_id,
+        broadcast_forward_messages_raw=raw,
+        broadcast_media_group_id=message.media_group_id,
+        broadcast_collect_seq=seq,
     )
-    await state.set_state(AdminBroadcastStates.CONFIRM)
-    users = await storage.load_users()
-    count = len([k for k in users.keys() if k and str(k).isdigit()])
-    text = (
-        f"📋 <b>Подтверждение рассылки</b>\n\n"
-        f"Будет скопировано сообщение в личку <b>{count}</b> пользователям.\n\n"
-        "Нажмите «Разослать» или «Отмена»."
+    asyncio.create_task(
+        _debounced_finalize_forward_album(message.bot, state, message.chat.id, seq)
     )
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📤 Разослать", callback_data="admin_broadcast_confirm")
-    builder.button(text="❌ Отмена", callback_data="admin_broadcast_cancel")
-    builder.adjust(1)
-    await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
 
 
 @admin_router.message(AdminBroadcastStates.WAIT_FORWARD)
@@ -685,7 +943,10 @@ def _build_broadcast_media_keyboard(media_list: list):
     """Клавиатура со списком медиа и кнопками удаления."""
     builder = InlineKeyboardBuilder()
     for i, m in enumerate(media_list):
-        label = "📷" if m["type"] == "photo" else "🎬"
+        if m["type"] == "photo":
+            label = "📷"
+        else:
+            label = "🎬"
         builder.button(text=f"{label} Удалить {i + 1}", callback_data=f"admin_broadcast_delete_media:{i}")
     builder.adjust(2)  # по 2 кнопки в ряд
     builder.row(
@@ -695,11 +956,89 @@ def _build_broadcast_media_keyboard(media_list: list):
     return builder.as_markup()
 
 
+async def _manual_media_merge_album_buffer_and_reply(
+    bot, state: FSMContext, chat_id: int, raw: list[dict]
+):
+    """Слить буфер альбома в broadcast_media и отправить одно итоговое сообщение."""
+    if not raw:
+        return
+    raw_sorted = sorted(raw, key=lambda x: x["message_id"])
+    new_items = [{"type": x["type"], "file_id": x["file_id"]} for x in raw_sorted]
+    data = await state.get_data()
+    media_list = list(data.get("broadcast_media", []))
+    media_list.extend(new_items)
+    cur_seq = int(data.get("manual_album_collect_seq") or 0)
+    await state.update_data(
+        broadcast_media=media_list,
+        manual_album_raw=None,
+        manual_album_group_id=None,
+        manual_album_collect_seq=cur_seq + 1,
+    )
+    added = len(new_items)
+    await bot.send_message(
+        chat_id,
+        f"✅ Добавлено из альбома: <b>{added}</b> шт. Всего медиа: <b>{len(media_list)}</b>. "
+        "Отправьте ещё или нажмите «Готово с медиа → Текст».",
+        reply_markup=_build_broadcast_media_keyboard(media_list),
+        parse_mode="HTML",
+    )
+
+
+async def _debounced_finalize_manual_album(bot, state: FSMContext, chat_id: int, seq: int):
+    await asyncio.sleep(_FORWARD_ALBUM_DEBOUNCE_SEC)
+    data = await state.get_data()
+    if int(data.get("manual_album_collect_seq") or 0) != seq:
+        return
+    cur = await state.get_state()
+    if cur != AdminBroadcastStates.MANUAL_MEDIA.state:
+        return
+    raw = data.get("manual_album_raw") or []
+    if not raw:
+        return
+    await _manual_media_merge_album_buffer_and_reply(bot, state, chat_id, raw)
+
+
+async def _append_manual_album_media(
+    message: Message, state: FSMContext, mtype: str, file_id: str
+):
+    """Несколько сообщений с одним media_group_id — один ответ после паузы."""
+    data = await state.get_data()
+    old_gid = data.get("manual_album_group_id")
+    raw = list(data.get("manual_album_raw") or [])
+    if old_gid is not None and old_gid != message.media_group_id and raw:
+        await _manual_media_merge_album_buffer_and_reply(
+            message.bot, state, message.chat.id, raw
+        )
+        data = await state.get_data()
+        raw = list(data.get("manual_album_raw") or [])
+    msg_id = message.message_id
+    raw = list(data.get("manual_album_raw") or [])
+    if any(x["message_id"] == msg_id for x in raw):
+        return
+    raw.append({"message_id": msg_id, "type": mtype, "file_id": file_id})
+    data = await state.get_data()
+    prev = int(data.get("manual_album_collect_seq") or 0)
+    seq = prev + 1
+    await state.update_data(
+        manual_album_raw=raw,
+        manual_album_group_id=message.media_group_id,
+        manual_album_collect_seq=seq,
+    )
+    asyncio.create_task(
+        _debounced_finalize_manual_album(message.bot, state, message.chat.id, seq)
+    )
+
+
 # Шаг 1: медиа (с кнопками удаления)
 @admin_router.message(AdminBroadcastStates.MANUAL_MEDIA, F.photo)
 async def admin_broadcast_manual_photo(message: Message, state: FSMContext):
     if not await is_admin(message.from_user.id):
         await state.clear()
+        return
+    if message.media_group_id:
+        await _append_manual_album_media(
+            message, state, "photo", message.photo[-1].file_id
+        )
         return
     data = await state.get_data()
     media_list = data.get("broadcast_media", [])
@@ -715,12 +1054,47 @@ async def admin_broadcast_manual_video(message: Message, state: FSMContext):
     if not await is_admin(message.from_user.id):
         await state.clear()
         return
+    if message.media_group_id:
+        await _append_manual_album_media(message, state, "video", message.video.file_id)
+        return
     data = await state.get_data()
     media_list = data.get("broadcast_media", [])
     file_id = message.video.file_id
     media_list.append({"type": "video", "file_id": file_id})
     await state.update_data(broadcast_media=media_list)
     text = f"✅ Добавлено видео. Всего медиа: {len(media_list)}. Отправьте ещё или нажмите «Готово с медиа → Текст»."
+    await message.answer(text, reply_markup=_build_broadcast_media_keyboard(media_list))
+
+
+@admin_router.message(AdminBroadcastStates.MANUAL_MEDIA, F.document)
+async def admin_broadcast_manual_video_document(message: Message, state: FSMContext):
+    """Видео, отправленное как файл (документ)."""
+    if not await is_admin(message.from_user.id):
+        await state.clear()
+        return
+    data = await state.get_data()
+    media_list_prev = data.get("broadcast_media", [])
+    mime = (message.document.mime_type or "").lower()
+    if not mime.startswith("video/"):
+        await message.answer(
+            "На этом шаге принимаются фото, видео и видео-файлы. "
+            "Другие документы не поддерживаются.",
+            reply_markup=_build_broadcast_media_keyboard(media_list_prev) if media_list_prev else None,
+        )
+        return
+    if message.media_group_id:
+        await _append_manual_album_media(
+            message, state, "video_file", message.document.file_id
+        )
+        return
+    media_list = data.get("broadcast_media", [])
+    file_id = message.document.file_id
+    media_list.append({"type": "video_file", "file_id": file_id})
+    await state.update_data(broadcast_media=media_list)
+    text = (
+        f"✅ Добавлено видео (файл). Всего медиа: {len(media_list)}. "
+        "Отправьте ещё или нажмите «Готово с медиа → Текст»."
+    )
     await message.answer(text, reply_markup=_build_broadcast_media_keyboard(media_list))
 
 
@@ -732,7 +1106,7 @@ async def admin_broadcast_manual_media_other(message: Message, state: FSMContext
     data = await state.get_data()
     media_list = data.get("broadcast_media", [])
     await message.answer(
-        "На этом шаге принимаются только фото и видео. Отправьте медиа или нажмите «Готово с медиа → Текст».",
+        "На этом шаге принимаются фото, видео и видео-файлы. Отправьте медиа или нажмите «Готово с медиа → Текст».",
         reply_markup=_build_broadcast_media_keyboard(media_list) if media_list else None,
     )
 
@@ -872,12 +1246,38 @@ async def admin_broadcast_skip_text(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+def _broadcast_should_update_progress(i: int, total: int) -> bool:
+    """Частота обновления текста прогресса (не спамить editMessage)."""
+    if total <= 1:
+        return True
+    if total <= 100:
+        return True
+    if total <= 400:
+        return i % 3 == 0 or i == total or i == 1
+    return i % 8 == 0 or i == total or i == 1
+
+
+async def _broadcast_try_progress_edit(
+    message: Message, current: int, total: int, failed: int
+):
+    try:
+        fail_line = f"\n⚠️ Ошибок: {failed}" if failed else ""
+        await message.edit_text(
+            f"⏳ <b>Отправка</b> {current}/{total}{fail_line}\n\nПодождите…",
+            parse_mode="HTML",
+            reply_markup=None,
+        )
+    except Exception as e:
+        logger.debug(f"Broadcast progress edit: {e}")
+
+
 @admin_router.callback_query(F.data == "admin_broadcast_confirm")
 async def admin_broadcast_confirm(callback: CallbackQuery, state: FSMContext):
     """Выполнение рассылки всем пользователям."""
     if not await is_admin(callback.message.chat.id):
         await callback.answer()
         return
+    await callback.answer()
     data = await state.get_data()
     mode = data.get("broadcast_mode")
     users = await storage.load_users()
@@ -892,55 +1292,70 @@ async def admin_broadcast_confirm(callback: CallbackQuery, state: FSMContext):
     sent = 0
     failed = 0
     admin_chat_id = callback.message.chat.id
-    for uid in uid_list:
-        if uid == admin_chat_id:
-            continue
+    recipients = [uid for uid in uid_list if uid != admin_chat_id]
+    total = len(recipients)
+    if total == 0:
+        await state.clear()
+        await safe_edit_message(
+            callback,
+            "✅ Нет получателей (кроме вас). Рассылка не требуется.",
+            get_admin_keyboard(),
+        )
+        return
+
+    await _broadcast_try_progress_edit(callback.message, 0, total, 0)
+
+    copy_pairs = data.get("broadcast_forward_copy_pairs")
+    forward_media = data.get("broadcast_forward_media_items")
+    if mode == "forward":
+        if not copy_pairs and not forward_media:
+            if "broadcast_from_chat_id" in data and "broadcast_message_id" in data:
+                copy_pairs = [
+                    (data["broadcast_from_chat_id"], data["broadcast_message_id"])
+                ]
+        if not copy_pairs and not forward_media:
+            await state.clear()
+            await safe_edit_message(
+                callback,
+                "⚠️ Нет сообщений для рассылки. Откройте рассылку и перешлите сообщение снова.",
+                get_admin_keyboard(),
+            )
+            return
+
+    for i, uid in enumerate(recipients, start=1):
         try:
             if mode == "forward":
-                from_chat_id = data["broadcast_from_chat_id"]
-                msg_id = data["broadcast_message_id"]
-                await callback.bot.copy_message(
-                    chat_id=uid,
-                    from_chat_id=from_chat_id,
-                    message_id=msg_id,
-                )
+                if forward_media:
+                    cap = (data.get("broadcast_forward_caption") or "").strip()
+                    await _broadcast_send_media_list_to_user(
+                        callback.bot, uid, forward_media, cap
+                    )
+                else:
+                    for from_chat_id, msg_id in copy_pairs:
+                        await callback.bot.copy_message(
+                            chat_id=uid,
+                            from_chat_id=from_chat_id,
+                            message_id=msg_id,
+                        )
             else:
                 media_list = data.get("broadcast_media", [])
                 text = data.get("broadcast_text", "")
-                if media_list:
-                    from aiogram.types import InputMediaPhoto, InputMediaVideo
-                    first_batch = media_list[:10]
-                    media_group = []
-                    for m in first_batch:
-                        if m["type"] == "photo":
-                            media_group.append(InputMediaPhoto(media=m["file_id"]))
-                        else:
-                            media_group.append(InputMediaVideo(media=m["file_id"]))
-                    if media_group:
-                        if text and len(media_group) > 0:
-                            media_group[0].caption = text
-                            media_group[0].parse_mode = "HTML"
-                        await callback.bot.send_media_group(chat_id=uid, media=media_group)
-                    for i in range(10, len(media_list), 10):
-                        chunk = media_list[i : i + 10]
-                        group = []
-                        for m in chunk:
-                            if m["type"] == "photo":
-                                group.append(InputMediaPhoto(media=m["file_id"]))
-                            else:
-                                group.append(InputMediaVideo(media=m["file_id"]))
-                        await callback.bot.send_media_group(chat_id=uid, media=group)
-                elif text:
-                    await callback.bot.send_message(chat_id=uid, text=text, parse_mode="HTML")
+                await _broadcast_send_manual_to_user(
+                    callback.bot, uid, media_list, text
+                )
             sent += 1
         except Exception as e:
             failed += 1
             logger.warning(f"Broadcast to {uid} failed: {e}")
+        if _broadcast_should_update_progress(i, total):
+            await _broadcast_try_progress_edit(callback.message, i, total, failed)
         await asyncio.sleep(0.05)
+
     await state.clear()
-    result_text = f"✅ Рассылка завершена. Отправлено: {sent}" + (f", ошибок: {failed}" if failed else "")
+    result_text = f"✅ Рассылка завершена. Успешно: {sent}" + (
+        f", ошибок: {failed}" if failed else ""
+    )
     await safe_edit_message(callback, result_text, get_admin_keyboard())
-    await callback.answer()
 
 @admin_router.callback_query(F.data == "admin_unban_menu")
 async def unban_menu_handler(callback: CallbackQuery):
@@ -992,8 +1407,8 @@ async def show_tournaments_page(callback: CallbackQuery, page: int = 0):
     import re
     TOURNAMENTS_PER_PAGE = 5
     
-    # Преобразуем в список для пагинации
-    tournament_items = list(tournaments.items())
+    # Преобразуем в список для пагинации (собранные по слотам — выше)
+    tournament_items = admin_sort_tournament_items(list(tournaments.items()))
     total_tournaments = len(tournament_items)
     total_pages = (total_tournaments + TOURNAMENTS_PER_PAGE - 1) // TOURNAMENTS_PER_PAGE
     
@@ -1029,7 +1444,7 @@ async def show_tournaments_page(callback: CallbackQuery, page: int = 0):
         number_match = re.search(r'№(\d+)', name)
         tournament_number = number_match.group(1) if number_match else '?'
         
-        button_text = f"№{tournament_number} | {level} | {location}"
+        button_text = f"№{tournament_number} | {level} | {location} | {participants_count_label(tournament_data)}"
         builder.button(text=button_text, callback_data=f"edit_tournament:{tournament_id}")
     
     builder.adjust(1)

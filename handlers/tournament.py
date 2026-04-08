@@ -27,6 +27,12 @@ from utils.tournament_manager import tournament_manager
 from utils.utils import calculate_new_ratings, remove_country_flag
 from handlers.profile import calculate_level_from_points
 from utils.tournament_notifications import TournamentNotifications
+from utils.tournament_lifecycle import (
+    admin_sort_tournament_items,
+    participants_count_label,
+    maybe_begin_payment_collection,
+    maybe_clear_payment_window_if_resolved,
+)
 from utils.translations import get_user_language_async, t
 from config.config import SHOP_ID, SECRET_KEY
 from yookassa import Configuration, Payment
@@ -2816,6 +2822,8 @@ async def apply_tournament_handler(callback: CallbackQuery):
     tournaments[tournament_id] = tournament_data
     await storage.save_tournaments(tournaments)
 
+    await maybe_begin_payment_collection(callback.message.bot, tournament_id)
+
     # Уведомление в канал об участнике
     try:
         await send_tournament_application_to_channel(callback.message.bot, tournament_id, tournament_data, str(user_id), user_data)
@@ -3088,6 +3096,7 @@ async def tournament_pay_confirm(callback: CallbackQuery, state: FSMContext):
             tournament['payments'] = payments
             tournaments[tournament_id] = tournament
             await storage.save_tournaments(tournaments)
+            await maybe_clear_payment_window_if_resolved(tournament_id)
 
             profile = await storage.get_user(user_id) or {}
             tour_name = tournament.get('name') or t("tournament.no_name", language)
@@ -3595,19 +3604,21 @@ async def view_tournament_participants_command(message: Message, state: FSMConte
     if not tournaments:
         await message.answer(t("tournament.no_tournaments_to_display", language))
         return
-    
+
     builder = InlineKeyboardBuilder()
-    for tournament_id, tdata in tournaments.items():
+    for tournament_id, tdata in admin_sort_tournament_items(list(tournaments.items())):
         name = tdata.get('name', t("tournament.no_name", language))
         city_raw = tdata.get('city', t("tournament.not_specified", language))
         city_display = get_city_translation(city_raw, language) if isinstance(city_raw, str) else city_raw
-        participants_count = len(tdata.get('participants', {}))
-        builder.button(text=t("tournament.tournament_item", language, name=name, city=city_display, count=participants_count),
-                      callback_data=f"admin_view_participants:{tournament_id}")
-    
+        label = participants_count_label(tdata)
+        builder.button(
+            text=f"🏆 {name} ({city_display}) — 👥 {label}",
+            callback_data=f"admin_view_participants:{tournament_id}",
+        )
+
     builder.button(text=t("admin.back", language), callback_data="admin_back_to_main")
     builder.adjust(1)
-    
+
     await message.answer(
         t("tournament.view_participants_title", language) + "\n\n" + t("tournament.view_participants_prompt", language),
         reply_markup=builder.as_markup()
@@ -5159,6 +5170,8 @@ async def select_participant_from_search(callback: CallbackQuery, state: FSMCont
     tournament_data['participants'] = participants
     tournaments[tournament_id] = tournament_data
     await storage.save_tournaments(tournaments)
+
+    await maybe_begin_payment_collection(callback.message.bot, tournament_id)
     
     try:
         await send_tournament_application_to_channel(callback.message.bot, tournament_id, tournament_data, str(user_id), user_data)
@@ -5255,6 +5268,7 @@ async def input_participant_id(message: Message, state: FSMContext):
         
         tournament_data['participants'] = participants
         await storage.save_tournaments(tournaments)
+        await maybe_begin_payment_collection(message.bot, tournament_id)
         await state.clear()
         
         # Возвращаемся к управлению участниками
@@ -5583,13 +5597,15 @@ async def admin_back_to_tournament_list(callback: CallbackQuery, state: FSMConte
         return
     
     builder = InlineKeyboardBuilder()
-    for tournament_id, tdata in tournaments.items():
+    for tournament_id, tdata in admin_sort_tournament_items(list(tournaments.items())):
         name = tdata.get('name', t("tournament.no_name", language))
         city_raw = tdata.get('city', t("tournament.not_specified", language))
         city_display = get_city_translation(city_raw, language) if isinstance(city_raw, str) else city_raw
-        participants_count = len(tdata.get('participants', {}))
-        builder.button(text=t("tournament.tournament_item", language, name=name, city=city_display, count=participants_count),
-                      callback_data=f"admin_view_participants:{tournament_id}")
+        label = participants_count_label(tdata)
+        builder.button(
+            text=f"🏆 {name} ({city_display}) — 👥 {label}",
+            callback_data=f"admin_view_participants:{tournament_id}",
+        )
     
     builder.button(text=t("admin.back", language), callback_data="admin_back_to_main")
     builder.adjust(1)
@@ -5622,7 +5638,7 @@ async def show_edit_tournaments_page(callback: CallbackQuery, page: int = 0):
     TOURNAMENTS_PER_PAGE = 5
     
     # Преобразуем в список для пагинации
-    tournament_items = list(tournaments.items())
+    tournament_items = admin_sort_tournament_items(list(tournaments.items()))
     total_tournaments = len(tournament_items)
     total_pages = (total_tournaments + TOURNAMENTS_PER_PAGE - 1) // TOURNAMENTS_PER_PAGE
     
@@ -5658,7 +5674,7 @@ async def show_edit_tournaments_page(callback: CallbackQuery, page: int = 0):
         number_match = re.search(r'№(\d+)', name)
         tournament_number = number_match.group(1) if number_match else '?'
         
-        button_text = f"№{tournament_number} | {level} | {location}"
+        button_text = f"№{tournament_number} | {level} | {location} | {participants_count_label(tournament_data)}"
         builder.button(text=button_text, callback_data=f"edit_tournament:{tournament_id}")
     
     builder.adjust(1)
