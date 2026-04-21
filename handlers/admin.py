@@ -12,6 +12,7 @@ import logging
 
 from utils.tournament_manager import tournament_manager
 from utils.tournament_lifecycle import admin_sort_tournament_items, participants_count_label
+from config.profile import format_admin_tournament_level, get_tournament_gender_display
 from services.storage import storage
 from utils.admin import get_confirmation_keyboard, is_admin
 from handlers.profile import calculate_level_from_points
@@ -170,7 +171,8 @@ async def show_delete_tournaments_page(callback: CallbackQuery, page: int = 0):
         number_match = re.search(r'№(\d+)', name)
         tournament_number = number_match.group(1) if number_match else '?'
         
-        text = f"🗑️ №{tournament_number} | {level} | {location} | {participants_count_label(tournament_data)}"
+        level_line = format_admin_tournament_level(str(level), tournament_data)
+        text = f"🗑️ №{tournament_number} | {level_line} | {location} | {participants_count_label(tournament_data)}"
         builder.button(text=text, callback_data=f"admin_delete_tournament:{tournament_id}")
     
     builder.adjust(1)
@@ -243,12 +245,13 @@ async def delete_tournament_handler(callback: CallbackQuery):
     # Создаем клавиатуру подтверждения
     keyboard = await get_confirmation_keyboard("delete_tournament", tournament_id)
     
+    level_line = format_admin_tournament_level(str(level), tournament_data)
     await safe_edit_message(
         callback,
         f"⚠️ Вы уверены, что хотите удалить турнир?\n\n"
         f"🎯 Название: {name}\n"
         f"🔢 Номер: {tournament_number}\n"
-        f"📊 Уровень: {level}\n"
+        f"📊 Уровень: {level_line}\n"
         f"📍 Место: {location}\n"
         f"👥 Участников: {participants_count_label(tournament_data)}\n\n"
         "Это действие удалит все данные о турнире!",
@@ -293,6 +296,7 @@ async def confirm_delete_tournament(callback: CallbackQuery):
         location = f"{city}, {country}"
     
     # Удаляем турнир
+    level_line = format_admin_tournament_level(str(level), tournament_data)
     del tournaments[tournament_id]
     await storage.save_tournaments(tournaments)
     
@@ -301,7 +305,7 @@ async def confirm_delete_tournament(callback: CallbackQuery):
         f"✅ Турнир удален!\n\n"
         f"🎯 Название: {name}\n"
         f"🔢 Номер: {tournament_number}\n"
-        f"📊 Уровень: {level}\n"
+        f"📊 Уровень: {level_line}\n"
         f"📍 Место: {location}\n\n"
         f"Все данные о турнире удалены из системы."
     )
@@ -341,9 +345,10 @@ async def back_to_tournaments(callback: CallbackQuery):
         else:
             location = f"{city}, {country}"
         
+        level_line = format_admin_tournament_level(str(level), tournament_data)
         text += f"🎯 {name}\n"
         text += f"🔢 Номер: {tournament_number}\n"
-        text += f"📊 Уровень: {level}\n"
+        text += f"📊 Уровень: {level_line}\n"
         text += f"📍 Место: {location}\n"
         text += f"👥 Участников: {participants_count_label(tournament_data)}\n"
         text += f"🆔 ID: {tournament_id}\n"
@@ -483,13 +488,14 @@ async def tournaments_handler(callback: CallbackQuery):
         else:
             location = f"{city}, {country}"
         
+        level_line = format_admin_tournament_level(str(level), tournament_data)
         text += f"🏆 {name}\n"
         text += f"🔢 Номер: {tournament_number}\n"
-        text += f"📊 Уровень: {level}\n"
+        text += f"📊 Уровень: {level_line}\n"
         text += f"🏓 Вид спорта: {tournament_data.get('sport', 'Не указан')}\n"
         text += f"🌍 Место: {location}\n"
         text += f"⚔️ Тип: {tournament_data.get('type', 'Не указан')}\n"
-        text += f"👥 Пол: {tournament_data.get('gender', 'Не указан')}\n"
+        text += f"👥 Пол: {get_tournament_gender_display(tournament_data.get('gender'), 'ru', tournament_name=name, tournament_comment=tournament_data.get('comment'))}\n"
         text += f"🏆 Категория: {tournament_data.get('category', 'Не указана')}\n"
         text += f"👶 Возраст: {tournament_data.get('age_group', 'Не указан')}\n"
         text += f"⏱️ Продолжительность: {tournament_data.get('duration', 'Не указана')}\n"
@@ -1444,7 +1450,8 @@ async def show_tournaments_page(callback: CallbackQuery, page: int = 0):
         number_match = re.search(r'№(\d+)', name)
         tournament_number = number_match.group(1) if number_match else '?'
         
-        button_text = f"№{tournament_number} | {level} | {location} | {participants_count_label(tournament_data)}"
+        level_line = format_admin_tournament_level(str(level), tournament_data)
+        button_text = f"№{tournament_number} | {level_line} | {location} | {participants_count_label(tournament_data)}"
         builder.button(text=button_text, callback_data=f"edit_tournament:{tournament_id}")
     
     builder.adjust(1)

@@ -6,11 +6,10 @@ from aiogram.types import FSInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config.paths import BASE_DIR
-from config.profile import channels_id, tour_channel_id
+from config.profile import channels_id, tour_channel_id, get_sport_translation, get_tournament_gender_display
 from config.config import BOT_USERNAME
 from utils.utils import calculate_age, create_user_profile_link, escape_markdown, remove_country_flag
 from utils.translations import t
-from config.profile import get_sport_translation
 
 logger = logging.getLogger(__name__)
 
@@ -779,9 +778,17 @@ async def send_tournament_created_to_channel(bot: Bot, tournament_id: str, tourn
             city = f"{city} - {district}"
 
         # Текст сообщения
-        name = escape_markdown(tournament_data.get('name', 'Новый турнир'))
+        raw_name = tournament_data.get("name", "Новый турнир")
+        name = escape_markdown(raw_name)
         type_text = escape_markdown(tournament_data.get('type', '—'))
-        gender = escape_markdown(tournament_data.get('gender', '—'))
+        gender = escape_markdown(
+            get_tournament_gender_display(
+                tournament_data.get("gender"),
+                "ru",
+                tournament_name=raw_name,
+                tournament_comment=tournament_data.get("comment"),
+            )
+        )
         category = escape_markdown(tournament_data.get('category', '—'))
         level = escape_markdown(tournament_data.get('level', 'Не указан'))
         age_group = escape_markdown(tournament_data.get('age_group', '—'))
@@ -953,9 +960,17 @@ async def send_tournament_started_to_channel(
             city = f"{city} - {district}"
 
         # Текст сообщения
-        name = escape_markdown(tournament_data.get('name', 'Турнир'))
+        raw_name = tournament_data.get("name", "Турнир")
+        name = escape_markdown(raw_name)
         type_text = escape_markdown(tournament_data.get('type', '—'))
-        gender = escape_markdown(tournament_data.get('gender', '—'))
+        gender = escape_markdown(
+            get_tournament_gender_display(
+                tournament_data.get("gender"),
+                "ru",
+                tournament_name=raw_name,
+                tournament_comment=tournament_data.get("comment"),
+            )
+        )
         category = escape_markdown(tournament_data.get('category', '—'))
         level = escape_markdown(tournament_data.get('level', 'Не указан'))
         participants_count = len(tournament_data.get('participants', {}))

@@ -12,7 +12,7 @@ from services.storage import storage
 from services.channels import send_game_notification_to_channel, send_tournament_created_to_channel, send_tournament_application_to_channel, send_tournament_started_to_channel
 from models.states import CreateTournamentStates, EditTournamentStates, ViewTournamentsStates, AdminEditGameStates
 from utils.admin import is_admin
-from config.profile import sport_type, cities_data, create_sport_keyboard, get_country_translation, get_city_translation, get_sport_translation, get_district_translation, get_tournament_type_translation, get_gender_translation, get_category_translation, get_age_group_translation, get_duration_translation
+from config.profile import sport_type, cities_data, create_sport_keyboard, get_country_translation, get_city_translation, get_sport_translation, get_district_translation, get_tournament_type_translation, get_gender_translation, get_tournament_gender_display, format_admin_tournament_level, get_tournament_gender_name_suffix, get_category_translation, get_age_group_translation, get_duration_translation
 from config.tournament_config import (
     TOURNAMENT_TYPES, GENDERS, CATEGORIES, AGE_GROUPS, 
     DURATIONS, YES_NO_OPTIONS, DISTRICTS_MOSCOW, MIN_PARTICIPANTS, CATEGORY_LEVELS
@@ -32,6 +32,7 @@ from utils.tournament_lifecycle import (
     participants_count_label,
     maybe_begin_payment_collection,
     maybe_clear_payment_window_if_resolved,
+    tournament_strip_removed_participant_payment_state,
 )
 from utils.translations import get_user_language_async, t
 from config.config import SHOP_ID, SECRET_KEY
@@ -162,7 +163,7 @@ def _build_payments_status_text(tournament: dict, language: str) -> str:
 
 # Функция для генерации названия турнира
 def generate_tournament_name(tournament_data, tournament_number, language='ru'):
-    """Генерирует название турнира в формате: Турнир уровень {} {Страна и город, если москва, то только сторону света} №{номер турнира}"""
+    """Генерирует название турнира: префикс, уровень, место, №, затем Муж/Жен/Пара/Муж Пара/Микст для людей."""
     level = tournament_data.get('level') or t("tournament.not_specified", language)
     
     # Формируем место проведения
@@ -171,8 +172,10 @@ def generate_tournament_name(tournament_data, tournament_number, language='ru'):
     else:
         location = f"{tournament_data['city']}, {remove_country_flag(tournament_data['country'])}"
     
-    # Генерируем название
     name = f"{t('tournament.image.tournament_name_prefix', language)} {level} {location} №{tournament_number}"
+    tail = get_tournament_gender_name_suffix(tournament_data, language)
+    if tail:
+        name = f"{name} {tail}"
     return name
 
 # Функция для создания продвинутой визуальной сетки турнира
@@ -410,7 +413,15 @@ def create_advanced_tournament_bracket(tournament_data, bracket_text, users_data
     if tournament_data.get('district'):
         location += f" ({tournament_data['district']})"
     
-    tournament_info = f"{location} - {tournament_data.get('duration', '')} | {tournament_data.get('category', '')} {tournament_data.get('gender', '')}"
+    gender_line = get_tournament_gender_display(
+        tournament_data.get("gender"),
+        language,
+        tournament_name=tournament_data.get("name"),
+        tournament_comment=tournament_data.get("comment"),
+    )
+    not_spec = t("tournament.not_specified", language)
+    gender_part = "" if gender_line == not_spec else gender_line
+    tournament_info = f"{location} - {tournament_data.get('duration', '')} | {tournament_data.get('category', '')} {gender_part}".rstrip()
     draw.text((20, 45), tournament_info, fill=text_color, font=player_font)
     
     # Рисуем статус турнира
@@ -2418,7 +2429,12 @@ async def show_tournaments_list(callback: CallbackQuery, tournaments: dict, spor
     type_display = get_tournament_type_translation(tournament_data.get('type') or '', language) if tournament_data.get('type') else t("tournament.not_specified", language)
     name_display = tournament_data.get('name') or t("tournament.no_name", language)
     category_display = get_category_translation(tournament_data.get('category'), language) if tournament_data.get('category') else t("tournament.not_specified", language)
-    gender_display = get_gender_translation(tournament_data.get('gender'), language) if tournament_data.get('gender') else t("tournament.not_specified", language)
+    gender_display = get_tournament_gender_display(
+        tournament_data.get("gender"),
+        language,
+        tournament_name=tournament_data.get("name"),
+        tournament_comment=tournament_data.get("comment"),
+    )
     text += f"🏆 {name_display}\n"
     text += t("tournament.browse.card_place_type", language, location=location, type=type_display)
     text += t("tournament.browse.card_participants", language, current=len(tournament_data.get('participants', {})), total=tournament_data.get('participants_count', '?'))
@@ -2563,7 +2579,12 @@ async def view_tournament_prev(callback: CallbackQuery, state: FSMContext):
     type_display = get_tournament_type_translation(tournament_data.get('type') or '', language) if tournament_data.get('type') else t("tournament.not_specified", language)
     name_display = tournament_data.get('name') or t("tournament.no_name", language)
     category_display = get_category_translation(tournament_data.get('category'), language) if tournament_data.get('category') else t("tournament.not_specified", language)
-    gender_display = get_gender_translation(tournament_data.get('gender'), language) if tournament_data.get('gender') else t("tournament.not_specified", language)
+    gender_display = get_tournament_gender_display(
+        tournament_data.get("gender"),
+        language,
+        tournament_name=tournament_data.get("name"),
+        tournament_comment=tournament_data.get("comment"),
+    )
     text = t("tournament.browse.tournaments_by_sport", language, sport=sport_display)
     text += t("tournament.browse.place_header", language, city=city_display, country=remove_country_flag(get_country_translation(country, language)))
     text += t("tournament.browse.found_count", language, count=total_tournaments)
@@ -2703,7 +2724,12 @@ async def view_tournament_next(callback: CallbackQuery, state: FSMContext):
     type_display = get_tournament_type_translation(tournament_data.get('type') or '', language) if tournament_data.get('type') else t("tournament.not_specified", language)
     name_display = tournament_data.get('name') or t("tournament.no_name", language)
     category_display = get_category_translation(tournament_data.get('category'), language) if tournament_data.get('category') else t("tournament.not_specified", language)
-    gender_display = get_gender_translation(tournament_data.get('gender'), language) if tournament_data.get('gender') else t("tournament.not_specified", language)
+    gender_display = get_tournament_gender_display(
+        tournament_data.get("gender"),
+        language,
+        tournament_name=tournament_data.get("name"),
+        tournament_comment=tournament_data.get("comment"),
+    )
     text = t("tournament.browse.tournaments_by_sport", language, sport=sport_display)
     text += t("tournament.browse.place_header", language, city=city_display, country=remove_country_flag(get_country_translation(country, language)))
     text += t("tournament.browse.found_count", language, count=total_tournaments)
@@ -2943,6 +2969,7 @@ async def apply_proposed_tournament(callback: CallbackQuery, state: FSMContext):
     tournament_data['participants'] = participants
     tournaments[tournament_id] = tournament_data
     await storage.save_tournaments(tournaments)
+    await maybe_begin_payment_collection(callback.message.bot, tournament_id)
 
     # Уведомление в канал об участнике
     try:
@@ -3179,7 +3206,12 @@ async def view_tournament_from_application(callback: CallbackQuery):
     type_display = get_tournament_type_translation(tournament_data.get('type') or '', language) if tournament_data.get('type') else t("tournament.not_specified", language)
     name_display = tournament_data.get('name') or t("tournament.no_name", language)
     category_display = get_category_translation(tournament_data.get('category'), language) if tournament_data.get('category') else t("tournament.not_specified", language)
-    gender_display = get_gender_translation(tournament_data.get('gender'), language) if tournament_data.get('gender') else t("tournament.not_specified", language)
+    gender_display = get_tournament_gender_display(
+        tournament_data.get("gender"),
+        language,
+        tournament_name=tournament_data.get("name"),
+        tournament_comment=tournament_data.get("comment"),
+    )
     text = f"🏆 {name_display}\n"
     text += t("tournament.browse.card_place_type", language, location=location, type=type_display)
     text += t("tournament.browse.card_participants", language, current=len(tournament_data.get('participants', {})), total=tournament_data.get('participants_count', '?'))
@@ -3443,7 +3475,9 @@ async def admin_accept_application(callback: CallbackQuery, state: FSMContext):
     }
     
     tournament_data['participants'] = participants
+    tournaments[tournament_id] = tournament_data
     await storage.save_tournaments(tournaments)
+    await maybe_begin_payment_collection(callback.message.bot, tournament_id)
     
     # Проверяем, готов ли турнир к запуску
     tournament_ready = await tournament_manager.check_tournament_readiness(tournament_id)
@@ -5393,6 +5427,8 @@ async def confirm_remove_participant(callback: CallbackQuery, state: FSMContext)
     # Удаляем участника
     del participants[user_id]
     tournament_data['participants'] = participants
+    tournament_strip_removed_participant_payment_state(tournament_data, user_id)
+    tournaments[tournament_id] = tournament_data
     await storage.save_tournaments(tournaments)
     
     await callback.answer(f"✅ {participant_data.get('name', 'Участник')} удален")
@@ -5543,6 +5579,8 @@ async def admin_remove_participant(callback: CallbackQuery, state: FSMContext):
     # Удаляем участника
     del participants[user_id]
     tournament_data['participants'] = participants
+    tournament_strip_removed_participant_payment_state(tournament_data, user_id)
+    tournaments[tournament_id] = tournament_data
     await storage.save_tournaments(tournaments)
     
     await safe_edit_message(callback,
@@ -5674,7 +5712,8 @@ async def show_edit_tournaments_page(callback: CallbackQuery, page: int = 0):
         number_match = re.search(r'№(\d+)', name)
         tournament_number = number_match.group(1) if number_match else '?'
         
-        button_text = f"№{tournament_number} | {level} | {location} | {participants_count_label(tournament_data)}"
+        level_line = format_admin_tournament_level(str(level), tournament_data)
+        button_text = f"№{tournament_number} | {level_line} | {location} | {participants_count_label(tournament_data)}"
         builder.button(text=button_text, callback_data=f"edit_tournament:{tournament_id}")
     
     builder.adjust(1)

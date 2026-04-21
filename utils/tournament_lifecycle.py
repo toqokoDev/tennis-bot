@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from html import escape as html_escape
 from typing import Any, Dict, List, Tuple
 
 from aiogram import Bot
@@ -55,6 +56,37 @@ def pay_tournament_deeplink(tournament_id: str) -> str:
 
 def view_tournament_deeplink(tournament_id: str) -> str:
     return f"https://t.me/{BOT_USERNAME}?start=view_tournament_{tournament_id}"
+
+
+def tournament_strip_removed_participant_payment_state(td: dict, removed_user_id: str) -> None:
+    """
+    После выхода участника или удаления админом: убрать его платёжные данные
+    и закрыть окно 24ч — при следующем полном составе откроется новый цикл и уйдут письма снова.
+    """
+    uid = str(removed_user_id)
+    payments = dict(td.get("payments") or {})
+    payments.pop(uid, None)
+    td["payments"] = payments
+    td.pop("payment_window", None)
+
+
+async def cleanup_stale_tournament_payment_windows(tournaments: Dict[str, dict]) -> bool:
+    """Слот не полон, а окно оплаты ещё висит — сбросить (например, после ручного удаления в обход бота)."""
+    changed = False
+    for tid, td in list(tournaments.items()):
+        if not td or td.get("status") != "active":
+            continue
+        if tournament_entry_fee(td) <= 0:
+            continue
+        if is_roster_full(td):
+            continue
+        if td.get("payment_window"):
+            td.pop("payment_window", None)
+            tournaments[tid] = td
+            changed = True
+    if changed:
+        await storage.save_tournaments(tournaments)
+    return changed
 
 
 async def maybe_begin_payment_collection_batch(bot: Bot | None, tournaments: Dict[str, dict]) -> None:
@@ -127,6 +159,9 @@ async def maybe_begin_payment_collection(bot: Bot | None, tournament_id: str) ->
     if tournament_entry_fee(td) <= 0:
         return
     if not is_roster_full(td):
+        if td.pop("payment_window", None) is not None:
+            tournaments[tournament_id] = td
+            await storage.save_tournaments(tournaments)
         return
     participants = td.get("participants", {}) or {}
     payments = td.get("payments", {}) or {}
@@ -164,10 +199,7 @@ async def _notify_payment_window_opened(bot: Bot, tournament_id: str, td: dict, 
         f"<a href=\"{pay}\">перейти к оплате</a>\n\n"
         f"На оплату даётся <b>24 часа</b> (до {deadline_str}).\n\n"
         "Если не успеете оплатить в срок, заявка может быть снята с турнира, "
-        "и тогда нужно будет записаться заново.\n\n"
-        "Если за сутки оплатят не все, с турнира снимается самый ранний по времени заявки "
-        "участник среди тех, кто <b>не оплатил</b>; остальные остаются. Когда снова наберётся "
-        "полный состав, всем участникам снова будет отправлен запрос на оплату."
+        "и тогда нужно будет записаться заново."
     )
     for uid in td.get("participants", {}) or {}:
         try:
@@ -237,12 +269,19 @@ async def process_payment_windows(bot: Bot | None) -> None:
         tournaments[tid] = td
         changed = True
         tname = td.get("name", "Турнир")
+        link = view_tournament_deeplink(tid)
+        safe_title = html_escape(tname)
+        kick_text = (
+            f'Вы сняты с турнира <a href="{link}">«{safe_title}»</a>: не оплачен взнос в течение 24 часов '
+            f"(среди не оплативших снимается самый ранний по времени заявки участник). "
+            f"Когда освободится место, вы сможете заявиться снова."
+        )
         try:
             await bot.send_message(
                 int(victim),
-                f"Вы сняты с турнира «{tname}»: не оплачен взнос в течение 24 часов "
-                f"(среди не оплативших снимается самый ранний по времени заявки участник). "
-                f"Когда освободится место, вы сможете заявиться снова.",
+                kick_text,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
             )
         except Exception as e:
             logger.warning("kick message failed uid=%s: %s", victim, e)
@@ -382,6 +421,7 @@ async def run_tournament_scheduled_jobs(bot: Bot) -> None:
     """Вызывать из фонового цикла (оплата + напоминания)."""
     try:
         all_t = await storage.load_tournaments()
+        await cleanup_stale_tournament_payment_windows(all_t)
         await maybe_begin_payment_collection_batch(bot, all_t)
     except Exception as e:
         logger.error("sweep maybe_begin_payment_collection: %s", e, exc_info=True)

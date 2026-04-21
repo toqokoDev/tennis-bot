@@ -764,31 +764,144 @@ def get_gender_translation(gender: str, language: str = "ru") -> str:
     
     return gender_clean
 
-def get_tournament_type_translation(tournament_type: str, language: str = "ru") -> str:
-    """Переводит тип турнира"""
-    # Маппинг типов турниров
-    type_mapping = {
-        "Олимпийская система": "olympic",
-        "Круговая": "round_robin",
-        "Круговая система": "round_robin"
+
+_RU_TOURNAMENT_GENDERS = frozenset({"Мужчины", "Женщины", "Мужская пара", "Женская пара", "Микст"})
+
+
+def _normalize_stored_tournament_gender(gender: Optional[str]) -> Optional[str]:
+    """Приводит сохранённое значение поля gender к каноническому русскому варианту или None."""
+    if gender is None:
+        return None
+    s = str(gender).strip()
+    if not s:
+        return None
+    low = s.lower().replace("ё", "е")
+    if low in ("не указан", "не указано", "not specified", "-", "—", "n/a", "na", "none"):
+        return None
+    aliases = {
+        "mixed": "Микст",
+        "микст": "Микст",
+        "men's pair": "Мужская пара",
+        "men's doubles": "Мужская пара",
+        "women's pair": "Женская пара",
+        "women's doubles": "Женская пара",
+        "men": "Мужчины",
+        "women": "Женщины",
     }
-    
-    # Если язык русский, возвращаем оригинал
+    if low in aliases:
+        return aliases[low]
+    for ru in _RU_TOURNAMENT_GENDERS:
+        if s.casefold() == ru.casefold():
+            return ru
+    return s
+
+
+def _infer_tournament_gender_from_text(*parts: Optional[str]) -> Optional[str]:
+    """Пытается определить формат по названию или описанию (старые записи без поля gender)."""
+    blob = " ".join(str(p).strip() for p in parts if p and str(p).strip())
+    if not blob:
+        return None
+    low = blob.lower().replace("ё", "е")
+    if "микст" in low or "микс" in low or "mixed" in low:
+        return "Микст"
+    if "мужская пара" in low or "муж пара" in low or "муж.пара" in low:
+        return "Мужская пара"
+    if "женская пара" in low:
+        return "Женская пара"
+    # короткий хвост автоназвания «… Пара» (женская пара)
+    if low.rstrip().endswith(" пара") or low.rstrip().endswith(" пара."):
+        return "Женская пара"
+    return None
+
+
+def get_tournament_gender_display(
+    gender: Optional[str],
+    language: str = "ru",
+    *,
+    tournament_name: Optional[str] = None,
+    tournament_comment: Optional[str] = None,
+) -> str:
+    """
+    Подпись формата участия для карточек и списков турниров.
+    Учитывает синонимы, английские значения и текст названия/описания.
+    Для русского «Женская пара» выводится кратко «Пара».
+    """
+    canon = _resolve_tournament_gender_canon(
+        {"gender": gender, "name": tournament_name, "comment": tournament_comment}
+    )
+    if not canon:
+        return t("tournament.not_specified", language)
+    label = get_gender_translation(canon, language) or canon
+    if language == "ru" and label == "Женская пара":
+        return "Пара"
+    return label
+
+
+def _resolve_tournament_gender_canon(tournament_data: dict) -> Optional[str]:
+    g = _normalize_stored_tournament_gender(tournament_data.get("gender"))
+    if not g:
+        g = _infer_tournament_gender_from_text(
+            tournament_data.get("name"),
+            tournament_data.get("comment"),
+        )
+    return g
+
+
+def get_tournament_gender_admin_suffix(tournament_data: dict) -> str:
+    """Краткая подсказка после уровня в админских списках (муж/жен/пара/м.пара/микс)."""
+    g = _resolve_tournament_gender_canon(tournament_data)
+    if not g:
+        return ""
+    if g == "Мужчины":
+        return "муж"
+    if g == "Женщины":
+        return "жен"
+    if g == "Мужская пара":
+        return "м.пара"
+    if g == "Женская пара":
+        return "пара"
+    if g == "Микст":
+        return "микс"
+    return ""
+
+
+def get_tournament_gender_name_suffix(tournament_data: dict, language: str = "ru") -> str:
+    """Хвост для автогенерируемого названия: Муж / Жен / Пара / Муж Пара / Микст."""
+    g = _resolve_tournament_gender_canon(tournament_data)
+    if not g:
+        return ""
     if language == "ru":
-        return tournament_type
-    
-    # Ищем ключ для перевода
-    type_key = type_mapping.get(tournament_type)
-    if type_key:
-        return t(f"config.tournament_types.{type_key}", language, default=tournament_type)
-    
-    # Обратное преобразование
-    for original, key in type_mapping.items():
-        translated = t(f"config.tournament_types.{key}", language)
-        if translated == tournament_type:
-            return original
-    
-    return tournament_type
+        if g == "Мужчины":
+            return "Муж"
+        if g == "Женщины":
+            return "Жен"
+        if g == "Мужская пара":
+            return "Муж Пара"
+        if g == "Женская пара":
+            return "Пара"
+        if g == "Микст":
+            return "Микст"
+        return ""
+    if g == "Мужчины":
+        return "Men"
+    if g == "Женщины":
+        return "Women"
+    if g == "Мужская пара":
+        return "Men Pair"
+    if g == "Женская пара":
+        return "Pair"
+    if g == "Микст":
+        return "Mixed"
+    return ""
+
+
+def format_admin_tournament_level(level: str, tournament_data: dict) -> str:
+    """Уровень + суффикс пола для отображения админу."""
+    suf = get_tournament_gender_admin_suffix(tournament_data)
+    if not suf:
+        return level
+    return f"{level} {suf}"
+
 
 def get_price_range_translation(price_range: dict, language: str = "ru") -> dict:
     """Переводит диапазон цен"""
