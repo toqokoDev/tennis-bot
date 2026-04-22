@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 import logging
 import os
 from datetime import datetime
+from html import escape as html_escape
 
 from services.storage import storage
 from services.channels import send_game_notification_to_channel, send_tournament_created_to_channel, send_tournament_application_to_channel, send_tournament_started_to_channel
@@ -3712,6 +3713,12 @@ async def admin_view_tournament_participants(callback: CallbackQuery, state: FSM
     builder = InlineKeyboardBuilder()
     
     if participants:
+        for user_id, participant_data in list(participants.items())[:max_display]:
+            user_id_str = str(user_id)
+            if not user_id_str.isdigit():
+                continue
+            pname = participant_data.get('name', t("tournament.unknown", language))
+            builder.button(text=f"📞 Связаться: {pname}", url=f"tg://user?id={user_id_str}")
         builder.button(text="🗑️ Удалить участника", callback_data=f"admin_rm_part_menu:{tournament_id}")
     
     builder.button(text="➕ Добавить участника", callback_data=f"admin_add_participant:{tournament_id}")
@@ -4544,12 +4551,28 @@ async def manage_participants(callback: CallbackQuery, state: FSMContext):
     tournaments = await storage.load_tournaments()
     tournament_data = tournaments[tournament_id]
     participants = tournament_data.get('participants', {})
+    fee = int(tournament_data.get('entry_fee', get_tournament_entry_fee()) or get_tournament_entry_fee())
+    users = await storage.load_users()
     
     text = f"👥 Участники: {len(participants)}/{tournament_data.get('participants_count', '?')}\n\n"
     
     if participants:
         for user_id, participant_data in participants.items():
-            text += f"• {participant_data.get('name', 'Неизвестно')}\n"
+            user_id_str = str(user_id)
+            name = html_escape(str(participant_data.get('name', 'Неизвестно')))
+            pay_status = tournament_data.get('payments', {}).get(user_id_str, {}).get('status')
+            pay_text = "Оплатил" if pay_status == 'succeeded' else ("Не оплатил" if fee > 0 else "Без взноса")
+            user_profile = users.get(user_id_str, {})
+            username = (user_profile.get('username') or participant_data.get('username') or '').strip().lstrip('@')
+            phone = str(user_profile.get('phone') or participant_data.get('phone') or '').strip()
+            if username:
+                contact_url = f"https://t.me/{username}"
+                text += f'• {name} — {pay_text} — <a href="{contact_url}">Связаться</a>\n'
+            elif phone:
+                contact_url = f"https://t.me/{phone if phone.startswith('+') else '+' + phone}"
+                text += f'• {name} — {pay_text} — <a href="{contact_url}">Связаться</a>\n'
+            else:
+                text += f"• {name} — {pay_text} — Нет контакта\n"
     else:
         text += "Участников пока нет"
     
@@ -4580,7 +4603,8 @@ async def manage_participants(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer_photo(
         photo=BufferedInputFile(bracket_image, filename="tournament_bracket.png"),
         caption=text,
-        reply_markup=builder.as_markup()
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML"
     )
     await callback.answer()
 
