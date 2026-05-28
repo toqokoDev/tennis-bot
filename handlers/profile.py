@@ -7,7 +7,7 @@ from aiogram.types import (
     InlineKeyboardButton
 )
 
-from config.paths import BASE_DIR, PHOTOS_DIR
+from config.config import BOT_USERNAME, SUBSCRIPTION_PRICE
 from config.profile import (
     create_sport_keyboard, get_moscow_districts, cities_data, countries,
     get_sport_config, get_base_keyboard,
@@ -17,6 +17,7 @@ from models.states import EditProfileStates
 from utils.bot import show_profile
 from utils.media import download_photo_to_path
 from utils.utils import remove_country_flag
+from utils.admin import is_admin
 from services.storage import storage
 from utils.translations import get_user_language_async, t
 
@@ -975,6 +976,59 @@ async def save_meeting_time_edit(message: types.Message, state: FSMContext):
         await message.answer(t("profile_edit.profile_not_found", language), reply_markup=keyboard)
     
     await state.clear()
+
+@router.callback_query(F.data.startswith("profile_contact:"))
+async def handle_profile_contact(callback: types.CallbackQuery):
+    viewer_id = callback.message.chat.id
+    profile_user_id = callback.data.split(":", maxsplit=1)[1]
+    language = await get_user_language_async(str(viewer_id))
+    users = await storage.load_users()
+    profile = users.get(str(profile_user_id))
+
+    if not profile:
+        await callback.answer(t("profile.view.no_contacts_available", language), show_alert=True)
+        return
+
+    if not await is_admin(viewer_id):
+        viewer = users.get(str(viewer_id), {})
+        if not viewer.get('subscription', {}).get('active', False):
+            referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{viewer_id}"
+            await callback.message.answer(
+                t("profile.view.contacts_locked", language, price=SUBSCRIPTION_PRICE, referral_link=referral_link),
+                parse_mode="HTML"
+            )
+            await callback.answer()
+            return
+
+    username = profile.get('username')
+    phone = profile.get('phone')
+    contact_buttons = []
+
+    if username:
+        contact_buttons.append([
+            InlineKeyboardButton(
+                text=f"@{username}",
+                url=f"https://t.me/{username}"
+            )
+        ])
+    elif phone:
+        phone_url = phone if phone.startswith('+') else f'+{phone}'
+        contact_buttons.append([
+            InlineKeyboardButton(
+                text=phone_url,
+                url=f"https://t.me/{phone_url}"
+            )
+        ])
+
+    if not contact_buttons:
+        await callback.answer(t("profile.view.no_contacts_available", language), show_alert=True)
+        return
+
+    await callback.message.answer(
+        t("profile.view.contacts_title", language),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=contact_buttons)
+    )
+    await callback.answer()
 
 @router.callback_query(F.data == "main_menu")
 async def main_menu_callback(callback: types.CallbackQuery):

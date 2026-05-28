@@ -37,25 +37,10 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
     caption_lines = []
     language = await get_user_language_async(str(message.chat.id))
     
-    # Добавляем username
     first_name = profile.get('first_name', '')
     last_name = profile.get('last_name', '')
-    username = profile.get('username')
-    phone = profile.get('phone')
-    network_link = ""
-
-    if username:
-        network_link = f"(<a href='https://t.me/{username}'>{t('profile.view.contact', language)}</a>)"
-    elif phone:
-        network_link = f"(<a href='https://t.me/{phone if phone.startswith('+') else '+' + phone}'>{t('profile.view.contact', language)}</a>)"
-
-    # Если есть username — добавляем в скобках
-    if username:
-        name_text = t("profile.view.name_with_username", language, first_name=first_name, last_name=last_name, username=username)
-        caption_lines.append(f"\n<b>{name_text}</b>")
-    else:
-        name_text = t("profile.view.name", language, first_name=first_name, last_name=last_name)
-        caption_lines.append(f"\n<b>{name_text}</b> {network_link}")
+    name_text = t("profile.view.name", language, first_name=first_name, last_name=last_name)
+    caption_lines.append(f"\n<b>{name_text}</b>")
     
     if profile.get('birth_date'):
         age = await calculate_age(profile['birth_date'])
@@ -245,27 +230,12 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
         # Клавиатура для чужого профиля в зависимости от вида спорта
         keyboard_buttons = []
 
-        if username:
-            keyboard_buttons.append([
-                InlineKeyboardButton(
-                    text=t("profile.view.buttons.contact", language),
-                    url=f"https://t.me/{username}"
-                )
-            ])
-        elif phone:
-            keyboard_buttons.append([
-                InlineKeyboardButton(
-                    text=t("profile.view.buttons.contact", language),
-                    url=f"https://t.me/{phone if phone.startswith('+') else '+' + phone}"
-                )
-            ])
-        else:
-            keyboard_buttons.append([
-                InlineKeyboardButton(
-                    text=t("profile.view.buttons.no_contact", language),
-                    callback_data="no_contact_info"
-                )
-            ])
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text=t("profile.view.buttons.contact", language),
+                callback_data=f"profile_contact:{profile_user_id}"
+            )
+        ])
 
         
         # Добавляем кнопки в зависимости от вида спорта

@@ -338,7 +338,6 @@ def escape_markdown(text: str) -> str:
 async def create_user_profile_link(user_data: dict, user_id: str, additional=True) -> str:
     first_name = user_data.get('first_name', '')
     last_name = user_data.get('last_name', '')
-    username = user_data.get('username', '')
     
     # Экранируем имена для безопасности
     first_name = escape_markdown(first_name)
@@ -355,7 +354,7 @@ async def create_user_profile_link(user_data: dict, user_id: str, additional=Tru
         rating = "Тренер"
 
     if additional:
-        return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})\n@{username} NTRP {level} ({rating})"
+        return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})\nNTRP {level} ({rating})"
     else:
         return f"[{first_name} {last_name}](https://t.me/{BOT_USERNAME}?start=profile_{user_id})"
 

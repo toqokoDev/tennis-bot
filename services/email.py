@@ -3,8 +3,9 @@
 """
 
 import logging
+import re
 import ssl
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -20,6 +21,17 @@ from config.config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _html_to_plain_text(html: str) -> str:
+    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.I | re.S)
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
+    text = re.sub(r"</?(p|div|tr|li|h[1-6])[^>]*>", "\n", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip() or "HTML-версия письма"
 
 
 class EmailService:
@@ -62,8 +74,9 @@ class EmailService:
         body: str,
         html: bool = True,
         cc: Optional[List[str]] = None,
-        bcc: Optional[List[str]] = None
-    ) -> bool:
+        bcc: Optional[List[str]] = None,
+        return_smtp_response: bool = False,
+    ) -> bool | Tuple[bool, str]:
         """
         Отправка email-сообщения
         
@@ -74,9 +87,11 @@ class EmailService:
             html: Если True, тело будет отправлено как HTML
             cc: Список получателей копии
             bcc: Список получателей скрытой копии
+            return_smtp_response: Вернуть ответ SMTP-сервера
             
         Returns:
-            True если отправка успешна, False иначе
+            True если SMTP принял письмо, False иначе.
+            При return_smtp_response=True — кортеж (успех, ответ сервера).
         """
         try:
             # Нормализуем список получателей
@@ -97,10 +112,10 @@ class EmailService:
             # Добавляем тело письма
             charset = 'utf-8'
             if html:
-                part = MIMEText(body, 'html', charset)
+                message.attach(MIMEText(_html_to_plain_text(body), 'plain', charset))
+                message.attach(MIMEText(body, 'html', charset))
             else:
-                part = MIMEText(body, 'plain', charset)
-            message.attach(part)
+                message.attach(MIMEText(body, 'plain', charset))
             
             # Собираем всех получателей
             recipients = to_list.copy()
@@ -148,8 +163,8 @@ class EmailService:
                     await smtp_client.login(self.username, self.password)
                 
                 # Отправляем всем получателям
-                await smtp_client.send_message(
-                    message, 
+                smtp_response = await smtp_client.send_message(
+                    message,
                     sender=self.from_address,
                     recipients=recipients
                 )
@@ -159,15 +174,30 @@ class EmailService:
                     await smtp_client.quit()
                 except:
                     pass  # Игнорируем ошибки при закрытии соединения
-            
-            logger.info(f"Email успешно отправлен. Тема: {subject} на {', '.join(to_list)}")
+
+            server_message = ""
+            if isinstance(smtp_response, tuple) and len(smtp_response) == 2:
+                server_message = str(smtp_response[1])
+
+            logger.info(
+                "Email принят SMTP-сервером. Тема: %s, получатели: %s, ответ: %s",
+                subject,
+                ", ".join(to_list),
+                server_message or "ok",
+            )
+            if return_smtp_response:
+                return True, server_message
             return True
             
         except aiosmtplib.SMTPException as e:
             logger.error(f"Ошибка SMTP при отправке email: {e}")
+            if return_smtp_response:
+                return False, str(e)
             return False
         except Exception as e:
             logger.error(f"Ошибка отправки email на {to}: {e}", exc_info=True)
+            if return_smtp_response:
+                return False, str(e)
             return False
     
     async def send_html_email(
@@ -176,28 +206,17 @@ class EmailService:
         subject: str,
         html_body: str,
         cc: Optional[List[str]] = None,
-        bcc: Optional[List[str]] = None
-    ) -> bool:
-        """
-        Отправка HTML email (удобный метод-обертка)
-        
-        Args:
-            to: Email получателя или список получателей
-            subject: Тема письма
-            html_body: HTML содержимое письма
-            cc: Список получателей копии
-            bcc: Список получателей скрытой копии
-            
-        Returns:
-            True если отправка успешна, False иначе
-        """
+        bcc: Optional[List[str]] = None,
+        return_smtp_response: bool = False,
+    ) -> bool | Tuple[bool, str]:
         return await self.send_email(
             to=to,
             subject=subject,
             body=html_body,
             html=True,
             cc=cc,
-            bcc=bcc
+            bcc=bcc,
+            return_smtp_response=return_smtp_response,
         )
     
     async def send_text_email(
@@ -206,28 +225,17 @@ class EmailService:
         subject: str,
         text_body: str,
         cc: Optional[List[str]] = None,
-        bcc: Optional[List[str]] = None
-    ) -> bool:
-        """
-        Отправка plain text email (удобный метод-обертка)
-        
-        Args:
-            to: Email получателя или список получателей
-            subject: Тема письма
-            text_body: Текстовое содержимое письма
-            cc: Список получателей копии
-            bcc: Список получателей скрытой копии
-            
-        Returns:
-            True если отправка успешна, False иначе
-        """
+        bcc: Optional[List[str]] = None,
+        return_smtp_response: bool = False,
+    ) -> bool | Tuple[bool, str]:
         return await self.send_email(
             to=to,
             subject=subject,
             body=text_body,
             html=False,
             cc=cc,
-            bcc=bcc
+            bcc=bcc,
+            return_smtp_response=return_smtp_response,
         )
 
 
