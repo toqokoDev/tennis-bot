@@ -193,8 +193,6 @@ async def main():
     dp.message.register(non_private_chat_handler, PrivateChatFilter())
     dp.message.register(ban_check_handler, BannedUserFilter())
     
-    users = await storage.load_users()
-    
     # Подключаем роутеры       
     dp.include_router(admin.admin_router)
     dp.include_router(admin_edit.admin_edit_router) 
