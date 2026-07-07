@@ -167,7 +167,7 @@ async def show_profile(message: types.Message, profile: dict, back_button=False)
 
     admin_buttons = [
         [InlineKeyboardButton(text=t("admin.buttons.delete_user", language), callback_data=f"admin_select_user:{profile_user_id}")],
-        [InlineKeyboardButton(text=t("admin.buttons.delete_subscription", language), callback_data=f"admin_select_subscription:{profile_user_id}")],
+        [InlineKeyboardButton(text=t("admin.buttons.manage_subscription", language), callback_data=f"admin_select_subscription:{profile_user_id}")],
         [InlineKeyboardButton(text=t("admin.buttons.ban_user", language), callback_data=f"admin_ban_user:{profile_user_id}")],
         [InlineKeyboardButton(text=t("admin.buttons.delete_vacation", language), callback_data=f"admin_confirm_delete_vacation:{profile_user_id}")]
     ]

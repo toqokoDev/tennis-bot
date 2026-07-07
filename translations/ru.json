@@ -949,6 +949,7 @@
     "buttons": {
       "delete_user": "🗑️ Удалить пользователя",
       "delete_subscription": "🔔 Удалить подписку",
+      "manage_subscription": "🔔 Управление подпиской",
       "ban_user": "⛔ Забанить пользователя",
       "delete_vacation": "🗑️ Удалить тур",
       "edit_other_profile": "✏️ Редактировать чужой профиль"

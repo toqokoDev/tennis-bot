@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 import re
 from html import escape as html_escape
@@ -16,7 +16,7 @@ from config.profile import format_admin_tournament_level, get_tournament_gender_
 from services.storage import storage
 from utils.admin import get_confirmation_keyboard, is_admin
 from handlers.profile import calculate_level_from_points
-from models.states import AdminEditGameStates, AdminBroadcastStates
+from models.states import AdminEditGameStates, AdminBroadcastStates, AdminSubscriptionStates
 from services.channels import send_game_notification_to_channel
 from utils.translations import get_user_language_async, t
 
@@ -435,6 +435,7 @@ def get_admin_keyboard(language=None):
     builder = InlineKeyboardBuilder()
     builder.button(text="🚫 Забаненные пользователи", callback_data="admin_banned_list")
     builder.button(text="📢 Рассылка объявления", callback_data="admin_broadcast_menu")
+    builder.button(text="🔔 Управление подписками", callback_data="admin_manage_subscription_menu")
     builder.button(text="➕ Создать турнир", callback_data="admin_create_tournament")
     builder.button(text="✏️ Управление турнирами", callback_data="admin_edit_tournaments")
     builder.adjust(1)
@@ -1674,34 +1675,133 @@ async def delete_vacation_menu(callback: CallbackQuery):
     await safe_edit_message(callback, "🏖️ Выберите пользователя для удаления отпуска:", builder.as_markup())
     await callback.answer()
 
-@admin_router.callback_query(F.data == "admin_delete_subscription_menu")
-async def delete_subscription_menu(callback: CallbackQuery):
-    users = await storage.load_users()
-    sub_users = []
-    
-    for user_id, user_data in users.items():
-        if user_data.get('subscription', {}).get('active'):
-            sub_users.append({
-                'user_id': user_id,
-                'user_name': f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}",
-                'until': user_data['subscription'].get('until', 'Неизвестно')
-            })
-    
-    language = await get_user_language_async(str(callback.message.chat.id))
-    if not sub_users:
-        await callback.answer(t("admin.no_subscriptions", language))
-        return
-    
+def _format_subscription_info(subscription: dict | None) -> str:
+    if not subscription:
+        return "❌ Подписка отсутствует"
+    active = subscription.get('active', False)
+    until = subscription.get('until', '—')
+    activated = subscription.get('activated', '—')
+    email = subscription.get('email') or '—'
+    status = "✅ Активна" if active else "❌ Неактивна"
+    return (
+        f"{status}\n"
+        f"📅 Действует до: {until}\n"
+        f"🕐 Активирована: {activated}\n"
+        f"📧 Email: {email}"
+    )
+
+
+def _build_subscription_management_keyboard(user_id: str, subscription: dict | None):
     builder = InlineKeyboardBuilder()
-    for user in sub_users:
-        text = f"🔔 {user['user_name']} (до {user['until']})"
-        builder.button(text=text, callback_data=f"admin_select_subscription:{user['user_id']}")
-    
+    has_subscription = bool(subscription)
+
+    if has_subscription:
+        builder.button(text="📅 Изменить дату окончания", callback_data=f"admin_sub_edit_until:{user_id}")
+        builder.button(text="🕐 Изменить дату активации", callback_data=f"admin_sub_edit_activated:{user_id}")
+        builder.button(text="📧 Изменить email", callback_data=f"admin_sub_edit_email:{user_id}")
+        active_label = "❌ Деактивировать" if subscription.get('active') else "✅ Активировать"
+        builder.button(text=active_label, callback_data=f"admin_sub_toggle_active:{user_id}")
+        builder.button(text="➕ Продлить на 30 дней", callback_data=f"admin_sub_extend_30:{user_id}")
+        builder.button(text="🗑️ Удалить подписку", callback_data=f"admin_sub_delete:{user_id}")
+    else:
+        builder.button(text="➕ Добавить подписку (30 дней)", callback_data=f"admin_sub_create:{user_id}")
+
+    builder.button(text="🔙 Назад", callback_data="admin_manage_subscription_menu")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+async def _show_subscription_management(callback: CallbackQuery, user_id: str):
+    users = await storage.load_users()
+    if user_id not in users:
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.user_not_found", language))
+        return False
+
+    user_data = users[user_id]
+    subscription = user_data.get('subscription')
+    text = (
+        f"🔔 <b>Управление подпиской</b>\n\n"
+        f"👤 {user_data.get('first_name', '')} {user_data.get('last_name', '')}\n"
+        f"📞 {user_data.get('phone', '')}\n"
+        f"🆔 ID: <code>{user_id}</code>\n\n"
+        f"{_format_subscription_info(subscription)}"
+    )
+    await safe_edit_message(
+        callback,
+        text,
+        _build_subscription_management_keyboard(user_id, subscription)
+    )
+    return True
+
+
+def _parse_subscription_date(value: str) -> str | None:
+    value = value.strip()
+    for fmt in ('%Y-%m-%d', '%d.%m.%Y', '%d/%m/%Y'):
+        try:
+            return datetime.strptime(value, fmt).strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_subscription_datetime(value: str) -> str | None:
+    value = value.strip()
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%d.%m.%Y %H:%M'):
+        try:
+            return datetime.strptime(value, fmt).strftime('%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            continue
+    date_only = _parse_subscription_date(value)
+    if date_only:
+        return f"{date_only} 00:00:00"
+    return None
+
+
+async def _save_subscription(users: dict, user_id: str, subscription: dict):
+    subscription.pop('expired', None)
+    subscription.pop('error', None)
+    subscription.pop('last_expired_notification', None)
+    users[user_id]['subscription'] = subscription
+    await storage.save_users(users)
+
+
+@admin_router.callback_query(F.data == "admin_manage_subscription_menu")
+async def manage_subscription_menu(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
+        return
+
+    users = await storage.load_users()
+    language = await get_user_language_async(str(callback.message.chat.id))
+
+    if not users:
+        await callback.answer(t("admin.no_users_to_delete", language))
+        return
+
+    builder = InlineKeyboardBuilder()
+    for user_id, user_data in users.items():
+        name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
+        sub = user_data.get('subscription', {})
+        if sub.get('active'):
+            suffix = f"✅ до {sub.get('until', '?')}"
+        elif sub:
+            suffix = "❌ неактивна"
+        else:
+            suffix = "➖ нет"
+        builder.button(text=f"🔔 {name} ({suffix})", callback_data=f"admin_select_subscription:{user_id}")
+
     builder.button(text=t("admin.back_to_main", language), callback_data="admin_back_to_main")
     builder.adjust(1)
-    
-    await safe_edit_message(callback, t("admin.select_subscription_to_delete", language), builder.as_markup())
+
+    await safe_edit_message(callback, "🔔 Выберите пользователя для управления подпиской:", builder.as_markup())
     await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin_delete_subscription_menu")
+async def delete_subscription_menu(callback: CallbackQuery):
+    await manage_subscription_menu(callback)
 
 # Обработка выбора конкретного элемента
 @admin_router.callback_query(F.data.startswith("admin_select_user:"))
@@ -1803,31 +1903,272 @@ async def select_vacation(callback: CallbackQuery):
     await callback.answer()
 
 @admin_router.callback_query(F.data.startswith("admin_select_subscription:"))
-async def select_subscription(callback: CallbackQuery):
+async def select_subscription(callback: CallbackQuery, state: FSMContext):
+    if not await is_admin(callback.message.chat.id):
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
+        return
+
+    user_id = callback.data.split(':')[1]
+    await state.clear()
+    if await _show_subscription_management(callback, user_id):
+        await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin_sub_edit_until:"))
+async def admin_sub_edit_until(callback: CallbackQuery, state: FSMContext):
+    if not await is_admin(callback.message.chat.id):
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
+        return
+
+    user_id = callback.data.split(':')[1]
+    await state.update_data(admin_sub_user_id=user_id)
+    await state.set_state(AdminSubscriptionStates.EDIT_UNTIL)
+    await safe_edit_message(
+        callback,
+        "📅 Введите дату окончания подписки в формате <code>ГГГГ-ММ-ДД</code>\n"
+        "Например: <code>2026-12-31</code>"
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin_sub_edit_activated:"))
+async def admin_sub_edit_activated(callback: CallbackQuery, state: FSMContext):
+    if not await is_admin(callback.message.chat.id):
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
+        return
+
+    user_id = callback.data.split(':')[1]
+    await state.update_data(admin_sub_user_id=user_id)
+    await state.set_state(AdminSubscriptionStates.EDIT_ACTIVATED)
+    await safe_edit_message(
+        callback,
+        "🕐 Введите дату и время активации в формате <code>ГГГГ-ММ-ДД ЧЧ:ММ:СС</code>\n"
+        "Например: <code>2026-07-07 14:30:00</code>"
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin_sub_edit_email:"))
+async def admin_sub_edit_email(callback: CallbackQuery, state: FSMContext):
+    if not await is_admin(callback.message.chat.id):
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
+        return
+
+    user_id = callback.data.split(':')[1]
+    await state.update_data(admin_sub_user_id=user_id)
+    await state.set_state(AdminSubscriptionStates.EDIT_EMAIL)
+    await safe_edit_message(
+        callback,
+        "📧 Введите email для подписки.\n"
+        "Отправьте <code>-</code>, чтобы очистить поле."
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin_sub_toggle_active:"))
+async def admin_sub_toggle_active(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
+        return
+
     user_id = callback.data.split(':')[1]
     users = await storage.load_users()
-    
     if user_id not in users:
         language = await get_user_language_async(str(callback.message.chat.id))
         await callback.answer(t("admin.user_not_found", language))
         return
-    
+
+    subscription = users[user_id].get('subscription')
+    if not subscription:
+        await callback.answer("❌ У пользователя нет подписки")
+        return
+
+    subscription['active'] = not subscription.get('active', False)
+    await _save_subscription(users, user_id, subscription)
+    await _show_subscription_management(callback, user_id)
+    await callback.answer("✅ Статус обновлён")
+
+
+@admin_router.callback_query(F.data.startswith("admin_sub_extend_30:"))
+async def admin_sub_extend_30(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
+        return
+
+    user_id = callback.data.split(':')[1]
+    users = await storage.load_users()
+    if user_id not in users:
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.user_not_found", language))
+        return
+
+    subscription = users[user_id].get('subscription', {})
+    current_until = subscription.get('until')
+    base_date = datetime.now()
+    if current_until:
+        try:
+            parsed_until = datetime.strptime(current_until, '%Y-%m-%d')
+            if parsed_until > base_date:
+                base_date = parsed_until
+        except ValueError:
+            pass
+
+    subscription.update({
+        'active': True,
+        'until': (base_date + timedelta(days=30)).strftime('%Y-%m-%d'),
+        'activated': subscription.get('activated') or datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'email': subscription.get('email', '')
+    })
+    await _save_subscription(users, user_id, subscription)
+    await _show_subscription_management(callback, user_id)
+    await callback.answer("✅ Подписка продлена на 30 дней")
+
+
+@admin_router.callback_query(F.data.startswith("admin_sub_create:"))
+async def admin_sub_create(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
+        return
+
+    user_id = callback.data.split(':')[1]
+    users = await storage.load_users()
+    if user_id not in users:
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.user_not_found", language))
+        return
+
+    subscription = {
+        'active': True,
+        'until': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
+        'activated': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'email': ''
+    }
+    await _save_subscription(users, user_id, subscription)
+    await _show_subscription_management(callback, user_id)
+    await callback.answer("✅ Подписка добавлена")
+
+
+@admin_router.callback_query(F.data.startswith("admin_sub_delete:"))
+async def admin_sub_delete(callback: CallbackQuery):
+    if not await is_admin(callback.message.chat.id):
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
+        return
+
+    user_id = callback.data.split(':')[1]
+    users = await storage.load_users()
+    if user_id not in users:
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.user_not_found", language))
+        return
+
     user_data = users[user_id]
     keyboard = await get_confirmation_keyboard("delete_subscription", user_id)
-    
-    sub_info = "❌ Подписка не активна"
-    if user_data.get('subscription', {}).get('active'):
-        sub_info = f"✅ Активна до: {user_data['subscription'].get('until', 'Неизвестно')}"
-    
+    sub_info = _format_subscription_info(user_data.get('subscription'))
+
     await safe_edit_message(
         callback,
         f"⚠️ Вы уверены, что хотите удалить подписку пользователя?\n\n"
         f"👤 {user_data.get('first_name', '')} {user_data.get('last_name', '')}\n"
-        f"📞 {user_data.get('phone', '')}\n"
-        f"🔔 Подписка: {sub_info}",
+        f"📞 {user_data.get('phone', '')}\n\n"
+        f"{sub_info}",
         keyboard
     )
     await callback.answer()
+
+
+@admin_router.message(AdminSubscriptionStates.EDIT_UNTIL)
+async def admin_sub_until_input(message: Message, state: FSMContext):
+    if not await is_admin(message.chat.id):
+        return
+
+    parsed_date = _parse_subscription_date(message.text or "")
+    if not parsed_date:
+        await message.answer("❌ Неверный формат даты. Используйте <code>ГГГГ-ММ-ДД</code>", parse_mode="HTML")
+        return
+
+    data = await state.get_data()
+    user_id = data.get('admin_sub_user_id')
+    users = await storage.load_users()
+    if not user_id or user_id not in users:
+        await state.clear()
+        await message.answer("❌ Пользователь не найден")
+        return
+
+    subscription = users[user_id].get('subscription', {})
+    subscription['until'] = parsed_date
+    subscription.setdefault('active', True)
+    subscription.setdefault('activated', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    subscription.setdefault('email', '')
+    await _save_subscription(users, user_id, subscription)
+    await state.clear()
+    await message.answer(f"✅ Дата окончания подписки обновлена: {parsed_date}")
+
+
+@admin_router.message(AdminSubscriptionStates.EDIT_ACTIVATED)
+async def admin_sub_activated_input(message: Message, state: FSMContext):
+    if not await is_admin(message.chat.id):
+        return
+
+    parsed_datetime = _parse_subscription_datetime(message.text or "")
+    if not parsed_datetime:
+        await message.answer(
+            "❌ Неверный формат. Используйте <code>ГГГГ-ММ-ДД ЧЧ:ММ:СС</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    data = await state.get_data()
+    user_id = data.get('admin_sub_user_id')
+    users = await storage.load_users()
+    if not user_id or user_id not in users:
+        await state.clear()
+        await message.answer("❌ Пользователь не найден")
+        return
+
+    subscription = users[user_id].get('subscription', {})
+    subscription['activated'] = parsed_datetime
+    subscription.setdefault('active', True)
+    subscription.setdefault('until', (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'))
+    subscription.setdefault('email', '')
+    await _save_subscription(users, user_id, subscription)
+    await state.clear()
+    await message.answer(f"✅ Дата активации обновлена: {parsed_datetime}")
+
+
+@admin_router.message(AdminSubscriptionStates.EDIT_EMAIL)
+async def admin_sub_email_input(message: Message, state: FSMContext):
+    if not await is_admin(message.chat.id):
+        return
+
+    email = (message.text or "").strip()
+    if email == "-":
+        email = ""
+
+    data = await state.get_data()
+    user_id = data.get('admin_sub_user_id')
+    users = await storage.load_users()
+    if not user_id or user_id not in users:
+        await state.clear()
+        await message.answer("❌ Пользователь не найден")
+        return
+
+    subscription = users[user_id].get('subscription', {})
+    subscription['email'] = email
+    subscription.setdefault('active', True)
+    subscription.setdefault('until', (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'))
+    subscription.setdefault('activated', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    await _save_subscription(users, user_id, subscription)
+    await state.clear()
+    email_display = email or "—"
+    await message.answer(f"✅ Email подписки обновлён: {email_display}")
 
 @admin_router.callback_query(F.data.startswith("admin_select_offer:"))
 async def select_offer(callback: CallbackQuery):

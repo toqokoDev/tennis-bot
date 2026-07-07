@@ -949,6 +949,7 @@
     "buttons": {
       "delete_user": "🗑️ Delete user",
       "delete_subscription": "🔔 Delete subscription",
+      "manage_subscription": "🔔 Manage subscription",
       "ban_user": "⛔ Ban user",
       "delete_vacation": "🗑️ Delete vacation",
       "edit_other_profile": "✏️ Edit other profile"

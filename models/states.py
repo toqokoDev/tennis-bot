@@ -238,6 +238,11 @@ class AdminEditGameStates(StatesGroup):
     ENTER_TOURNAMENT_SCORE = State()  # Для внесения счета матча турнира
 
 
+class AdminSubscriptionStates(StatesGroup):
+    EDIT_UNTIL = State()
+    EDIT_EMAIL = State()
+    EDIT_ACTIVATED = State()
+
 class AdminBroadcastStates(StatesGroup):
     """Рассылка объявления: переслать сообщение или ручное заполнение."""
     WAIT_FORWARD = State()  # Ожидание пересланного сообщения
