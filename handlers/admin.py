@@ -23,8 +23,9 @@ from utils.translations import get_user_language_async, t
 admin_router = Router()
 logger = logging.getLogger(__name__)
 
-# Пагинация для списка игр
+# Пагинация для списка игр и подписок
 GAMES_PER_PAGE = 10
+SUBSCRIPTION_USERS_PER_PAGE = 15
 
 async def safe_edit_message(callback: CallbackQuery, text: str, reply_markup=None, parse_mode: str = "HTML"):
     """
@@ -435,7 +436,7 @@ def get_admin_keyboard(language=None):
     builder = InlineKeyboardBuilder()
     builder.button(text="🚫 Забаненные пользователи", callback_data="admin_banned_list")
     builder.button(text="📢 Рассылка объявления", callback_data="admin_broadcast_menu")
-    builder.button(text="🔔 Управление подписками", callback_data="admin_manage_subscription_menu")
+    builder.button(text="🔔 Управление подписками", callback_data="admin_manage_subscription_menu:0")
     builder.button(text="➕ Создать турнир", callback_data="admin_create_tournament")
     builder.button(text="✏️ Управление турнирами", callback_data="admin_edit_tournaments")
     builder.adjust(1)
@@ -1706,7 +1707,7 @@ def _build_subscription_management_keyboard(user_id: str, subscription: dict | N
     else:
         builder.button(text="➕ Добавить подписку (30 дней)", callback_data=f"admin_sub_create:{user_id}")
 
-    builder.button(text="🔙 Назад", callback_data="admin_manage_subscription_menu")
+    builder.button(text="🔙 Назад", callback_data="admin_manage_subscription_menu:0")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -1766,13 +1767,24 @@ async def _save_subscription(users: dict, user_id: str, subscription: dict):
     await storage.save_users(users)
 
 
-@admin_router.callback_query(F.data == "admin_manage_subscription_menu")
+@admin_router.callback_query(F.data.startswith("admin_manage_subscription_menu"))
 async def manage_subscription_menu(callback: CallbackQuery):
     if not await is_admin(callback.message.chat.id):
         language = await get_user_language_async(str(callback.message.chat.id))
         await callback.answer(t("admin.no_admin_rights", language))
         return
 
+    page = 0
+    if ":" in callback.data:
+        try:
+            page = int(callback.data.split(":")[1])
+        except (IndexError, ValueError):
+            page = 0
+
+    await show_subscription_users_page(callback, page)
+
+
+async def show_subscription_users_page(callback: CallbackQuery, page: int = 0):
     users = await storage.load_users()
     language = await get_user_language_async(str(callback.message.chat.id))
 
@@ -1780,22 +1792,57 @@ async def manage_subscription_menu(callback: CallbackQuery):
         await callback.answer(t("admin.no_users_to_delete", language))
         return
 
+    user_items = sorted(
+        users.items(),
+        key=lambda item: (
+            f"{item[1].get('first_name', '')} {item[1].get('last_name', '')}".strip().lower(),
+            item[0],
+        ),
+    )
+    total_users = len(user_items)
+    total_pages = max(1, (total_users + SUBSCRIPTION_USERS_PER_PAGE - 1) // SUBSCRIPTION_USERS_PER_PAGE)
+
+    if page < 0:
+        page = 0
+    if page >= total_pages:
+        page = total_pages - 1
+
+    start_idx = page * SUBSCRIPTION_USERS_PER_PAGE
+    end_idx = min(start_idx + SUBSCRIPTION_USERS_PER_PAGE, total_users)
+    page_users = user_items[start_idx:end_idx]
+
     builder = InlineKeyboardBuilder()
-    for user_id, user_data in users.items():
-        name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
+    for user_id, user_data in page_users:
+        name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or user_id
+        if len(name) > 25:
+            name = name[:22] + "..."
         sub = user_data.get('subscription', {})
         if sub.get('active'):
-            suffix = f"✅ до {sub.get('until', '?')}"
+            suffix = f"✅ {sub.get('until', '?')}"
         elif sub:
-            suffix = "❌ неактивна"
+            suffix = "❌"
         else:
-            suffix = "➖ нет"
+            suffix = "➖"
         builder.button(text=f"🔔 {name} ({suffix})", callback_data=f"admin_select_subscription:{user_id}")
 
-    builder.button(text=t("admin.back_to_main", language), callback_data="admin_back_to_main")
     builder.adjust(1)
 
-    await safe_edit_message(callback, "🔔 Выберите пользователя для управления подпиской:", builder.as_markup())
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton(text="⬅️", callback_data=f"admin_manage_subscription_menu:{page - 1}"))
+    if page < total_pages - 1:
+        nav_buttons.append(InlineKeyboardButton(text="➡️", callback_data=f"admin_manage_subscription_menu:{page + 1}"))
+
+    if nav_buttons:
+        builder.row(*nav_buttons)
+
+    builder.row(InlineKeyboardButton(text=t("admin.back_to_main", language), callback_data="admin_back_to_main"))
+
+    text = (
+        f"🔔 Выберите пользователя для управления подпиской:\n"
+        f"Страница {page + 1}/{total_pages} (всего: {total_users})"
+    )
+    await safe_edit_message(callback, text, builder.as_markup())
     await callback.answer()
 
 
