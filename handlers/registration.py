@@ -725,17 +725,28 @@ async def process_language_selection(callback: types.CallbackQuery, state: FSMCo
     
     if not username:
         # Если нет username, просим телефон
+        # ReplyKeyboardMarkup нельзя передать в edit_text — только InlineKeyboardMarkup
         await state.set_state(RegistrationStates.PHONE)
         welcome_text = t("registration.welcome", language, name=callback.from_user.full_name)
         welcome_text += t("registration.send_phone", language)
-        
-        await callback.message.edit_text(
+        phone_keyboard = ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(
+                text="📱 " + t("registration.send_phone", language).replace("<b>", "").replace("</b>", ""),
+                request_contact=True
+            )]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        try:
+            await callback.message.delete()
+        except Exception:
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+        await callback.message.answer(
             welcome_text,
-            reply_markup=ReplyKeyboardMarkup(
-                keyboard=[[KeyboardButton(text="📱 " + t("registration.send_phone", language).replace("<b>", "").replace("</b>", ""), request_contact=True)]],
-                resize_keyboard=True,
-                one_time_keyboard=True
-            ),
+            reply_markup=phone_keyboard,
             parse_mode="HTML"
         )
     else:
@@ -1692,17 +1703,18 @@ async def complete_registration_without_profile(message: types.Message, state: F
         referrer_data = await storage.get_user(referral_id) or {}
         referrals_count = referrer_data.get('referrals_invited', 0) + 1
         
-        await storage.update_user(referral_id, {
-            'referrals_invited': referrals_count
-        })
-        
         # Проверяем, достиг ли реферер 5 приглашений
         if referrals_count >= 5:
-            # Дарим подписку на 1 месяц
+            # Дарим подписку на 1 месяц и обнуляем счётчик
+            existing_subscription = referrer_data.get('subscription', {}) or {}
             await storage.update_user(referral_id, {
-                'active': True,
-                'until': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
-                'activated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                'referrals_invited': 0,
+                'subscription': {
+                    'active': True,
+                    'until': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
+                    'activated': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'email': existing_subscription.get('email', ''),
+                }
             })
             
             # Уведомляем реферера
@@ -1714,6 +1726,10 @@ async def complete_registration_without_profile(message: types.Message, state: F
                 )
             except:
                 pass
+        else:
+            await storage.update_user(referral_id, {
+                'referrals_invited': referrals_count
+            })
     
     # Сохраняем пользователя
     await storage.save_user(user_id, profile)

@@ -226,7 +226,7 @@ async def handle_add_score(message: types.Message, state: FSMContext):
     language = await get_user_language_async(str(message.chat.id))
     
     if not await is_admin(user_id):
-        if not users[str(user_id)].get('subscription', {}).get('active', False):
+        if not users.get(str(user_id), {}).get('subscription', {}).get('active', False):
             # Показываем сообщение о необходимости подписки
             referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{message.from_user.id}"
             text = t("enter_invoice.enter_invoice_locked", language, price=SUBSCRIPTION_PRICE, referral_link=referral_link)

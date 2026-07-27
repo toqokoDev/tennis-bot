@@ -75,7 +75,7 @@ async def handle_all_players(callback: types.CallbackQuery, state: FSMContext):
     users = await storage.load_users()
 
     if not await is_admin(user_id):
-        if not users[str(user_id)].get('subscription', {}).get('active', False):
+        if not users.get(str(user_id), {}).get('subscription', {}).get('active', False):
             referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{callback.from_user.id}"
             language = await get_user_language_async(str(user_id))
             text = t("more.all_players_locked", language, 
@@ -933,10 +933,14 @@ async def handle_select_language(callback: types.CallbackQuery):
         types.InlineKeyboardButton(text=t("common.back", language), callback_data="back_to_main")
     )
     
-    await callback.message.edit_text(
-        t("more.select_language", language),
-        reply_markup=builder.as_markup()
-    )
+    try:
+        await callback.message.edit_text(
+            t("more.select_language", language),
+            reply_markup=builder.as_markup()
+        )
+    except Exception:
+        # Игнорируем «message is not modified» при повторном нажатии
+        pass
     await callback.answer()
 
 @router.callback_query(F.data.startswith("set_language_"))

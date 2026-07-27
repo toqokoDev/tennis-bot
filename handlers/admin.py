@@ -411,16 +411,18 @@ async def show_unban_menu(message: Message):
         return
     
     builder = InlineKeyboardBuilder()
-    for user_id, ban_data in banned_users.items():
+    for user_id, ban_data in list(banned_users.items())[:15]:
         name = f"{ban_data.get('first_name', '')} {ban_data.get('last_name', '')}"
         builder.button(text=f"🔓 {name}", callback_data=f"admin_unban_user:{user_id}")
     
     builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
     builder.adjust(1)
     
+    total = len(banned_users)
+    hint = f" (показаны первые 15 из {total})" if total > 15 else ""
     await safe_send_message(
         message,
-        "🔓 Выберите пользователя для разбана:",
+        f"🔓 Выберите пользователя для разбана{hint}:",
         builder.as_markup()
     )
 
@@ -436,7 +438,7 @@ def get_admin_keyboard(language=None):
     builder = InlineKeyboardBuilder()
     builder.button(text="🚫 Забаненные пользователи", callback_data="admin_banned_list")
     builder.button(text="📢 Рассылка объявления", callback_data="admin_broadcast_menu")
-    builder.button(text="🔔 Управление подписками", callback_data="admin_manage_subscription_menu:0")
+    builder.button(text="🔔 Управление подписками", callback_data="admin_manage_subscription_menu")
     builder.button(text="➕ Создать турнир", callback_data="admin_create_tournament")
     builder.button(text="✏️ Управление турнирами", callback_data="admin_edit_tournaments")
     builder.adjust(1)
@@ -1585,14 +1587,17 @@ async def delete_user_menu(callback: CallbackQuery):
         return
     
     builder = InlineKeyboardBuilder()
-    for user_id, user_data in users.items():
+    # Лимит Telegram на размер reply_markup — не более 15 кнопок за раз
+    for user_id, user_data in list(users.items())[:15]:
         name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}"
         builder.button(text=f"🗑️ {name}", callback_data=f"admin_select_user:{user_id}")
     
     builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
     builder.adjust(1)
     
-    await safe_edit_message(callback, "👥 Выберите пользователя для удаления:", builder.as_markup())
+    total = len(users)
+    hint = f" (показаны первые 15 из {total})" if total > 15 else ""
+    await safe_edit_message(callback, f"👥 Выберите пользователя для удаления{hint}:", builder.as_markup())
     await callback.answer()
 
 @admin_router.callback_query(F.data == "admin_delete_game_menu")
@@ -1666,14 +1671,17 @@ async def delete_vacation_menu(callback: CallbackQuery):
         return
     
     builder = InlineKeyboardBuilder()
-    for user in vacation_users:
+    # Лимит Telegram на размер reply_markup — не более 15 кнопок за раз
+    for user in vacation_users[:15]:
         text = f"🏖️ {user['user_name']} ({user['start']} - {user['end']})"
         builder.button(text=text, callback_data=f"admin_select_vacation:{user['user_id']}")
     
     builder.button(text="🔙 Назад", callback_data="admin_back_to_main")
     builder.adjust(1)
     
-    await safe_edit_message(callback, "🏖️ Выберите пользователя для удаления отпуска:", builder.as_markup())
+    total = len(vacation_users)
+    hint = f" (показаны первые 15 из {total})" if total > 15 else ""
+    await safe_edit_message(callback, f"🏖️ Выберите пользователя для удаления отпуска{hint}:", builder.as_markup())
     await callback.answer()
 
 def _format_subscription_info(subscription: dict | None) -> str:
@@ -1707,7 +1715,7 @@ def _build_subscription_management_keyboard(user_id: str, subscription: dict | N
     else:
         builder.button(text="➕ Добавить подписку (30 дней)", callback_data=f"admin_sub_create:{user_id}")
 
-    builder.button(text="🔙 Назад", callback_data="admin_manage_subscription_menu:0")
+    builder.button(text="🔙 Назад", callback_data="admin_manage_subscription_menu")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -1767,88 +1775,206 @@ async def _save_subscription(users: dict, user_id: str, subscription: dict):
     await storage.save_users(users)
 
 
-@admin_router.callback_query(F.data.startswith("admin_manage_subscription_menu"))
-async def manage_subscription_menu(callback: CallbackQuery):
-    if not await is_admin(callback.message.chat.id):
-        language = await get_user_language_async(str(callback.message.chat.id))
-        await callback.answer(t("admin.no_admin_rights", language))
-        return
+def _search_users_for_subscription(users: dict, query: str) -> list[tuple[str, dict]]:
+    """Поиск пользователя по имени, фамилии, телефону, ID или username."""
+    raw = (query or "").strip()
+    if not raw:
+        return []
 
-    page = 0
-    if ":" in callback.data:
-        try:
-            page = int(callback.data.split(":")[1])
-        except (IndexError, ValueError):
-            page = 0
+    query_lower = raw.lower()
+    query_username = query_lower.lstrip("@")
+    query_digits = re.sub(r"\D", "", raw)
 
-    await show_subscription_users_page(callback, page)
+    results = []
+    for user_id, user_data in users.items():
+        first_name = (user_data.get("first_name") or "").lower()
+        last_name = (user_data.get("last_name") or "").lower()
+        full_name = f"{first_name} {last_name}".strip()
+        username = (user_data.get("username") or "").lower().lstrip("@")
+        phone = str(user_data.get("phone") or "")
+        phone_digits = re.sub(r"\D", "", phone)
 
+        matched = (
+            query_lower == str(user_id).lower()
+            or query_lower in first_name
+            or query_lower in last_name
+            or query_lower in full_name
+            or (query_username and query_username == username)
+            or (query_username and query_username in username)
+            or (query_digits and query_digits in phone_digits)
+            or (query_digits and query_digits == str(user_id))
+        )
+        if matched:
+            results.append((user_id, user_data))
 
-async def show_subscription_users_page(callback: CallbackQuery, page: int = 0):
-    users = await storage.load_users()
-    language = await get_user_language_async(str(callback.message.chat.id))
-
-    if not users:
-        await callback.answer(t("admin.no_users_to_delete", language))
-        return
-
-    user_items = sorted(
-        users.items(),
+    results.sort(
         key=lambda item: (
             f"{item[1].get('first_name', '')} {item[1].get('last_name', '')}".strip().lower(),
             item[0],
-        ),
+        )
     )
-    total_users = len(user_items)
-    total_pages = max(1, (total_users + SUBSCRIPTION_USERS_PER_PAGE - 1) // SUBSCRIPTION_USERS_PER_PAGE)
+    return results
 
+
+def _subscription_user_button_label(user_id: str, user_data: dict) -> str:
+    name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or user_id
+    if len(name) > 25:
+        name = name[:22] + "..."
+    sub = user_data.get("subscription", {})
+    if sub.get("active"):
+        suffix = f"✅ {sub.get('until', '?')}"
+    elif sub:
+        suffix = "❌"
+    else:
+        suffix = "➖"
+    return f"🔔 {name} ({suffix})"
+
+
+async def _prompt_subscription_user_search(callback: CallbackQuery, state: FSMContext):
+    language = await get_user_language_async(str(callback.message.chat.id))
+    await state.set_state(AdminSubscriptionStates.SEARCH_USER)
+    await state.update_data(admin_sub_search_query=None, admin_sub_search_page=0)
+
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=t("admin.back_to_main", language), callback_data="admin_back_to_main"))
+
+    await safe_edit_message(
+        callback,
+        "🔔 <b>Управление подписками</b>\n\n"
+        "🔍 Введите имя, фамилию, номер телефона, ID или username пользователя:",
+        builder.as_markup(),
+    )
+    await callback.answer()
+
+
+async def _show_subscription_search_results(
+    target: Message | CallbackQuery,
+    state: FSMContext,
+    page: int = 0,
+    *,
+    answer_callback: bool = True,
+):
+    data = await state.get_data()
+    query = data.get("admin_sub_search_query") or ""
+    language = await get_user_language_async(
+        str(target.message.chat.id if isinstance(target, CallbackQuery) else target.chat.id)
+    )
+
+    users = await storage.load_users()
+    matched_users = _search_users_for_subscription(users, query)
+    total_users = len(matched_users)
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🔄 Новый поиск", callback_data="admin_manage_subscription_menu")
+    )
+
+    if not matched_users:
+        text = (
+            f"❌ Пользователи по запросу <code>{html_escape(query)}</code> не найдены.\n\n"
+            "Попробуйте другое имя, фамилию, номер, ID или username."
+        )
+        builder.row(InlineKeyboardButton(text=t("admin.back_to_main", language), callback_data="admin_back_to_main"))
+        if isinstance(target, CallbackQuery):
+            await safe_edit_message(target, text, builder.as_markup())
+            if answer_callback:
+                await target.answer()
+        else:
+            await safe_send_message(target, text, builder.as_markup())
+        return
+
+    total_pages = max(1, (total_users + SUBSCRIPTION_USERS_PER_PAGE - 1) // SUBSCRIPTION_USERS_PER_PAGE)
     if page < 0:
         page = 0
     if page >= total_pages:
         page = total_pages - 1
 
+    await state.update_data(admin_sub_search_page=page)
+
     start_idx = page * SUBSCRIPTION_USERS_PER_PAGE
     end_idx = min(start_idx + SUBSCRIPTION_USERS_PER_PAGE, total_users)
-    page_users = user_items[start_idx:end_idx]
+    page_users = matched_users[start_idx:end_idx]
 
-    builder = InlineKeyboardBuilder()
     for user_id, user_data in page_users:
-        name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or user_id
-        if len(name) > 25:
-            name = name[:22] + "..."
-        sub = user_data.get('subscription', {})
-        if sub.get('active'):
-            suffix = f"✅ {sub.get('until', '?')}"
-        elif sub:
-            suffix = "❌"
-        else:
-            suffix = "➖"
-        builder.button(text=f"🔔 {name} ({suffix})", callback_data=f"admin_select_subscription:{user_id}")
-
+        builder.button(
+            text=_subscription_user_button_label(user_id, user_data),
+            callback_data=f"admin_select_subscription:{user_id}",
+        )
     builder.adjust(1)
 
     nav_buttons = []
     if page > 0:
-        nav_buttons.append(InlineKeyboardButton(text="⬅️", callback_data=f"admin_manage_subscription_menu:{page - 1}"))
+        nav_buttons.append(InlineKeyboardButton(text="⬅️", callback_data=f"admin_sub_search_page:{page - 1}"))
     if page < total_pages - 1:
-        nav_buttons.append(InlineKeyboardButton(text="➡️", callback_data=f"admin_manage_subscription_menu:{page + 1}"))
-
+        nav_buttons.append(InlineKeyboardButton(text="➡️", callback_data=f"admin_sub_search_page:{page + 1}"))
     if nav_buttons:
         builder.row(*nav_buttons)
 
     builder.row(InlineKeyboardButton(text=t("admin.back_to_main", language), callback_data="admin_back_to_main"))
 
     text = (
-        f"🔔 Выберите пользователя для управления подпиской:\n"
-        f"Страница {page + 1}/{total_pages} (всего: {total_users})"
+        f"🔔 Найдено по запросу <code>{html_escape(query)}</code>: {total_users}\n"
+        f"Страница {page + 1}/{total_pages}\n\n"
+        "Выберите пользователя для управления подпиской:"
     )
-    await safe_edit_message(callback, text, builder.as_markup())
-    await callback.answer()
+
+    if isinstance(target, CallbackQuery):
+        await safe_edit_message(target, text, builder.as_markup())
+        if answer_callback:
+            await target.answer()
+    else:
+        await safe_send_message(target, text, builder.as_markup())
+
+
+@admin_router.callback_query(F.data.startswith("admin_manage_subscription_menu"))
+async def manage_subscription_menu(callback: CallbackQuery, state: FSMContext):
+    if not await is_admin(callback.message.chat.id):
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
+        return
+
+    await _prompt_subscription_user_search(callback, state)
+
+
+@admin_router.message(AdminSubscriptionStates.SEARCH_USER, F.text)
+async def admin_subscription_search_user(message: Message, state: FSMContext):
+    if not await is_admin(message.chat.id):
+        language = await get_user_language_async(str(message.chat.id))
+        await message.answer(t("admin.no_admin_rights", language))
+        return
+
+    query = (message.text or "").strip()
+    if len(query) < 1:
+        await message.answer("❌ Введите имя, фамилию, номер телефона, ID или username")
+        return
+
+    await state.update_data(admin_sub_search_query=query, admin_sub_search_page=0)
+    await _show_subscription_search_results(message, state, page=0)
+
+
+@admin_router.callback_query(F.data.startswith("admin_sub_search_page:"))
+async def admin_subscription_search_page(callback: CallbackQuery, state: FSMContext):
+    if not await is_admin(callback.message.chat.id):
+        language = await get_user_language_async(str(callback.message.chat.id))
+        await callback.answer(t("admin.no_admin_rights", language))
+        return
+
+    data = await state.get_data()
+    if not data.get("admin_sub_search_query"):
+        await _prompt_subscription_user_search(callback, state)
+        return
+
+    try:
+        page = int(callback.data.split(":")[1])
+    except (IndexError, ValueError):
+        page = 0
+
+    await _show_subscription_search_results(callback, state, page=page)
 
 
 @admin_router.callback_query(F.data == "admin_delete_subscription_menu")
-async def delete_subscription_menu(callback: CallbackQuery):
-    await manage_subscription_menu(callback)
+async def delete_subscription_menu(callback: CallbackQuery, state: FSMContext):
+    await manage_subscription_menu(callback, state)
 
 # Обработка выбора конкретного элемента
 @admin_router.callback_query(F.data.startswith("admin_select_user:"))
@@ -2266,7 +2392,8 @@ async def select_offer(callback: CallbackQuery):
 
 # Кнопка назад в главное меню
 @admin_router.callback_query(F.data == "admin_back_to_main")
-async def back_to_main(callback: CallbackQuery):
+async def back_to_main(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
     language = await get_user_language_async(str(callback.message.chat.id))
     await safe_edit_message(
         callback,

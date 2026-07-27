@@ -239,6 +239,7 @@ class AdminEditGameStates(StatesGroup):
 
 
 class AdminSubscriptionStates(StatesGroup):
+    SEARCH_USER = State()
     EDIT_UNTIL = State()
     EDIT_EMAIL = State()
     EDIT_ACTIVATED = State()
