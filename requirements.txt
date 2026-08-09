@@ -8,3 +8,4 @@ aiohttp
 aiosmtplib
 deep-translator
 httpx
+certifi

@@ -1,9 +1,29 @@
 import uuid
 import hashlib
+import ssl
+from pathlib import Path
+
+import certifi
 import httpx
 from yookassa import Payment
 
 from config.config import BOT_USERNAME, TINKOFF_BASE_URL, TINKOFF_PASSWORD, TINKOFF_TERMINAL_KEY
+
+# Tinkoff/Т-Банк использует сертификаты НУЦ Минцифры (Russian Trusted CA),
+# которых нет в стандартном certifi — без них SSL verification падает.
+_CERTS_DIR = Path(__file__).resolve().parent.parent / "certs"
+_RUSSIAN_TRUSTED_CAS = (
+    _CERTS_DIR / "russian_trusted_root_ca.pem",
+    _CERTS_DIR / "russian_trusted_sub_ca.pem",
+)
+
+
+def _tinkoff_ssl_context() -> ssl.SSLContext:
+    context = ssl.create_default_context(cafile=certifi.where())
+    for ca_path in _RUSSIAN_TRUSTED_CAS:
+        if ca_path.exists():
+            context.load_verify_locations(cafile=str(ca_path))
+    return context
 
 async def generate_yookassa_payment_link(user_id, amount, description, email=None):
     """
@@ -103,7 +123,7 @@ async def generate_tinkoff_payment_link(user_id, amount_rub, description, email=
     
     payload["Token"] = generate_tinkoff_token(payload)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(verify=_tinkoff_ssl_context()) as client:
         response = await client.post(url, json=payload)
         data = response.json()
 
@@ -130,7 +150,7 @@ async def check_tinkoff_payment_status(payment_id):
     }
     payload["Token"] = generate_tinkoff_token(payload)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(verify=_tinkoff_ssl_context()) as client:
         response = await client.post(url, json=payload)
         response.raise_for_status()
         data = response.json()
