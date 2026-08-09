@@ -206,8 +206,10 @@
     "payment_check_error": "❌ Error checking payment: {error}\n\nPlease try again later or contact support.",
     "email_cancelled": "❌ Email input cancelled.\n\nYou can return to payment later.",
     "buy_subscription_button": "💰 Buy subscription",
+    "check_payment_button": "🔄 Check payment",
     "go_to_payment_button": "🔗 Go to payment",
-    "confirm_payment_button": "✅ Confirm payment"
+    "confirm_payment_button": "✅ Confirm payment",
+    "no_pending_payment": "No payment to check. Create a payment first via «Buy subscription»."
   },
   "profile": {
     "profile_info": "👤 <b>Profile</b>\n\n",

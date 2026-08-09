@@ -206,8 +206,10 @@
     "payment_check_error": "❌ Ошибка при проверке платежа: {error}\n\nПожалуйста, попробуйте позже или обратитесь в поддержку.",
     "email_cancelled": "❌ Ввод email отменен.\n\nВы можете вернуться к оплате позже.",
     "buy_subscription_button": "💰 Купить подписку",
+    "check_payment_button": "🔄 Проверить платеж",
     "go_to_payment_button": "🔗 Перейти к оплате",
-    "confirm_payment_button": "✅ Подтвердить оплату"
+    "confirm_payment_button": "✅ Подтвердить оплату",
+    "no_pending_payment": "Нет платежа для проверки. Сначала создайте оплату через «Купить подписку»."
   },
   "profile": {
     "profile_info": "👤 <b>Профиль</b>\n\n",
