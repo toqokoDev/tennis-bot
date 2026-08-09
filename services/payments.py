@@ -104,16 +104,24 @@ async def generate_tinkoff_payment_link(user_id, amount_rub, description, email=
     payload["Token"] = generate_tinkoff_token(payload)
 
     async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(url, json=payload)
-            data = response.json()
+        response = await client.post(url, json=payload)
+        data = response.json()
 
-            if data.get("Success"):
-                return data.get("PaymentURL"), data.get("PaymentId") 
-            return {"success": False, "message": data.get("Message"), "details": data.get("Details")}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-        
+        if data.get("Success"):
+            payment_url = data.get("PaymentURL")
+            payment_id = data.get("PaymentId")
+            if not payment_url or not payment_id:
+                raise RuntimeError(
+                    f"Tinkoff Init: Success=True, но нет PaymentURL/PaymentId: {data}"
+                )
+            return payment_url, payment_id
+
+        message = data.get("Message") or data.get("ErrorCode") or "Unknown error"
+        details = data.get("Details")
+        error_text = f"{message}" + (f" ({details})" if details else "")
+        raise RuntimeError(f"Tinkoff Init failed: {error_text}")
+
+
 async def check_tinkoff_payment_status(payment_id):
     url = f"{TINKOFF_BASE_URL}/GetState"
     payload = {
@@ -123,35 +131,8 @@ async def check_tinkoff_payment_status(payment_id):
     payload["Token"] = generate_tinkoff_token(payload)
 
     async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            data = response.json()
-
-            if data.get("Success"):
-                return {
-                    "success": True,
-                    "status": data.get("Status"),
-                    "order_id": data.get("OrderId"),
-                    "amount": data.get("Amount")
-                }
-            return {"success": False, "message": data.get("Message")}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-    payload = {
-        "TerminalKey": TINKOFF_TERMINAL_KEY,
-        "PaymentId": str(payment_id),
-    }
-
-    params_for_token = payload.copy()
-    params_for_token["Password"] = TINKOFF_PASSWORD
-    
-    sorted_keys = sorted(params_for_token.keys())
-    token_string = "".join(str(params_for_token[key]) for key in sorted_keys)
-    payload["Token"] = hashlib.sha256(token_string.encode('utf-8')).hexdigest()
-
-    try:
-        response = requests.post(TINKOFF_STATUS_URL, json=payload)
+        response = await client.post(url, json=payload)
+        response.raise_for_status()
         data = response.json()
 
         if data.get("Success"):
@@ -161,11 +142,6 @@ async def check_tinkoff_payment_status(payment_id):
                 "order_id": data.get("OrderId"),
                 "amount": data.get("Amount")
             }
-        else:
-            return {
-                "success": False,
-                "message": data.get("Message")
-            }
 
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        message = data.get("Message") or data.get("ErrorCode") or "Unknown error"
+        raise RuntimeError(f"Tinkoff GetState failed: {message}")

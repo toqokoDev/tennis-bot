@@ -108,6 +108,9 @@ async def process_email_input(message: types.Message, state: FSMContext):
             "Оплата подписки для расширенного функционала",
             email
         )
+
+        if not isinstance(payment_link, str) or not payment_link.startswith(("http://", "https://")):
+            raise RuntimeError(f"Некорректная ссылка на оплату: {payment_link!r}")
         
         await state.update_data(payment_id=payment_id)
         
@@ -130,6 +133,7 @@ async def process_email_input(message: types.Message, state: FSMContext):
         await state.set_state(PaymentStates.CONFIRM_PAYMENT)
         
     except Exception as e:
+        logger.exception("Ошибка при создании платежа Tinkoff для user_id=%s", message.chat.id)
         language = await get_user_language_async(str(message.chat.id))
         await message.answer(
             t("payments.payment_created_error", language, error=str(e))
