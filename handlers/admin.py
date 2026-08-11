@@ -1161,6 +1161,7 @@ async def admin_broadcast_media_done(callback: CallbackQuery, state: FSMContext)
     text = (
         "✏️ <b>Шаг 2: Текст</b>\n\n"
         "Введите текст объявления (подпись к медиа или отдельное сообщение). "
+        "Форматирование Telegram (<b>жирный</b>, <i>курсив</i>, ссылки и т.д.) сохранится. "
         "Можно нажать «Пропустить», если текст не нужен."
     )
     builder = InlineKeyboardBuilder()
@@ -1178,7 +1179,8 @@ async def admin_broadcast_manual_text(message: Message, state: FSMContext):
     if not await is_admin(message.from_user.id):
         await state.clear()
         return
-    await state.update_data(broadcast_text=message.text or "")
+    # html_text сохраняет bold/italic/ссылки и т.д. из entities (рассылка идёт с parse_mode=HTML)
+    await state.update_data(broadcast_text=message.html_text or "")
     await state.set_state(AdminBroadcastStates.CONFIRM)
     data = await state.get_data()
     media_list = data.get("broadcast_media", [])
@@ -1187,7 +1189,8 @@ async def admin_broadcast_manual_text(message: Message, state: FSMContext):
     count = len([k for k in users.keys() if k and str(k).isdigit()])
     preview = f"Медиа: {len(media_list)} шт."
     if text:
-        preview += f"\nТекст: «{text[:80]}{'…' if len(text) > 80 else ''}»"
+        plain_preview = _broadcast_caption_preview(text)
+        preview += f"\nТекст: «{html_escape(plain_preview)}»"
     msg_text = (
         f"📋 <b>Подтверждение рассылки</b>\n\n"
         f"{preview}\n\n"
