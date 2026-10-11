@@ -215,6 +215,8 @@ async def main():
     tournament_jobs_task = asyncio.create_task(tournament_scheduled_loop(bot))
     
     try:
+        # Снимаем webhook, иначе getUpdates падает с TelegramConflictError
+        await bot.delete_webhook(drop_pending_updates=False)
         await dp.start_polling(bot)
     finally:
         # Отменяем фоновые задачи при завершении работы
